@@ -18,6 +18,7 @@ use App\Services\NetAmountCalculator;
 use App\Services\ProducerSaleAmount;
 use App\Services\RefundService;
 use App\Services\TeamAccessService;
+use App\Support\MoneyMinorUnits;
 use App\Support\OrderCurrencyTotals;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -329,6 +330,7 @@ class VendasController extends Controller
                 ? [['currency' => 'BRL', 'total' => round($fallbackTotal, 2)]]
                 : [];
         }
+        $lucroLiquidoPorMoeda = $this->lucroLiquidoPorMoedaFromQuery($statsQuery, $producerSaleAmount, $netAmountCalculator);
 
         $vendasPix = (clone $statsQuery)
             ->where(function ($q) {
@@ -363,7 +365,9 @@ class VendasController extends Controller
         $stats = [
             'vendas_encontradas' => $vendasEncontradas,
             'valor_por_moeda' => $valorPorMoeda,
+            'lucro_liquido_por_moeda' => $lucroLiquidoPorMoeda,
             'valor_faturado' => ($brl = collect($valorPorMoeda)->firstWhere('currency', 'BRL')) ? (float) $brl['total'] : 0.0,
+            'lucro_liquido' => ($brl = collect($lucroLiquidoPorMoeda)->firstWhere('currency', 'BRL')) ? (float) $brl['total'] : 0.0,
             'valor_liquido' => ($brl = collect($valorPorMoeda)->firstWhere('currency', 'BRL')) ? (float) $brl['total'] : 0.0,
             'vendas_pix' => $vendasPix,
             'vendas_cartao' => $vendasCartao,
@@ -419,6 +423,47 @@ class VendasController extends Controller
             'products' => $products,
             'offers' => $offers,
         ]);
+    }
+
+    /**
+     * Soma o lucro líquido de pedidos completed agrupado por moeda, respeitando os mesmos filtros da tela.
+     *
+     * @return list<array{currency: string, total: float}>
+     */
+    private function lucroLiquidoPorMoedaFromQuery($statsQuery, ProducerSaleAmount $producerSaleAmount, NetAmountCalculator $netAmountCalculator): array
+    {
+        $orders = (clone $statsQuery)
+            ->where('orders.status', 'completed')
+            ->with([
+                'orderItems:id,order_id,amount',
+                'commissionEntries:id,order_id,role,commission_amount',
+            ])
+            ->get(['orders.id', 'orders.tenant_id', 'orders.amount', 'orders.gateway', 'orders.metadata', 'orders.currency', 'orders.product_id']);
+
+        if ($orders->isEmpty()) {
+            return [];
+        }
+
+        $merged = [];
+        foreach ($orders as $order) {
+            $producerAmount = $producerSaleAmount->forOrder($order);
+            $netProfitAmount = $producerAmount['is_producer_share']
+                ? (float) $producerAmount['amount']
+                : (float) $netAmountCalculator->forOrder($order)['net'];
+
+            $currency = MoneyMinorUnits::normalizeCurrencyCode($order->getCurrencyOrDefault());
+            $merged[$currency] = ($merged[$currency] ?? 0.0) + $netProfitAmount;
+        }
+
+        ksort($merged);
+
+        return collect($merged)
+            ->map(fn ($total, $currency) => [
+                'currency' => $currency,
+                'total' => round((float) $total, 2),
+            ])
+            ->values()
+            ->all();
     }
 
     public function export(Request $request): StreamedResponse

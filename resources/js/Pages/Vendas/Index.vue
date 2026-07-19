@@ -503,7 +503,7 @@ function openProofExport() {
                     <EyeOff v-else class="h-5 w-5" aria-hidden="true" />
                 </button>
             </div>
-            <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
                 <div
                     class="panel-card-md"
                 >
@@ -532,6 +532,26 @@ function openProofExport() {
                         </p>
                     </div>
                     <p v-else class="mt-2 text-2xl font-bold text-zinc-900 dark:text-white">
+                        {{ displayMoney(0, 'BRL') }}
+                    </p>
+                </div>
+                <div
+                    class="panel-card-md"
+                >
+                    <div class="flex items-center gap-2 text-zinc-600 dark:text-zinc-400">
+                        <Banknote class="h-5 w-5" />
+                        <span class="text-sm font-medium">Lucro líquido</span>
+                    </div>
+                    <div v-if="(stats.lucro_liquido_por_moeda ?? []).length" class="mt-2 space-y-1">
+                        <p
+                            v-for="row in stats.lucro_liquido_por_moeda"
+                            :key="row.currency"
+                            class="text-lg font-bold text-emerald-600 dark:text-emerald-400 sm:text-2xl"
+                        >
+                            {{ displayMoney(row.total, row.currency) }}
+                        </p>
+                    </div>
+                    <p v-else class="mt-2 text-2xl font-bold text-emerald-600 dark:text-emerald-400">
                         {{ displayMoney(0, 'BRL') }}
                     </p>
                 </div>
