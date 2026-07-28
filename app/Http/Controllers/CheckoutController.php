@@ -205,6 +205,14 @@ class CheckoutController extends Controller
             $defaults['card_installments'] ?? [],
             is_array($productConfig['card_installments'] ?? null) ? $productConfig['card_installments'] : []
         );
+        $pagarmeInstallmentsRaw = Setting::get('pagarme_installments', null, $product->tenant_id);
+        if (is_string($pagarmeInstallmentsRaw)) {
+            $pagarmeInstallmentsRaw = json_decode($pagarmeInstallmentsRaw, true);
+        }
+        $config['pagarme_installments'] = array_replace_recursive(
+            $defaults['pagarme_installments'] ?? [],
+            is_array($pagarmeInstallmentsRaw) ? $pagarmeInstallmentsRaw : []
+        );
         $config['pix_parcelado'] = array_replace_recursive(
             $defaults['pix_parcelado'] ?? [],
             is_array($productConfig['pix_parcelado'] ?? null) ? $productConfig['pix_parcelado'] : []

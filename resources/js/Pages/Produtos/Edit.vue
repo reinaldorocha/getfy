@@ -300,6 +300,7 @@ const props = defineProps({
     plugin_product_panels: { type: Array, default: () => [] },
     plugin_form_sections: { type: Array, default: () => [] },
     tenant_currencies: { type: Array, default: () => [] },
+    pagarme_minimum_installment_amount: { type: Number, default: 5 },
 });
 
 const pluginTabs = computed(() => {
@@ -674,12 +675,14 @@ const priceEur = computed(() => (priceNum.value * (props.exchange_rates.brl_eur 
 const priceUsd = computed(() => (priceNum.value * (props.exchange_rates.brl_usd ?? 0.18)).toFixed(2));
 
 /** Valor mínimo por parcela (R$) para Efí, Asaas e Pagar.me — parcelas abaixo disso costumam ser recusadas. */
-const MIN_PARCELA_BRL = 5;
+const minParcelaBrl = computed(() => Math.max(0, Number(props.pagarme_minimum_installment_amount) || 0));
 /** Máximo de parcelas permitido pelo preço atual (1–12). */
 const maxAllowedInstallments = computed(() => {
     const p = priceNum.value;
-    if (!p || p < MIN_PARCELA_BRL) return 1;
-    return Math.min(12, Math.max(1, Math.floor(p / MIN_PARCELA_BRL)));
+    const min = minParcelaBrl.value;
+    if (!p || !min) return 12;
+    if (p < min) return 1;
+    return Math.min(12, Math.max(1, Math.floor(p / min)));
 });
 
 watch(maxAllowedInstallments, (maxAllowed) => {
@@ -2507,7 +2510,7 @@ function submit() {
                                                 >
                                                     <option v-for="n in maxAllowedInstallments" :key="n" :value="n">{{ n }}x</option>
                                                 </select>
-                                                <p class="mt-1.5 text-xs text-zinc-500 dark:text-zinc-400">Com o preço de R$ {{ priceNum.toFixed(2) }}, até {{ maxAllowedInstallments }}x (mín. R$ {{ MIN_PARCELA_BRL }},00 por parcela).</p>
+                                                <p class="mt-1.5 text-xs text-zinc-500 dark:text-zinc-400">Com o preço de R$ {{ priceNum.toFixed(2) }}, até {{ maxAllowedInstallments }}x (mín. R$ {{ minParcelaBrl.toFixed(2) }} por parcela).</p>
                                             </div>
                                         </div>
                                     </template>

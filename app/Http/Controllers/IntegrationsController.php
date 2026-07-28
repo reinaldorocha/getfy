@@ -95,6 +95,24 @@ class IntegrationsController extends Controller
             'boleto' => $gatewayOrder['boleto'] ?? [],
             'pix_auto' => $gatewayOrder['pix_auto'] ?? [],
         ];
+        $pagarmeInstallments = [
+            'enabled' => false,
+            'minimum_installment_amount' => 5,
+            'sale_fee_amount' => 0,
+            'rates' => array_fill_keys(range(1, 12), 0),
+        ];
+        $pagarmeInstallmentsRaw = Setting::get('pagarme_installments', null, $tenantId);
+        if (is_string($pagarmeInstallmentsRaw)) {
+            $pagarmeInstallmentsRaw = json_decode($pagarmeInstallmentsRaw, true);
+        }
+        if (is_array($pagarmeInstallmentsRaw)) {
+            $pagarmeInstallments['enabled'] = ! empty($pagarmeInstallmentsRaw['enabled']);
+            $pagarmeInstallments['minimum_installment_amount'] = round(max(0, min(100000, (float) ($pagarmeInstallmentsRaw['minimum_installment_amount'] ?? 5))), 2);
+            $pagarmeInstallments['sale_fee_amount'] = round(max(0, min(100000, (float) ($pagarmeInstallmentsRaw['sale_fee_amount'] ?? 0))), 2);
+            foreach (range(1, 12) as $n) {
+                $pagarmeInstallments['rates'][$n] = round(max(0, min(100, (float) ($pagarmeInstallmentsRaw['rates'][$n] ?? $pagarmeInstallmentsRaw['rates'][(string) $n] ?? 0))), 2);
+            }
+        }
 
         $webhooks = Webhook::forTenant($tenantId)
             ->with('products:id,name')
@@ -220,6 +238,7 @@ class IntegrationsController extends Controller
         return Inertia::render('Integrations/Index', [
             'gateways' => $gateways,
             'gateway_order' => $gatewayOrder,
+            'pagarme_installments' => $pagarmeInstallments,
             'webhooks' => $webhooks,
             'webhook_events' => $webhookEvents,
             'webhook_event_catalog' => WebhookEventCatalog::forUi(),
@@ -234,6 +253,30 @@ class IntegrationsController extends Controller
             'external_checkout_endpoints' => $externalCheckoutEndpoints,
             'integrax_connection' => IntegraxController::connectionToArray($integraxConnection),
         ]);
+    }
+
+    public function updatePagarmeInstallments(Request $request): RedirectResponse
+    {
+        $validated = $request->validate([
+            'enabled' => ['nullable', 'boolean'],
+            'minimum_installment_amount' => ['required', 'numeric', 'min:0', 'max:100000'],
+            'sale_fee_amount' => ['nullable', 'numeric', 'min:0', 'max:100000'],
+            'rates' => ['required', 'array'],
+            'rates.*' => ['nullable', 'numeric', 'min:0', 'max:100'],
+        ]);
+
+        $rates = [];
+        foreach (range(1, 12) as $n) {
+            $rates[$n] = round(max(0, min(100, (float) ($validated['rates'][$n] ?? $validated['rates'][(string) $n] ?? 0))), 2);
+        }
+        Setting::set('pagarme_installments', [
+            'enabled' => ! empty($validated['enabled']),
+            'minimum_installment_amount' => round((float) $validated['minimum_installment_amount'], 2),
+            'sale_fee_amount' => round(max(0, min(100000, (float) ($validated['sale_fee_amount'] ?? 0))), 2),
+            'rates' => $rates,
+        ], auth()->user()->tenant_id);
+
+        return back()->with('success', 'Taxas de parcelamento da Pagar.me atualizadas.');
     }
 
     /**
