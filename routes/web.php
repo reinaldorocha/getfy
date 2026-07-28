@@ -164,7 +164,7 @@ Route::post('/commerce/checkout/pay', [\App\Http\Controllers\Commerce\CommerceCh
 
 Route::get('/c/{slug}', [\App\Http\Controllers\CheckoutController::class, 'show'])
     ->name('checkout.show')
-    ->where('slug', '[a-z0-9]{6,16}')
+    ->where('slug', '[a-z0-9][a-z0-9-]{4,62}[a-z0-9]')
     ->middleware('throttle:checkout-show');
 Route::get('/checkout/pix', [\App\Http\Controllers\CheckoutController::class, 'pixPage'])->name('checkout.pix');
 Route::get('/checkout/boleto', [\App\Http\Controllers\CheckoutController::class, 'boletoPage'])->name('checkout.boleto');
@@ -618,6 +618,7 @@ Route::middleware(['auth', 'admin.tenant', 'role:admin|infoprodutor|team', 'audi
         Route::get('/docs/api-pagamentos/testar', [\App\Http\Controllers\ApiDocsController::class, 'testar'])->name('api-docs.pagamentos.testar');
     });
     Route::middleware('team.permission:integracoes.view')->group(function () {
+        Route::put('/integracoes/pagarme-installments', [\App\Http\Controllers\IntegrationsController::class, 'updatePagarmeInstallments'])->name('integrations.pagarme-installments.update');
         Route::post('/integracoes/plugins/{slug}/enable', [\App\Http\Controllers\IntegrationsController::class, 'enablePlugin'])->name('integrations.plugins.enable');
         Route::post('/integracoes/plugins/{slug}/disable', [\App\Http\Controllers\IntegrationsController::class, 'disablePlugin'])->name('integrations.plugins.disable');
         Route::delete('/integracoes/plugins/{slug}', [\App\Http\Controllers\IntegrationsController::class, 'uninstallPlugin'])->name('integrations.plugins.uninstall');

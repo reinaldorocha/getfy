@@ -170,6 +170,12 @@ class Product extends Model
                 'enabled' => false,
                 'max' => 1,
             ],
+            'pagarme_installments' => [
+                'enabled' => false,
+                'minimum_installment_amount' => 5,
+                'sale_fee_amount' => 0,
+                'rates' => array_fill_keys(range(1, 12), 0),
+            ],
             'pagarme_billing' => [
                 'mode' => 'customer',
                 'company_address' => [

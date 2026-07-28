@@ -181,13 +181,36 @@ class PaymentService
             }
             try {
                 $startedAt = microtime(true);
+                $baseAmount = (float) $order->amount;
+                $chargedAmount = $baseAmount;
+                $shouldPersistChargedAmount = false;
+                if ($gatewaySlug === 'pagarme') {
+                    $installments = max(1, min(12, (int) ($card['installments'] ?? 1)));
+                    $pagarmeRaw = Setting::get('pagarme_installments', null, $tenantId);
+                    $pagarmeConfig = is_string($pagarmeRaw) ? json_decode($pagarmeRaw, true) : $pagarmeRaw;
+                    $pagarmeConfig = is_array($pagarmeConfig) ? $pagarmeConfig : [];
+                    $rates = is_array($pagarmeConfig['rates'] ?? null) ? $pagarmeConfig['rates'] : [];
+                    $rate = ! empty($pagarmeConfig['enabled'])
+                        ? (float) ($rates[$installments] ?? $rates[(string) $installments] ?? 0)
+                        : 0;
+                    $saleFee = $installments > 1
+                        ? max(0, (float) ($pagarmeConfig['sale_fee_amount'] ?? 0))
+                        : 0;
+                    if ($installments > 1 && ($rate > 0 || $saleFee > 0)) {
+                        $chargedAmount = round($baseAmount * (1 + ($rate / 100)) + $saleFee, 2);
+                        $shouldPersistChargedAmount = true;
+                    }
+                }
                 $result = $driver->createCardPayment(
                     $credentials,
-                    (float) $order->amount,
+                    $chargedAmount,
                     $consumer,
                     (string) $order->id,
                     $card
                 );
+                if ($shouldPersistChargedAmount) {
+                    $order->update(['amount' => $chargedAmount]);
+                }
                 $order->update([
                     'gateway' => $gatewaySlug,
                     'gateway_id' => $result['transaction_id'] ?? null,

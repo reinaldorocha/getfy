@@ -399,6 +399,24 @@ const isCardGatewayEfi = computed(() => cardGatewaySlug.value === 'efi');
 const isCardGatewayMercadopago = computed(() => cardGatewaySlug.value === 'mercadopago');
 const isCardGatewayAsaas = computed(() => cardGatewaySlug.value === 'asaas');
 const isCardGatewayPagarme = computed(() => cardGatewaySlug.value === 'pagarme');
+const pagarmeInstallmentRates = computed(() => {
+    const cfg = props.config?.pagarme_installments;
+    return cfg?.enabled && cfg?.rates && typeof cfg.rates === 'object' ? cfg.rates : {};
+});
+function pagarmeRateForInstallment(n) {
+    return Math.max(0, Number(pagarmeInstallmentRates.value[n] ?? pagarmeInstallmentRates.value[String(n)] ?? 0) || 0);
+}
+function pagarmeSaleFeeAmountForInstallment(n) {
+    if (Number(n) < 2) return 0;
+    const cfg = props.config?.pagarme_installments;
+    return Math.max(0, Number(cfg?.sale_fee_amount) || 0);
+}
+function installmentTotalFor(n) {
+    const base = Number(props.checkoutTotalBrl) || 0;
+    const rate = isCardGatewayPagarme.value ? pagarmeRateForInstallment(n) : 0;
+    const fixedFee = isCardGatewayPagarme.value ? pagarmeSaleFeeAmountForInstallment(n) : 0;
+    return Math.round((base * (1 + rate / 100) + fixedFee) * 100) / 100;
+}
 const isCardGatewayPaypal = computed(() => cardGatewaySlug.value === 'paypal');
 /** PayPal como método próprio ou legado sob Cartão */
 const isPaypalCheckout = computed(
@@ -4243,7 +4261,7 @@ function submit() {
                             :key="n"
                             :value="n"
                         >
-                            {{ n }}x de {{ formatPrice(checkoutTotalBrl / n, displayCurrency) }}
+                            {{ n }}x de {{ formatPrice(installmentTotalFor(n) / n, displayCurrency) }}
                         </option>
                     </select>
                 </div>
