@@ -186,6 +186,13 @@ class ProdutosController extends Controller
         };
 
         $tenantCurrencies = $this->tenantCurrenciesFor($produto->tenant_id);
+        $pagarmeInstallmentsRaw = Setting::get('pagarme_installments', null, $produto->tenant_id);
+        if (is_string($pagarmeInstallmentsRaw)) {
+            $pagarmeInstallmentsRaw = json_decode($pagarmeInstallmentsRaw, true);
+        }
+        $pagarmeMinimumInstallmentAmount = is_array($pagarmeInstallmentsRaw)
+            ? (float) ($pagarmeInstallmentsRaw['minimum_installment_amount'] ?? 5)
+            : 5.0;
         $productTypes = collect(Product::typeConfig())->map(fn ($config, $value) => [
             'value' => $value,
             'label' => $config['label'],
@@ -410,10 +417,12 @@ class ProdutosController extends Controller
 
         return Inertia::render('Produtos/Edit', [
             'produto' => $produtoArray,
+            'default_cart_recovery_email' => Product::defaultCheckoutConfig()['cart_recovery_email'],
             'productTypes' => $productTypes,
             'billingTypes' => $billingTypes,
             'exchange_rates' => $this->legacyExchangeRatesMap($tenantCurrencies),
             'tenant_currencies' => $tenantCurrencies,
+            'pagarme_minimum_installment_amount' => max(0, $pagarmeMinimumInstallmentAmount),
             'gateways_by_method' => $gatewaysByMethod,
             'cajupay_parcelado_enrollment' => $cajupayParceladoEnrollment,
             'cademi_integrations' => $cademiIntegrations,

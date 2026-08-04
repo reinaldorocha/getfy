@@ -205,6 +205,14 @@ class CheckoutController extends Controller
             $defaults['card_installments'] ?? [],
             is_array($productConfig['card_installments'] ?? null) ? $productConfig['card_installments'] : []
         );
+        $pagarmeInstallmentsRaw = Setting::get('pagarme_installments', null, $product->tenant_id);
+        if (is_string($pagarmeInstallmentsRaw)) {
+            $pagarmeInstallmentsRaw = json_decode($pagarmeInstallmentsRaw, true);
+        }
+        $config['pagarme_installments'] = array_replace_recursive(
+            $defaults['pagarme_installments'] ?? [],
+            is_array($pagarmeInstallmentsRaw) ? $pagarmeInstallmentsRaw : []
+        );
         $config['pix_parcelado'] = array_replace_recursive(
             $defaults['pix_parcelado'] ?? [],
             is_array($productConfig['pix_parcelado'] ?? null) ? $productConfig['pix_parcelado'] : []
@@ -934,6 +942,7 @@ class CheckoutController extends Controller
                     'product_id' => $bump->target_product_id,
                     'product_offer_id' => $bump->target_product_offer_id,
                     'subscription_plan_id' => $bump->target_subscription_plan_id,
+                    'product_order_bump_id' => $bump->id,
                     'amount' => $bump->getEffectiveAmountBrl(),
                     'position' => $pos++,
                 ];
@@ -2726,6 +2735,7 @@ class CheckoutController extends Controller
                     'product_id' => $bump->target_product_id,
                     'product_offer_id' => $bump->target_product_offer_id,
                     'subscription_plan_id' => $bump->target_subscription_plan_id,
+                    'product_order_bump_id' => $bump->id,
                     'amount' => CheckoutCustomPriceByCurrency::bumpBrlToChargeCurrency(
                         $bump->getEffectiveAmountBrl(),
                         $chargeCurrency,
@@ -2913,6 +2923,7 @@ class CheckoutController extends Controller
                 'product_id' => $bump->target_product_id,
                 'product_offer_id' => $bump->target_product_offer_id,
                 'subscription_plan_id' => $bump->target_subscription_plan_id,
+                'product_order_bump_id' => $bump->id,
                 'amount' => $bump->getEffectiveAmountBrl(),
                 'position' => $pos++,
             ];
