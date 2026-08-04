@@ -151,7 +151,7 @@ class PaymentService
      * @param  array{name: string, document: string, email: string}  $consumer
      * @param  array{payment_token: string, card_mask?: string}  $card
      * @param  array<string, mixed>|null  $gatewayConfigOverride  When set (e.g. from API application), used instead of product's payment_gateways.
-     * @return array{transaction_id: string, gateway: string, status?: string}
+     * @return array{transaction_id: string, gateway: string, status?: string, decline_reason?: string}
      */
     public function createCardPayment(Order $order, ?Product $product, array $consumer, array $card, ?array $gatewayConfigOverride = null): array
     {
@@ -181,6 +181,7 @@ class PaymentService
             }
             try {
                 $startedAt = microtime(true);
+                $order->update(['gateway' => $gatewaySlug]);
                 $baseAmount = (float) $order->amount;
                 $chargedAmount = $baseAmount;
                 $shouldPersistChargedAmount = false;
@@ -220,6 +221,9 @@ class PaymentService
                     'gateway' => $gatewaySlug,
                     'status' => $result['status'] ?? null,
                 ];
+                if (array_key_exists('decline_reason', $result)) {
+                    $return['decline_reason'] = $result['decline_reason'];
+                }
                 if (isset($result['client_secret'])) {
                     $return['client_secret'] = $result['client_secret'];
                 }

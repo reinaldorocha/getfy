@@ -421,14 +421,26 @@ class PagarmeDriver implements GatewayDriver
         $charge = $result['charge'];
         $status = $this->mapChargeStatusToInternal($charge);
         if ($status === 'cancelled') {
+            $lastTransaction = $charge['last_transaction'] ?? null;
+            $transactionStatus = is_array($lastTransaction) && is_scalar($lastTransaction['status'] ?? null)
+                ? strtolower((string) $lastTransaction['status'])
+                : null;
             if (config('app.debug')) {
                 Log::debug('PagarmeDriver: cobrança recusada ou cancelada', [
-                    'charge_id' => $charge['id'] ?? null,
-                    'charge_status' => $charge['status'] ?? null,
-                    'last_transaction' => $charge['last_transaction'] ?? null,
+                    'charge_id' => is_scalar($charge['id'] ?? null) ? (string) $charge['id'] : null,
+                    'charge_status' => is_scalar($charge['status'] ?? null) ? (string) $charge['status'] : null,
+                    'transaction_status' => $transactionStatus,
                 ]);
             }
-            throw new \RuntimeException('Pagar.me: '.$this->cardDeclineMessageFromCharge($charge));
+            if ($transactionStatus === 'not_authorized') {
+                return [
+                    'transaction_id' => $result['transaction_id'],
+                    'status' => $status,
+                    'decline_reason' => $this->cardDeclineMessageFromCharge($charge),
+                ];
+            }
+
+            throw new \RuntimeException('Pagar.me: pagamento com cartão cancelado ou recusado.');
         }
 
         return [

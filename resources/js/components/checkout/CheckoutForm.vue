@@ -24,6 +24,7 @@ import {
 } from '@/composables/usePagarmeTokenizecard.js';
 import { isIosDevice } from '@/utils/isIosDevice.js';
 import { localizePaymentMethods, paymentMethodLabel } from '@/lib/checkoutPaymentMethodLabels';
+import { firstPagarmeCardErrorField, validatePagarmeCard } from '@/lib/pagarmeCardValidation.js';
 import PluginRenderZone from '@/components/plugins/PluginRenderZone.vue';
 
 const STORAGE_KEY = 'checkout_draft';
@@ -1203,6 +1204,11 @@ const cardExpMonth = ref('');
 const cardExpYear = ref('');
 const cardCvv = ref('');
 const cardFormError = ref('');
+const pagarmeCardFieldErrors = ref({});
+const pagarmeHolderName = computed({
+    get: () => cardHolderName.value || form.name || '',
+    set: (value) => { cardHolderName.value = value; },
+});
 const cardTokenizing = ref(false);
 const cardApproved = ref(false);
 const cardApprovedRedirectUrl = ref('');
@@ -1715,6 +1721,8 @@ watch(
 );
 
 const cardNumberInput = ref(null);
+const cardHolderNameInput = ref(null);
+const pagarmeCardNumberInput = ref(null);
 const cardExpMonthInput = ref(null);
 const cardExpYearInput = ref(null);
 const cardCvvInput = ref(null);
@@ -1793,7 +1801,7 @@ function onCardNumberInput(e) {
     cardNumberDisplay.value = parts.join(' ');
     const panComplete = isCardGatewayPagarme.value ? pagarmePanLengthComplete(v) : v.length === 16;
     if (panComplete) {
-        showFullCardNumber.value = false;
+        if (!isCardGatewayPagarme.value) showFullCardNumber.value = false;
         nextTick(() => {
             if (cardExpMonthInput.value) cardExpMonthInput.value.focus();
         });
@@ -1807,9 +1815,7 @@ function reopenCardNumberEdit() {
 }
 function onCardNumberBlur() {
     const d = cardNumberDigits.value;
-    if (isCardGatewayPagarme.value) {
-        if (pagarmePanLengthComplete(d)) showFullCardNumber.value = false;
-    } else if (d.length === 16) {
+    if (!isCardGatewayPagarme.value && d.length === 16) {
         showFullCardNumber.value = false;
     }
 }
@@ -1844,11 +1850,17 @@ function onCardCvvInput(e) {
 // Limpar erro de cartão ao trocar método ou editar campos
 watch(
     () => form.payment_method,
-    () => { cardFormError.value = ''; }
+    () => {
+        cardFormError.value = '';
+        pagarmeCardFieldErrors.value = {};
+    }
 );
 watch(
     () => [cardHolderName.value, cardNumberDigits.value, cardExpMonth.value, cardExpYear.value, cardCvv.value],
-    () => { cardFormError.value = ''; },
+    () => {
+        cardFormError.value = '';
+        pagarmeCardFieldErrors.value = {};
+    },
     { deep: true }
 );
 
@@ -3130,13 +3142,26 @@ function submit() {
                 cardFormError.value = props.t('checkout.card_not_configured') || 'Pagamento por cartão não está configurado.';
                 return;
             }
-            const nameOk = (cardHolderName.value || form.name || '').trim().length >= 3;
-            const numberOk = cardNumberDigits.value.length >= 13 && cardNumberDigits.value.length <= 19;
-            const expOk = cardExpMonth.value.length === 2 && parseInt(cardExpMonth.value, 10) >= 1 && parseInt(cardExpMonth.value, 10) <= 12
-                && (cardExpYear.value.length === 2 || cardExpYear.value.length === 4);
-            const cvvOk = cardCvv.value.length >= 3 && cardCvv.value.length <= 4;
-            if (!nameOk || !numberOk || !expOk || !cvvOk) {
-                cardFormError.value = props.t('checkout.card_fill_all') || 'Preencha todos os dados do cartão corretamente.';
+            const fieldErrors = validatePagarmeCard({
+                holderName: cardHolderName.value || form.name,
+                number: cardNumberDigits.value,
+                expMonth: cardExpMonth.value,
+                expYear: cardExpYear.value,
+                cvv: cardCvv.value,
+            });
+            pagarmeCardFieldErrors.value = fieldErrors;
+            const invalidField = firstPagarmeCardErrorField(fieldErrors);
+            if (invalidField) {
+                cardFormError.value = 'Revise os dados do cartão.';
+                nextTick(() => {
+                    const fieldRefs = {
+                        holderName: cardHolderNameInput,
+                        number: pagarmeCardNumberInput,
+                        expiry: cardExpMonthInput,
+                        cvv: cardCvvInput,
+                    };
+                    fieldRefs[invalidField]?.value?.focus();
+                });
                 return;
             }
             if (!usesCompanyAddressForBrBilling.value) {
@@ -4024,13 +4049,13 @@ function submit() {
                     </div>
                     <div ref="stripeCardRef" class="rounded-xl border-2 border-gray-100 bg-white px-4 py-3 min-h-[3.25rem]" />
                 </template>
-                <!-- Pagar.me: mesmo layout do cartão Efí (validade + CVV na barra ao lado do PAN mascarado); form="" + tokenizecard -->
-                <div v-else-if="isCardGatewayPagarme" class="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                    <p v-if="!cardPagarmePublicKey" class="sm:col-span-2 rounded-xl border-2 border-amber-200 bg-amber-50/80 px-4 py-3 text-sm font-medium text-amber-800">
+                <!-- Pagar.me: todos os campos permanecem visíveis para reduzir ambiguidade no preenchimento. -->
+                <div v-else-if="isCardGatewayPagarme" class="space-y-4">
+                    <p v-if="!cardPagarmePublicKey" class="rounded-xl border-2 border-amber-200 bg-amber-50/80 px-4 py-3 text-sm font-medium text-amber-800">
                         Configure a Public Key (pk_...) da Pagar.me nas credenciais do gateway.
                     </p>
                     <template v-else>
-                        <div class="relative sm:col-span-2">
+                        <div class="relative">
                             <label for="card-holder-pagarme" class="mb-2 block text-sm font-medium text-gray-700">{{ t('checkout.card_holder') || 'Nome no cartão' }}</label>
                             <div class="relative">
                                 <span class="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-gray-400">
@@ -4038,20 +4063,26 @@ function submit() {
                                 </span>
                                 <input
                                     id="card-holder-pagarme"
-                                    v-model="cardHolderName"
+                                    ref="cardHolderNameInput"
+                                    v-model="pagarmeHolderName"
                                     type="text"
                                     autocomplete="cc-name"
                                     :form="pagarmeTokenizeFormId"
                                     data-pagarmecheckout-element="holder_name"
                                     name="pagarme_holder_name"
-                                    :class="inputClassWithIcon"
+                                    :class="[inputClassWithIcon, pagarmeCardFieldErrors.holderName ? 'border-red-400 bg-red-50/40 focus:border-red-500 focus:ring-red-100' : '']"
                                     :placeholder="t('checkout.card_holder_placeholder') || 'Como está impresso no cartão'"
+                                    :aria-invalid="Boolean(pagarmeCardFieldErrors.holderName)"
+                                    :aria-describedby="pagarmeCardFieldErrors.holderName ? 'pagarme-card-holder-error' : undefined"
                                 />
                             </div>
+                            <p v-if="pagarmeCardFieldErrors.holderName" id="pagarme-card-holder-error" class="mt-1.5 text-sm text-red-600">
+                                {{ pagarmeCardFieldErrors.holderName }}
+                            </p>
                         </div>
-                        <div class="relative sm:col-span-2">
+                        <div class="relative">
                             <label for="card-number-pagarme" class="mb-2 block text-sm font-medium text-gray-700">{{ t('checkout.card_number') || 'Número do cartão' }}</label>
-                            <div class="flex flex-nowrap items-stretch overflow-hidden rounded-xl border-2 border-gray-100 bg-gray-50/80 transition focus-within:border-gray-200 focus-within:bg-white focus-within:ring-2 focus-within:ring-offset-0">
+                            <div :class="['flex flex-nowrap items-stretch overflow-hidden rounded-xl border-2 border-gray-100 bg-gray-50/80 transition focus-within:border-gray-200 focus-within:bg-white focus-within:ring-2 focus-within:ring-offset-0', pagarmeCardFieldErrors.number ? 'border-red-400 bg-red-50/40 focus-within:border-red-500 focus-within:ring-red-100' : '']">
                                 <span class="pointer-events-none flex h-full min-h-[3.25rem] w-10 shrink-0 items-center justify-center text-gray-400">
                                     <img
                                         :src="cardBrandImage"
@@ -4061,78 +4092,24 @@ function submit() {
                                         @error="(e) => { const el = e.target; if (!el.src || !el.src.endsWith('card.png')) { el.onerror = null; el.src = '/images/gateways/card.png'; } }"
                                     />
                                 </span>
-                                <template v-if="!cardNumberComplete || showFullCardNumber">
-                                    <input
-                                        id="card-number-pagarme"
-                                        ref="cardNumberInput"
-                                        :value="cardNumberDisplay"
-                                        type="text"
-                                        inputmode="numeric"
-                                        autocomplete="cc-number"
-                                        maxlength="23"
-                                        class="min-w-0 flex-1 border-0 bg-transparent py-3.5 pr-4 pl-2 text-base font-medium text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-0"
-                                        :placeholder="t('checkout.card_number_placeholder') || '0000 0000 0000 0000'"
-                                        @input="onCardNumberInput"
-                                        @blur="onCardNumberBlur"
-                                    />
-                                </template>
-                                <template v-else>
-                                    <button
-                                        type="button"
-                                        class="min-w-0 flex-1 cursor-pointer py-3.5 pl-2 text-left text-base font-medium tabular-nums text-gray-700 hover:text-gray-900 focus:outline-none focus:ring-0"
-                                        :title="t('checkout.click_to_edit') || 'Clique para editar o número'"
-                                        @click="reopenCardNumberEdit"
-                                    >
-                                        {{ cardNumberMasked }}
-                                    </button>
-                                    <div class="flex shrink-0 items-center gap-1.5 pr-3">
-                                        <input
-                                            id="card-exp-month-pagarme"
-                                            ref="cardExpMonthInput"
-                                            type="text"
-                                            inputmode="numeric"
-                                            :form="pagarmeTokenizeFormId"
-                                            data-pagarmecheckout-element="exp_month"
-                                            name="pagarme_exp_month"
-                                            class="w-9 border-0 bg-transparent py-3.5 px-0 text-center text-base font-medium text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-0"
-                                            placeholder="MM"
-                                            maxlength="2"
-                                            :value="cardExpMonth"
-                                            @input="(e) => onCardExpInput(e, 'month')"
-                                        />
-                                        <span class="text-gray-300 text-sm">/</span>
-                                        <input
-                                            id="card-exp-year-pagarme"
-                                            ref="cardExpYearInput"
-                                            type="text"
-                                            inputmode="numeric"
-                                            :form="pagarmeTokenizeFormId"
-                                            data-pagarmecheckout-element="exp_year"
-                                            name="pagarme_exp_year"
-                                            class="w-9 border-0 bg-transparent py-3.5 px-0 text-center text-base font-medium text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-0"
-                                            placeholder="AA"
-                                            maxlength="4"
-                                            :value="cardExpYear"
-                                            @input="(e) => onCardExpInput(e, 'year')"
-                                        />
-                                        <input
-                                            id="card-cvv-pagarme"
-                                            ref="cardCvvInput"
-                                            :value="cardCvv"
-                                            type="text"
-                                            inputmode="numeric"
-                                            autocomplete="cc-csc"
-                                            maxlength="4"
-                                            :form="pagarmeTokenizeFormId"
-                                            data-pagarmecheckout-element="cvv"
-                                            name="pagarme_cvv"
-                                            class="w-11 border-0 bg-transparent py-3.5 px-0 text-center text-base font-medium text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-0"
-                                            placeholder="CVV"
-                                            @input="onCardCvvInput"
-                                        />
-                                    </div>
-                                </template>
+                                <input
+                                    id="card-number-pagarme"
+                                    ref="pagarmeCardNumberInput"
+                                    :value="cardNumberDisplay"
+                                    type="text"
+                                    inputmode="numeric"
+                                    autocomplete="cc-number"
+                                    maxlength="23"
+                                    class="min-w-0 flex-1 border-0 bg-transparent py-3.5 pr-4 pl-2 text-base font-medium text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-0"
+                                    :placeholder="t('checkout.card_number_placeholder') || '0000 0000 0000 0000'"
+                                    :aria-invalid="Boolean(pagarmeCardFieldErrors.number)"
+                                    :aria-describedby="pagarmeCardFieldErrors.number ? 'pagarme-card-number-error' : undefined"
+                                    @input="onCardNumberInput"
+                                />
                             </div>
+                            <p v-if="pagarmeCardFieldErrors.number" id="pagarme-card-number-error" data-checkout="pagarme-card-number-error" class="mt-1.5 text-sm text-red-600">
+                                {{ pagarmeCardFieldErrors.number }}
+                            </p>
                             <input
                                 type="text"
                                 readonly
@@ -4145,6 +4122,73 @@ function submit() {
                                 class="absolute left-0 top-full h-px w-px overflow-hidden border-0 p-0 opacity-0"
                                 aria-hidden="true"
                             />
+                        </div>
+                        <div data-checkout="pagarme-card-details" class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                            <div data-checkout="pagarme-expiry" class="relative">
+                                <label for="card-exp-month-pagarme" class="mb-2 block text-sm font-medium text-gray-700">Validade</label>
+                                <div class="grid grid-cols-2 gap-2">
+                                    <input
+                                        id="card-exp-month-pagarme"
+                                        ref="cardExpMonthInput"
+                                        type="text"
+                                        inputmode="numeric"
+                                        autocomplete="cc-exp-month"
+                                        :form="pagarmeTokenizeFormId"
+                                        data-pagarmecheckout-element="exp_month"
+                                        name="pagarme_exp_month"
+                                        :class="[inputClass, pagarmeCardFieldErrors.expiry ? 'border-red-400 bg-red-50/40 focus:border-red-500 focus:ring-red-100' : '']"
+                                        placeholder="MM"
+                                        maxlength="2"
+                                        :value="cardExpMonth"
+                                        :aria-invalid="Boolean(pagarmeCardFieldErrors.expiry)"
+                                        :aria-describedby="pagarmeCardFieldErrors.expiry ? 'pagarme-expiry-error' : undefined"
+                                        @input="(e) => onCardExpInput(e, 'month')"
+                                    />
+                                    <input
+                                        id="card-exp-year-pagarme"
+                                        ref="cardExpYearInput"
+                                        type="text"
+                                        inputmode="numeric"
+                                        autocomplete="cc-exp-year"
+                                        :form="pagarmeTokenizeFormId"
+                                        data-pagarmecheckout-element="exp_year"
+                                        name="pagarme_exp_year"
+                                        :class="[inputClass, pagarmeCardFieldErrors.expiry ? 'border-red-400 bg-red-50/40 focus:border-red-500 focus:ring-red-100' : '']"
+                                        placeholder="AA"
+                                        maxlength="4"
+                                        :value="cardExpYear"
+                                        :aria-invalid="Boolean(pagarmeCardFieldErrors.expiry)"
+                                        :aria-describedby="pagarmeCardFieldErrors.expiry ? 'pagarme-expiry-error' : undefined"
+                                        @input="(e) => onCardExpInput(e, 'year')"
+                                    />
+                                </div>
+                                <p v-if="pagarmeCardFieldErrors.expiry" id="pagarme-expiry-error" data-checkout="pagarme-expiry-error" class="mt-1.5 text-sm text-red-600">
+                                    {{ pagarmeCardFieldErrors.expiry }}
+                                </p>
+                            </div>
+                            <div data-checkout="pagarme-cvv" class="relative">
+                                <label for="card-cvv-pagarme" class="mb-2 block text-sm font-medium text-gray-700">CVV</label>
+                                <input
+                                    id="card-cvv-pagarme"
+                                    ref="cardCvvInput"
+                                    :value="cardCvv"
+                                    type="text"
+                                    inputmode="numeric"
+                                    autocomplete="cc-csc"
+                                    maxlength="4"
+                                    :form="pagarmeTokenizeFormId"
+                                    data-pagarmecheckout-element="cvv"
+                                    name="pagarme_cvv"
+                                    :class="[inputClass, pagarmeCardFieldErrors.cvv ? 'border-red-400 bg-red-50/40 focus:border-red-500 focus:ring-red-100' : '']"
+                                    placeholder="000"
+                                    :aria-invalid="Boolean(pagarmeCardFieldErrors.cvv)"
+                                    :aria-describedby="pagarmeCardFieldErrors.cvv ? 'pagarme-cvv-error' : undefined"
+                                    @input="onCardCvvInput"
+                                />
+                                <p v-if="pagarmeCardFieldErrors.cvv" id="pagarme-cvv-error" data-checkout="pagarme-cvv-error" class="mt-1.5 text-sm text-red-600">
+                                    {{ pagarmeCardFieldErrors.cvv }}
+                                </p>
+                            </div>
                         </div>
                     </template>
                 </div>

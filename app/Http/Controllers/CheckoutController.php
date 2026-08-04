@@ -1437,7 +1437,19 @@ class CheckoutController extends Controller
                 $asyncPendingStatuses = ['pending', 'in_process', 'processing', 'authorized', 'in_mediation'];
                 $statusNormalized = strtolower((string) $status);
                 if (! $isApproved && ! $requiresAction && ! in_array($statusNormalized, $asyncPendingStatuses, true)) {
-                    $this->rollbackFailedOrder($order, new \RuntimeException('card_payment_declined'));
+                    if (($cardResult['gateway'] ?? null) === 'pagarme') {
+                        $order->update([
+                            'status' => 'rejected',
+                            'metadata' => array_merge(is_array($order->metadata) ? $order->metadata : [], [
+                                'payment_failure_type' => 'card_declined',
+                                'payment_failure_reason' => 'card_payment_declined',
+                                'pagarme_decline_reason' => $cardResult['decline_reason'] ?? null,
+                                'payment_rejected_at' => now()->toIso8601String(),
+                            ]),
+                        ]);
+                    } else {
+                        $this->rollbackFailedOrder($order, new \RuntimeException('card_payment_declined'));
+                    }
                     if ($request->expectsJson() || $request->header('X-Requested-With') === 'XMLHttpRequest') {
                         return response()->json([
                             'success' => false,
@@ -1468,7 +1480,7 @@ class CheckoutController extends Controller
                 $updateCheckoutSession($order);
                 $config = $this->getOrderCheckoutConfigForProcess($order, $product, $offer, $plan);
                 $redirectUrl = null;
-                $isApproved = in_array($status, ['paid', 'settled', 'approved'], true);
+                $isApproved = in_array($status, ['paid', 'settled', 'approved', 'completed'], true);
                 if ($isApproved) {
                     $upsell = $config['upsell'] ?? [];
                     if (! empty($upsell['enabled']) && ! empty($upsell['products']) && is_array($upsell['products'])) {
@@ -1522,7 +1534,31 @@ class CheckoutController extends Controller
                 }
                 return $this->idempotencyReturn($idempotencyKey, back()->with('success', 'Pagamento com cartão recebido. Você receberá a confirmação por e-mail.'));
             } catch (\Throwable $e) {
-                $this->rollbackFailedOrder($order, $e);
+                if ($order->gateway === 'pagarme' && $order->status === 'completed') {
+                    if ($request->expectsJson() || $request->header('X-Requested-With') === 'XMLHttpRequest') {
+                        return response()->json([
+                            'success' => true,
+                            'order_id' => $order->id,
+                            'message' => 'Compra concluída.',
+                        ]);
+                    }
+
+                    return redirect()->route('checkout.thank-you', ['order_id' => $order->id]);
+                }
+                if ($order->gateway === 'pagarme' && $order->status !== 'completed') {
+                    $order->update([
+                        'status' => 'rejected',
+                        'metadata' => array_merge(is_array($order->metadata) ? $order->metadata : [], [
+                            'payment_failure_type' => 'gateway_error',
+                            'payment_failure_reason' => 'pagarme_gateway_error',
+                            'pagarme_failure_message' => 'Não foi possível comunicar com a Pagar.me.',
+                            'pagarme_failure_class' => class_basename($e),
+                            'payment_rejected_at' => now()->toIso8601String(),
+                        ]),
+                    ]);
+                } elseif ($order->gateway !== 'pagarme') {
+                    $this->rollbackFailedOrder($order, $e);
+                }
                 if ($request->expectsJson() || $request->header('X-Requested-With') === 'XMLHttpRequest') {
                     return response()->json([
                         'success' => false,
