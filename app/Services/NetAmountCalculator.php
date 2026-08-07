@@ -7,14 +7,23 @@ use App\Models\Order;
 
 class NetAmountCalculator
 {
+    public function __construct(
+        private readonly PagarmeProcessingCostCalculator $pagarmeProcessingCostCalculator,
+    ) {}
+
     /**
      * @return array{gross: float, fee: float, net: float}
      */
     public function forOrder(Order $order): array
     {
-        $gross = round($order->lineItemsTotalAmount(), 2);
         $method = $order->checkoutPaymentMethod();
         $gateway = strtolower((string) ($order->gateway ?? ''));
+
+        if ($gateway === 'pagarme' && $method === 'card') {
+            return $this->pagarmeProcessingCostCalculator->forOrder($order);
+        }
+
+        $gross = round($order->lineItemsTotalAmount(), 2);
         $tenantId = (int) $order->tenant_id;
 
         $fee = $this->estimateFee($tenantId, $gateway, $method, $gross);

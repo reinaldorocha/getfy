@@ -18,6 +18,7 @@ use App\Models\InboundWebhookEndpoint;
 use App\Models\PixelXIntegration;
 use App\Http\Controllers\Integrations\ExternalCheckoutController;
 use App\Support\WebhookEventCatalog;
+use App\Support\ReportingPeriod;
 use App\Plugins\PluginExtensionRegistry;
 use App\Plugins\PluginRegistry;
 use Illuminate\Http\RedirectResponse;
@@ -111,6 +112,20 @@ class IntegrationsController extends Controller
             $pagarmeInstallments['sale_fee_amount'] = round(max(0, min(100000, (float) ($pagarmeInstallmentsRaw['sale_fee_amount'] ?? 0))), 2);
             foreach (range(1, 12) as $n) {
                 $pagarmeInstallments['rates'][$n] = round(max(0, min(100, (float) ($pagarmeInstallmentsRaw['rates'][$n] ?? $pagarmeInstallmentsRaw['rates'][(string) $n] ?? 0))), 2);
+            }
+        }
+        $pagarmeProcessingFees = [
+            'fixed_fee_amount' => 0,
+            'rates' => array_fill_keys(range(1, 12), 0),
+        ];
+        $pagarmeProcessingFeesRaw = Setting::get('pagarme_processing_fees', null, $tenantId);
+        if (is_string($pagarmeProcessingFeesRaw)) {
+            $pagarmeProcessingFeesRaw = json_decode($pagarmeProcessingFeesRaw, true);
+        }
+        if (is_array($pagarmeProcessingFeesRaw)) {
+            $pagarmeProcessingFees['fixed_fee_amount'] = round(max(0, min(100000, (float) ($pagarmeProcessingFeesRaw['fixed_fee_amount'] ?? 0))), 2);
+            foreach (range(1, 12) as $n) {
+                $pagarmeProcessingFees['rates'][$n] = round(max(0, min(100, (float) ($pagarmeProcessingFeesRaw['rates'][$n] ?? $pagarmeProcessingFeesRaw['rates'][(string) $n] ?? 0))), 4);
             }
         }
 
@@ -239,6 +254,7 @@ class IntegrationsController extends Controller
             'gateways' => $gateways,
             'gateway_order' => $gatewayOrder,
             'pagarme_installments' => $pagarmeInstallments,
+            'pagarme_processing_fees' => $pagarmeProcessingFees,
             'webhooks' => $webhooks,
             'webhook_events' => $webhookEvents,
             'webhook_event_catalog' => WebhookEventCatalog::forUi(),
@@ -277,6 +293,28 @@ class IntegrationsController extends Controller
         ], auth()->user()->tenant_id);
 
         return back()->with('success', 'Taxas de parcelamento da Pagar.me atualizadas.');
+    }
+
+    public function updatePagarmeProcessingFees(Request $request): RedirectResponse
+    {
+        $validated = $request->validate([
+            'fixed_fee_amount' => ['nullable', 'numeric', 'min:0', 'max:100000'],
+            'rates' => ['required', 'array'],
+            'rates.*' => ['nullable', 'numeric', 'min:0', 'max:100'],
+        ]);
+
+        $rates = [];
+        foreach (range(1, 12) as $n) {
+            $rates[$n] = round(max(0, min(100, (float) ($validated['rates'][$n] ?? $validated['rates'][(string) $n] ?? 0))), 4);
+        }
+
+        Setting::set('pagarme_processing_fees', [
+            'fixed_fee_amount' => round(max(0, min(100000, (float) ($validated['fixed_fee_amount'] ?? 0))), 2),
+            'rates' => $rates,
+        ], auth()->user()->tenant_id);
+        ReportingPeriod::bustDashboardCache(auth()->user()->tenant_id);
+
+        return back()->with('success', 'Custos de processamento da Pagar.me atualizados.');
     }
 
     /**

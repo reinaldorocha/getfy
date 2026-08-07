@@ -187,6 +187,9 @@ class PaymentService
                 $shouldPersistChargedAmount = false;
                 if ($gatewaySlug === 'pagarme') {
                     $installments = max(1, min(12, (int) ($card['installments'] ?? 1)));
+                    $metadata = is_array($order->metadata) ? $order->metadata : [];
+                    $metadata['card_installments'] = $installments;
+                    $order->update(['metadata' => $metadata]);
                     $pagarmeRaw = Setting::get('pagarme_installments', null, $tenantId);
                     $pagarmeConfig = is_string($pagarmeRaw) ? json_decode($pagarmeRaw, true) : $pagarmeRaw;
                     $pagarmeConfig = is_array($pagarmeConfig) ? $pagarmeConfig : [];

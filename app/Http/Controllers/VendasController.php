@@ -15,6 +15,7 @@ use App\Models\OrderItem;
 use App\Models\Subscription;
 use App\Services\AccessEmailService;
 use App\Services\NetAmountCalculator;
+use App\Services\OrderNetProfitCalculator;
 use App\Services\ProducerSaleAmount;
 use App\Services\RefundService;
 use App\Services\TeamAccessService;
@@ -270,8 +271,9 @@ class VendasController extends Controller
         $affiliateLookup = $this->affiliateLookupForOrders($paginator->getCollection());
         $producerSaleAmount = app(ProducerSaleAmount::class);
         $netAmountCalculator = app(NetAmountCalculator::class);
+        $orderNetProfitCalculator = app(OrderNetProfitCalculator::class);
 
-        $vendas = $paginator->through(function (Order $o) use ($affiliateLookup, $producerSaleAmount, $netAmountCalculator) {
+        $vendas = $paginator->through(function (Order $o) use ($affiliateLookup, $producerSaleAmount, $orderNetProfitCalculator) {
                 $arr = $o->toArray();
                 $arr['currency'] = $o->getCurrencyOrDefault();
                 $arr['gateway_label'] = $o->paymentMethodDisplayLabel();
@@ -282,9 +284,7 @@ class VendasController extends Controller
                 $arr['billed_amount'] = $arr['amount_total'];
                 $producerAmount = $producerSaleAmount->forOrder($o);
                 if ($o->status === 'completed') {
-                    $netProfitAmount = $producerAmount['is_producer_share']
-                        ? (float) $producerAmount['amount']
-                        : (float) $netAmountCalculator->forOrder($o)['net'];
+                    $netProfitAmount = $orderNetProfitCalculator->forOrder($o);
                     $arr['net_profit_amount'] = round($netProfitAmount, 2);
                     $arr['net_profit_amount_is_estimated'] = $producerAmount['is_estimated'] || ! $producerAmount['is_producer_share'];
                 } else {
@@ -336,7 +336,7 @@ class VendasController extends Controller
                 ? [['currency' => 'BRL', 'total' => round($fallbackTotal, 2)]]
                 : [];
         }
-        $lucroLiquidoPorMoeda = $this->lucroLiquidoPorMoedaFromQuery($statsQuery, $producerSaleAmount, $netAmountCalculator);
+        $lucroLiquidoPorMoeda = $this->lucroLiquidoPorMoedaFromQuery($statsQuery, $orderNetProfitCalculator);
 
         $vendasPix = (clone $statsQuery)
             ->where(function ($q) {
@@ -436,7 +436,7 @@ class VendasController extends Controller
      *
      * @return list<array{currency: string, total: float}>
      */
-    private function lucroLiquidoPorMoedaFromQuery($statsQuery, ProducerSaleAmount $producerSaleAmount, NetAmountCalculator $netAmountCalculator): array
+    private function lucroLiquidoPorMoedaFromQuery($statsQuery, OrderNetProfitCalculator $orderNetProfitCalculator): array
     {
         $orders = (clone $statsQuery)
             ->where('orders.status', 'completed')
@@ -452,10 +452,7 @@ class VendasController extends Controller
 
         $merged = [];
         foreach ($orders as $order) {
-            $producerAmount = $producerSaleAmount->forOrder($order);
-            $netProfitAmount = $producerAmount['is_producer_share']
-                ? (float) $producerAmount['amount']
-                : (float) $netAmountCalculator->forOrder($order)['net'];
+            $netProfitAmount = $orderNetProfitCalculator->forOrder($order);
 
             $currency = MoneyMinorUnits::normalizeCurrencyCode($order->getCurrencyOrDefault());
             $merged[$currency] = ($merged[$currency] ?? 0.0) + $netProfitAmount;
