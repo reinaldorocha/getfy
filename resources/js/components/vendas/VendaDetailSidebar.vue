@@ -77,6 +77,11 @@ function formatNetProfit(v) {
     return hasNetProfitAmount(v) ? formatMoney(vendaNetProfitAmount(v), v.currency) : '–';
 }
 
+function vendaInstallments(v) {
+    const installments = Number(metadataFromVenda(v)?.card_installments ?? 1);
+    return Number.isInteger(installments) && installments >= 1 ? installments : 1;
+}
+
 function formatDate(value) {
     if (!value) return '–';
     const d = new Date(value);
@@ -252,7 +257,7 @@ function itemLabel(item) {
                             </div>
                             <div class="space-y-1">
                                 <p class="text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">Parcelas</p>
-                                <p class="text-sm text-zinc-900 dark:text-white">1</p>
+                                <p class="text-sm text-zinc-900 dark:text-white">{{ vendaInstallments(venda) }}x</p>
                             </div>
                             <div class="space-y-1">
                                 <p class="text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">Recorrência</p>
