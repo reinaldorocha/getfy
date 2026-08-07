@@ -101,7 +101,9 @@ class TrackingService
 
         $adSpend = $this->resolveAdSpend($tenantId, $period, $start, $end);
         $gastoAds = (float) $adSpend['amount'];
-        $lucroLiquido = round($faturamentoBruto - $taxasGateway - $comissoesParceiros - $reembolsosTotal - $gastoAds, 2);
+        // Pedidos reembolsados não entram em $completedQuery nem em $faturamentoBruto.
+        // Descontá-los novamente aqui reduz o lucro líquido duas vezes.
+        $lucroLiquido = round($faturamentoBruto - $taxasGateway - $comissoesParceiros - $gastoAds, 2);
         $roi = $gastoAds > 0 ? round(($lucroLiquido / $gastoAds) * 100, 1) : null;
         $roas = $gastoAds > 0 ? round($faturamentoBruto / $gastoAds, 2) : null;
 
