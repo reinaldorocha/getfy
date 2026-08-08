@@ -7,8 +7,9 @@ use App\Plugins\PluginExtensionRegistry;
 use App\Models\CheckoutSession;
 use App\Models\Order;
 use App\Models\Product;
-use App\Services\TrackingService;
+use App\Services\OrderNetProfitCalculator;
 use App\Support\OrderCurrencyTotals;
+use App\Support\MoneyMinorUnits;
 use App\Support\ReportingPeriod;
 use App\Services\TeamAccessService;
 use Illuminate\Http\Request;
@@ -64,9 +65,29 @@ class DashboardController extends Controller
                 : [];
         }
 
-        $trackingPayload = app(TrackingService::class)->buildPayload($tenantId, $period, auth()->user());
-        $lucroLiquido = (float) data_get($trackingPayload, 'financial.lucro_liquido', 0.0);
-        $lucroLiquidoPorMoeda = [['currency' => 'BRL', 'total' => round($lucroLiquido, 2)]];
+        $netProfitCalculator = app(OrderNetProfitCalculator::class);
+        $lucroLiquidoPorMoeda = [];
+        (clone $ordersCompleted)
+            ->with([
+                'product:id',
+                'orderItems:id,order_id,amount',
+                'commissionEntries:id,order_id,role,commission_amount',
+            ])
+            ->orderBy('id')
+            ->chunkById(500, function ($orders) use (&$lucroLiquidoPorMoeda, $netProfitCalculator) {
+                foreach ($orders as $order) {
+                    $currency = MoneyMinorUnits::normalizeCurrencyCode($order->getCurrencyOrDefault());
+                    $lucroLiquidoPorMoeda[$currency] = ($lucroLiquidoPorMoeda[$currency] ?? 0.0)
+                        + $netProfitCalculator->forOrder($order);
+                }
+            });
+        ksort($lucroLiquidoPorMoeda);
+        $lucroLiquidoPorMoeda = collect($lucroLiquidoPorMoeda)
+            ->map(fn ($total, $currency) => ['currency' => $currency, 'total' => round((float) $total, 2)])
+            ->values()
+            ->all();
+        $lucroLiquidoRow = collect($lucroLiquidoPorMoeda)->firstWhere('currency', 'BRL');
+        $lucroLiquido = $lucroLiquidoRow ? (float) $lucroLiquidoRow['total'] : 0.0;
         $brlRow = collect($vendasTotaisPorMoeda)->firstWhere('currency', 'BRL');
         $vendasTotais = $brlRow ? (float) $brlRow['total'] : 0.0;
         $quantidadeVendas = $ordersCompleted->count();

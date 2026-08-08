@@ -402,10 +402,20 @@ const isCardGatewayAsaas = computed(() => cardGatewaySlug.value === 'asaas');
 const isCardGatewayPagarme = computed(() => cardGatewaySlug.value === 'pagarme');
 const pagarmeInstallmentRates = computed(() => {
     const cfg = props.config?.pagarme_installments;
-    return cfg?.enabled && cfg?.rates && typeof cfg.rates === 'object' ? cfg.rates : {};
+    return cfg?.rates && typeof cfg.rates === 'object' ? cfg.rates : {};
 });
 function pagarmeRateForInstallment(n) {
-    return Math.max(0, Number(pagarmeInstallmentRates.value[n] ?? pagarmeInstallmentRates.value[String(n)] ?? 0) || 0);
+    return Math.min(99.9999, Math.max(0, Number(pagarmeInstallmentRates.value[n] ?? pagarmeInstallmentRates.value[String(n)] ?? 0) || 0));
+}
+function pagarmePassFeeToCustomer(n) {
+    const cfg = props.config?.pagarme_installments;
+    return Number(n) === 1
+        ? Boolean(cfg?.pass_1x_fee_to_customer)
+        : Boolean(cfg?.enabled);
+}
+function pagarmeProducerFeeAssumptionPercent() {
+    const cfg = props.config?.pagarme_installments;
+    return Math.min(100, Math.max(0, Number(cfg?.producer_fee_assumption_percent) || 0));
 }
 function pagarmeSaleFeeAmountForInstallment(n) {
     if (Number(n) < 2) return 0;
@@ -416,7 +426,10 @@ function installmentTotalFor(n) {
     const base = Number(props.checkoutTotalBrl) || 0;
     const rate = isCardGatewayPagarme.value ? pagarmeRateForInstallment(n) : 0;
     const fixedFee = isCardGatewayPagarme.value ? pagarmeSaleFeeAmountForInstallment(n) : 0;
-    return Math.round((base * (1 + rate / 100) + fixedFee) * 100) / 100;
+    const grossedUp = isCardGatewayPagarme.value && pagarmePassFeeToCustomer(n) && rate > 0
+        ? (base * (1 - pagarmeProducerFeeAssumptionPercent() / 100)) / (1 - rate / 100)
+        : base;
+    return Math.round((grossedUp + fixedFee) * 100) / 100;
 }
 const isCardGatewayPaypal = computed(() => cardGatewaySlug.value === 'paypal');
 /** PayPal como método próprio ou legado sob Cartão */

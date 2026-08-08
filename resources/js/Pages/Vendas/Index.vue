@@ -333,6 +333,30 @@ function closeMenu() {
     menuAnchorEl.value = null;
 }
 
+function handleManualNetAmountUpdated({ orderId, netAmount, manualNetAmount }) {
+    if (String(selectedVenda.value?.id) === String(orderId)) {
+        const metadata = { ...(selectedVenda.value?.metadata ?? {}) };
+        if (manualNetAmount === null) {
+            delete metadata.manual_net_amount;
+        } else {
+            metadata.manual_net_amount = manualNetAmount;
+        }
+        selectedVenda.value = {
+            ...selectedVenda.value,
+            metadata,
+            net_profit_amount: netAmount,
+            net_profit_amount_is_estimated: manualNetAmount === null,
+        };
+    }
+
+    showToast(manualNetAmount === null ? 'Ajuste manual removido.' : 'Valor líquido ajustado.', 'success');
+    router.reload({
+        only: ['vendas', 'stats'],
+        preserveScroll: true,
+        preserveState: true,
+    });
+}
+
 function handleClickOutside(event) {
     if (openMenuId.value == null) return;
     const el = document.querySelector(`[data-venda-menu="${openMenuId.value}"]`);
@@ -1111,6 +1135,7 @@ function openProofExport() {
             :venda="selectedVenda"
             :plugin_order_detail_panels="plugin_order_detail_panels"
             @close="closeSidebar"
+            @manual-net-amount-updated="handleManualNetAmountUpdated"
         />
 
         <!-- Toast local -->

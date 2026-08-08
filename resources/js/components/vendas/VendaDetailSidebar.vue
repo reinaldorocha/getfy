@@ -1,5 +1,6 @@
 <script setup>
 import { ref, computed } from 'vue';
+import axios from 'axios';
 import { X, ExternalLink } from 'lucide-vue-next';
 import PluginSlotHost from '@/components/plugins/PluginSlotHost.vue';
 import PluginRenderZone from '@/components/plugins/PluginRenderZone.vue';
@@ -11,9 +12,13 @@ const props = defineProps({
     plugin_order_detail_panels: { type: Array, default: () => [] },
 });
 
-const emit = defineEmits(['close']);
+const emit = defineEmits(['close', 'manual-net-amount-updated']);
 
 const activeTab = ref('venda');
+const editingManualNetAmount = ref(false);
+const manualNetAmount = ref('');
+const savingManualNetAmount = ref(false);
+const manualNetAmountError = ref('');
 
 function checkoutSessionFromVenda(v) {
     if (!v) return null;
@@ -75,6 +80,64 @@ function hasNetProfitAmount(v) {
 
 function formatNetProfit(v) {
     return hasNetProfitAmount(v) ? formatMoney(vendaNetProfitAmount(v), v.currency) : '–';
+}
+
+function manualNetAmountFromVenda(v) {
+    const value = metadataFromVenda(v)?.manual_net_amount;
+    return value !== null && value !== undefined && Number.isFinite(Number(value))
+        ? Number(value)
+        : null;
+}
+
+function hasManualNetAmount(v) {
+    return manualNetAmountFromVenda(v) !== null;
+}
+
+function startManualNetAmountEdit() {
+    manualNetAmount.value = String(manualNetAmountFromVenda(props.venda) ?? vendaNetProfitAmount(props.venda));
+    manualNetAmountError.value = '';
+    editingManualNetAmount.value = true;
+}
+
+function cancelManualNetAmountEdit() {
+    editingManualNetAmount.value = false;
+    manualNetAmountError.value = '';
+}
+
+async function saveManualNetAmount(remove = false) {
+    if (!props.venda || savingManualNetAmount.value) return;
+
+    const value = remove ? null : Number(manualNetAmount.value);
+    if (!remove && (!Number.isFinite(value) || value < 0)) {
+        manualNetAmountError.value = 'Informe um valor líquido igual ou maior que zero.';
+        return;
+    }
+
+    savingManualNetAmount.value = true;
+    manualNetAmountError.value = '';
+    try {
+        const { data } = await axios.put(`/vendas/${props.venda.id}/lucro-liquido`, { net_amount: value });
+        if (!data?.success) {
+            manualNetAmountError.value = data?.message ?? 'Não foi possível salvar o ajuste.';
+            return;
+        }
+
+        editingManualNetAmount.value = false;
+        emit('manual-net-amount-updated', {
+            orderId: props.venda.id,
+            netAmount: Number(data.net_amount),
+            manualNetAmount: data.manual_net_amount === null ? null : Number(data.manual_net_amount),
+        });
+    } catch (error) {
+        manualNetAmountError.value = error.response?.data?.message ?? 'Não foi possível salvar o ajuste.';
+    } finally {
+        savingManualNetAmount.value = false;
+    }
+}
+
+function vendaInstallments(v) {
+    const installments = Number(metadataFromVenda(v)?.card_installments ?? 1);
+    return Number.isInteger(installments) && installments >= 1 ? installments : 1;
 }
 
 function formatDate(value) {
@@ -233,6 +296,33 @@ function itemLabel(item) {
                                     Lucro do produtor após comissões desta venda.
                                 </p>
                             </div>
+                            <div class="rounded-xl border border-zinc-200 p-4 dark:border-zinc-700">
+                                <div class="flex items-start justify-between gap-3">
+                                    <div>
+                                        <p class="text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">Ajuste manual do líquido</p>
+                                        <p class="mt-1 text-sm text-zinc-700 dark:text-zinc-300">
+                                            {{ hasManualNetAmount(venda) ? formatMoney(manualNetAmountFromVenda(venda), venda.currency) : 'Cálculo automático' }}
+                                        </p>
+                                    </div>
+                                    <button v-if="!editingManualNetAmount" type="button" class="text-sm font-medium text-[var(--color-primary)] hover:underline" @click="startManualNetAmountEdit">
+                                        {{ hasManualNetAmount(venda) ? 'Editar' : 'Ajustar' }}
+                                    </button>
+                                </div>
+                                <div v-if="editingManualNetAmount" class="mt-3 space-y-2">
+                                    <div class="flex items-center rounded-lg border border-zinc-300 bg-white dark:border-zinc-600 dark:bg-zinc-800">
+                                        <span class="pl-3 text-sm text-zinc-500">R$</span>
+                                        <input v-model="manualNetAmount" type="number" min="0" step="0.01" class="w-full rounded-lg border-0 bg-transparent px-2 py-2 text-sm text-zinc-900 focus:ring-0 dark:text-zinc-100" />
+                                    </div>
+                                    <p v-if="manualNetAmountError" class="text-xs text-red-600 dark:text-red-400">{{ manualNetAmountError }}</p>
+                                    <div class="flex flex-wrap gap-2">
+                                        <button type="button" class="rounded-lg bg-[var(--color-primary)] px-3 py-1.5 text-sm font-medium text-white disabled:opacity-60" :disabled="savingManualNetAmount" @click="saveManualNetAmount()">
+                                            {{ savingManualNetAmount ? 'Salvando…' : 'Salvar' }}
+                                        </button>
+                                        <button type="button" class="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-700 dark:border-zinc-600 dark:text-zinc-200" :disabled="savingManualNetAmount" @click="cancelManualNetAmountEdit">Cancelar</button>
+                                        <button v-if="hasManualNetAmount(venda)" type="button" class="rounded-lg px-3 py-1.5 text-sm font-medium text-red-600 disabled:opacity-60 dark:text-red-400" :disabled="savingManualNetAmount" @click="saveManualNetAmount(true)">Remover ajuste</button>
+                                    </div>
+                                </div>
+                            </div>
                             <div class="space-y-1">
                                 <p class="text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">Produto</p>
                                 <p class="text-sm text-zinc-900 dark:text-white">{{ venda.product_display_name ?? venda.product?.name ?? '–' }}</p>
@@ -252,7 +342,7 @@ function itemLabel(item) {
                             </div>
                             <div class="space-y-1">
                                 <p class="text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">Parcelas</p>
-                                <p class="text-sm text-zinc-900 dark:text-white">1</p>
+                                <p class="text-sm text-zinc-900 dark:text-white">{{ vendaInstallments(venda) }}x</p>
                             </div>
                             <div class="space-y-1">
                                 <p class="text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">Recorrência</p>

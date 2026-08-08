@@ -415,6 +415,9 @@ Route::middleware(['auth', 'admin.tenant', 'role:admin|infoprodutor|team', 'audi
         Route::get('/vendas/export', [\App\Http\Controllers\VendasController::class, 'export'])->name('vendas.export');
         Route::post('/vendas/{order}/resend-access-email', [\App\Http\Controllers\VendasController::class, 'resendAccessEmail'])->name('vendas.resend-access-email');
         Route::post('/vendas/{order}/approve-manually', [\App\Http\Controllers\VendasController::class, 'approveManually'])->name('vendas.approve-manually');
+        Route::put('/vendas/{order}/lucro-liquido', [\App\Http\Controllers\VendasController::class, 'updateNetAmount'])
+            ->middleware('team.permission:vendas.manage')
+            ->name('vendas.update-net-amount');
         Route::post('/vendas/{order}/refund', [\App\Http\Controllers\VendasController::class, 'refund'])
             ->middleware('team.permission:reembolsos.manage')
             ->name('vendas.refund');

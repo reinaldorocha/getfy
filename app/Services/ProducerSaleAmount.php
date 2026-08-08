@@ -18,7 +18,9 @@ class ProducerSaleAmount
      */
     public function forOrder(Order $order): array
     {
-        $grossTotal = $order->lineItemsTotalAmount();
+        $isPagarmeCard = strtolower((string) $order->gateway) === 'pagarme'
+            && $order->checkoutPaymentMethod() === 'card';
+        $grossTotal = $isPagarmeCard ? round((float) $order->amount, 2) : $order->lineItemsTotalAmount();
 
         if ($order->saleChannel() !== 'affiliate' && ! $this->hasActiveCoproducerOnProducerSale($order)) {
             return [
@@ -30,6 +32,21 @@ class ProducerSaleAmount
         }
 
         $order->loadMissing('commissionEntries');
+
+        if ($isPagarmeCard) {
+            $partnerCommissions = (float) $order->commissionEntries
+                ->whereIn('role', [CommissionEntry::ROLE_AFILIADO, CommissionEntry::ROLE_COPRODUTOR])
+                ->sum('commission_amount');
+            $amount = max(0, round($this->netCalculator->forOrder($order)['net'] - $partnerCommissions, 2));
+
+            return [
+                'amount' => $amount,
+                'is_producer_share' => true,
+                'is_estimated' => false,
+                'gross_total' => $grossTotal,
+            ];
+        }
+
         $producerEntry = $order->commissionEntries
             ->firstWhere('role', CommissionEntry::ROLE_PRODUTOR);
 

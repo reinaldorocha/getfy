@@ -84,7 +84,7 @@ const props = defineProps({
     },
     pagarme_installments: {
         type: Object,
-        default: () => ({ enabled: false, minimum_installment_amount: 5, sale_fee_amount: 0, rates: {} }),
+        default: () => ({ enabled: false, pass_1x_fee_to_customer: false, producer_fee_assumption_percent: 0, minimum_installment_amount: 5, sale_fee_amount: 0, rates: {} }),
     },
     webhooks: { type: Array, default: () => [] },
     webhook_events: { type: Object, default: () => ({}) },
@@ -213,9 +213,10 @@ const integraxSidebarOpen = ref(false);
 const pluginSidebarOpen = ref(false);
 const selectedPluginSlot = ref(null);
 const selectedPluginAppName = ref(null);
-
 const pagarmeForm = useForm({
     enabled: Boolean(props.pagarme_installments?.enabled),
+    pass_1x_fee_to_customer: Boolean(props.pagarme_installments?.pass_1x_fee_to_customer),
+    producer_fee_assumption_percent: Number(props.pagarme_installments?.producer_fee_assumption_percent ?? 0),
     minimum_installment_amount: Number(props.pagarme_installments?.minimum_installment_amount ?? 5),
     sale_fee_amount: Number(props.pagarme_installments?.sale_fee_amount ?? 0),
     rates: Object.fromEntries(Array.from({ length: 12 }, (_, i) => {
@@ -499,17 +500,32 @@ watch(() => page.url, () => syncGatewayFromQuery());
                             <Percent class="h-6 w-6" aria-hidden="true" />
                         </div>
                         <div>
-                            <h2 class="text-lg font-semibold text-zinc-900 dark:text-white">Juros de parcelamento Pagar.me</h2>
-                            <p class="mt-1 text-sm text-zinc-600 dark:text-zinc-400">Configure uma única tabela de taxas para todos os produtos que usam Pagar.me.</p>
+                            <h2 class="text-lg font-semibold text-zinc-900 dark:text-white">Taxas Pagar.me</h2>
+                            <p class="mt-1 text-sm text-zinc-600 dark:text-zinc-400">Informe a taxa da Pagar.me por parcela. O checkout calcula automaticamente quanto cobrar para preservar o valor líquido do produto.</p>
                         </div>
                     </div>
                     <div class="mb-6 flex items-center justify-between rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 dark:border-zinc-700 dark:bg-zinc-800/50">
                         <div>
-                            <p class="text-sm font-medium text-zinc-800 dark:text-zinc-200">Repassar juros ao cliente</p>
-                            <p class="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">O total com juros será enviado à Pagar.me e exibido no checkout.</p>
+                            <p class="text-sm font-medium text-zinc-800 dark:text-zinc-200">Repassar taxa ao cliente em 2x ou mais</p>
+                            <p class="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">O sistema aplica gross-up para que o valor líquido estimado preserve o preço original.</p>
                         </div>
                         <input v-model="pagarmeForm.enabled" type="checkbox" class="h-5 w-5 rounded border-zinc-300 text-[var(--color-primary)] focus:ring-[var(--color-primary)]" />
                     </div>
+                    <div class="mb-6 flex items-center justify-between rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 dark:border-zinc-700 dark:bg-zinc-800/50">
+                        <div>
+                            <p class="text-sm font-medium text-zinc-800 dark:text-zinc-200">Repassar taxa ao cliente em 1x</p>
+                            <p class="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">Quando desligado, o cliente paga o preço original à vista e a taxa de 1x é descontada do líquido estimado.</p>
+                        </div>
+                        <input v-model="pagarmeForm.pass_1x_fee_to_customer" type="checkbox" class="h-5 w-5 rounded border-zinc-300 text-[var(--color-primary)] focus:ring-[var(--color-primary)]" />
+                    </div>
+                    <label class="mb-6 block max-w-xs text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                        Percentual da taxa assumido por você
+                        <div class="mt-1 flex items-center rounded-lg border border-zinc-300 bg-white dark:border-zinc-600 dark:bg-zinc-700">
+                            <input v-model.number="pagarmeForm.producer_fee_assumption_percent" type="number" min="0" max="100" step="0.0001" class="w-full rounded-lg border-0 bg-transparent px-3 py-2.5 text-sm text-zinc-900 focus:ring-0 dark:text-zinc-100" />
+                            <span class="pr-3 text-zinc-500">%</span>
+                        </div>
+                        <span class="mt-1 block text-xs font-normal text-zinc-500 dark:text-zinc-400">Use 0% para receber o valor integral do produto. Este percentual só é aplicado quando o repasse da taxa estiver ativado para a parcela.</span>
+                    </label>
                     <label class="mb-6 block max-w-xs text-sm font-medium text-zinc-700 dark:text-zinc-300">
                         Valor mínimo por parcela
                         <div class="mt-1 flex items-center rounded-lg border border-zinc-300 bg-white dark:border-zinc-600 dark:bg-zinc-700">
@@ -530,7 +546,7 @@ watch(() => page.url, () => syncGatewayFromQuery());
                         <label v-for="n in 12" :key="n" class="text-sm font-medium text-zinc-700 dark:text-zinc-300">
                             {{ n }}x
                             <div class="mt-1 flex items-center rounded-lg border border-zinc-300 bg-white dark:border-zinc-600 dark:bg-zinc-700">
-                                <input v-model.number="pagarmeForm.rates[n]" type="number" min="0" max="100" step="0.01" class="w-full rounded-lg border-0 bg-transparent px-3 py-2.5 text-sm text-zinc-900 focus:ring-0 dark:text-zinc-100" />
+                                <input v-model.number="pagarmeForm.rates[n]" type="number" min="0" max="99.9999" step="0.0001" class="w-full rounded-lg border-0 bg-transparent px-3 py-2.5 text-sm text-zinc-900 focus:ring-0 dark:text-zinc-100" />
                                 <span class="pr-3 text-zinc-500">%</span>
                             </div>
                         </label>
