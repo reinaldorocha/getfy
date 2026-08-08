@@ -13,6 +13,11 @@ class OrderNetProfitCalculator
 
     public function forOrder(Order $order): float
     {
+        $manualNetAmount = $this->netAmountCalculator->manualNetAmountForOrder($order);
+        if ($manualNetAmount !== null) {
+            return $manualNetAmount;
+        }
+
         $producerAmount = $this->producerSaleAmount->forOrder($order);
 
         return round(

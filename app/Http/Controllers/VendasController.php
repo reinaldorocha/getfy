@@ -21,6 +21,7 @@ use App\Services\RefundService;
 use App\Services\TeamAccessService;
 use App\Support\MoneyMinorUnits;
 use App\Support\OrderCurrencyTotals;
+use App\Support\ReportingPeriod;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -273,7 +274,7 @@ class VendasController extends Controller
         $netAmountCalculator = app(NetAmountCalculator::class);
         $orderNetProfitCalculator = app(OrderNetProfitCalculator::class);
 
-        $vendas = $paginator->through(function (Order $o) use ($affiliateLookup, $producerSaleAmount, $orderNetProfitCalculator) {
+        $vendas = $paginator->through(function (Order $o) use ($affiliateLookup, $producerSaleAmount, $netAmountCalculator, $orderNetProfitCalculator) {
                 $arr = $o->toArray();
                 $arr['currency'] = $o->getCurrencyOrDefault();
                 $arr['gateway_label'] = $o->paymentMethodDisplayLabel();
@@ -286,7 +287,8 @@ class VendasController extends Controller
                 if ($o->status === 'completed') {
                     $netProfitAmount = $orderNetProfitCalculator->forOrder($o);
                     $arr['net_profit_amount'] = round($netProfitAmount, 2);
-                    $arr['net_profit_amount_is_estimated'] = $producerAmount['is_estimated'] || ! $producerAmount['is_producer_share'];
+                    $arr['net_profit_amount_is_estimated'] = $netAmountCalculator->manualNetAmountForOrder($o) === null
+                        && ($producerAmount['is_estimated'] || ! $producerAmount['is_producer_share']);
                 } else {
                     $arr['net_profit_amount'] = null;
                     $arr['net_profit_amount_is_estimated'] = false;
@@ -587,6 +589,43 @@ class VendasController extends Controller
             'success' => false,
             'message' => 'Não foi possível reenviar o e-mail. Verifique se o produto possui template de e-mail configurado.',
         ], 422);
+    }
+
+    public function updateNetAmount(Order $order, Request $request, OrderNetProfitCalculator $orderNetProfitCalculator): JsonResponse
+    {
+        $tenantId = auth()->user()->tenant_id;
+        if ($order->tenant_id !== $tenantId) {
+            return response()->json(['success' => false, 'message' => 'Pedido não encontrado.'], 404);
+        }
+
+        if (auth()->user()->isTeam()) {
+            $allowed = app(TeamAccessService::class)->allowedProductIdsFor(auth()->user());
+            if ($allowed !== [] && ! in_array($order->product_id, $allowed, true)) {
+                return response()->json(['success' => false, 'message' => 'Sem permissão para este produto.'], 403);
+            }
+        }
+
+        $validated = $request->validate([
+            'net_amount' => ['nullable', 'numeric', 'min:0', 'max:100000000'],
+        ]);
+
+        $metadata = is_array($order->metadata) ? $order->metadata : [];
+        $manualNetAmount = $validated['net_amount'] ?? null;
+        if ($manualNetAmount === null) {
+            unset($metadata['manual_net_amount']);
+        } else {
+            $metadata['manual_net_amount'] = round((float) $manualNetAmount, 2);
+        }
+
+        $order->update(['metadata' => $metadata]);
+        $order = $order->fresh();
+        ReportingPeriod::bustDashboardCache($tenantId);
+
+        return response()->json([
+            'success' => true,
+            'net_amount' => $orderNetProfitCalculator->forOrder($order),
+            'manual_net_amount' => $metadata['manual_net_amount'] ?? null,
+        ]);
     }
 
     public function approveManually(Order $order): JsonResponse

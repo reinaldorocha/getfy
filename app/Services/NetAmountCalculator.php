@@ -16,6 +16,15 @@ class NetAmountCalculator
      */
     public function forOrder(Order $order): array
     {
+        $manualNetAmount = $this->manualNetAmountForOrder($order);
+        if ($manualNetAmount !== null) {
+            return [
+                'gross' => round((float) $order->amount, 2),
+                'fee' => 0.0,
+                'net' => $manualNetAmount,
+            ];
+        }
+
         $method = $order->checkoutPaymentMethod();
         $gateway = strtolower((string) ($order->gateway ?? ''));
 
@@ -41,6 +50,16 @@ class NetAmountCalculator
             'fee' => $fee,
             'net' => $net,
         ];
+    }
+
+    public function manualNetAmountForOrder(Order $order): ?float
+    {
+        $metadata = is_array($order->metadata) ? $order->metadata : [];
+        $manualNetAmount = $metadata['manual_net_amount'] ?? null;
+
+        return is_numeric($manualNetAmount)
+            ? max(0, round((float) $manualNetAmount, 2))
+            : null;
     }
 
     public function estimateFee(int $tenantId, string $gatewaySlug, string $method, float $gross): float
