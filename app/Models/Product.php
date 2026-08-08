@@ -172,6 +172,8 @@ class Product extends Model
             ],
             'pagarme_installments' => [
                 'enabled' => false,
+                'pass_1x_fee_to_customer' => false,
+                'producer_fee_assumption_percent' => 0,
                 'minimum_installment_amount' => 5,
                 'sale_fee_amount' => 0,
                 'rates' => array_fill_keys(range(1, 12), 0),

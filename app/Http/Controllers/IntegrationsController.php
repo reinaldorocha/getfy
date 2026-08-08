@@ -98,6 +98,8 @@ class IntegrationsController extends Controller
         ];
         $pagarmeInstallments = [
             'enabled' => false,
+            'pass_1x_fee_to_customer' => false,
+            'producer_fee_assumption_percent' => 0,
             'minimum_installment_amount' => 5,
             'sale_fee_amount' => 0,
             'rates' => array_fill_keys(range(1, 12), 0),
@@ -108,24 +110,12 @@ class IntegrationsController extends Controller
         }
         if (is_array($pagarmeInstallmentsRaw)) {
             $pagarmeInstallments['enabled'] = ! empty($pagarmeInstallmentsRaw['enabled']);
+            $pagarmeInstallments['pass_1x_fee_to_customer'] = ! empty($pagarmeInstallmentsRaw['pass_1x_fee_to_customer']);
+            $pagarmeInstallments['producer_fee_assumption_percent'] = round(max(0, min(100, (float) ($pagarmeInstallmentsRaw['producer_fee_assumption_percent'] ?? 0))), 4);
             $pagarmeInstallments['minimum_installment_amount'] = round(max(0, min(100000, (float) ($pagarmeInstallmentsRaw['minimum_installment_amount'] ?? 5))), 2);
             $pagarmeInstallments['sale_fee_amount'] = round(max(0, min(100000, (float) ($pagarmeInstallmentsRaw['sale_fee_amount'] ?? 0))), 2);
             foreach (range(1, 12) as $n) {
-                $pagarmeInstallments['rates'][$n] = round(max(0, min(100, (float) ($pagarmeInstallmentsRaw['rates'][$n] ?? $pagarmeInstallmentsRaw['rates'][(string) $n] ?? 0))), 2);
-            }
-        }
-        $pagarmeProcessingFees = [
-            'fixed_fee_amount' => 0,
-            'rates' => array_fill_keys(range(1, 12), 0),
-        ];
-        $pagarmeProcessingFeesRaw = Setting::get('pagarme_processing_fees', null, $tenantId);
-        if (is_string($pagarmeProcessingFeesRaw)) {
-            $pagarmeProcessingFeesRaw = json_decode($pagarmeProcessingFeesRaw, true);
-        }
-        if (is_array($pagarmeProcessingFeesRaw)) {
-            $pagarmeProcessingFees['fixed_fee_amount'] = round(max(0, min(100000, (float) ($pagarmeProcessingFeesRaw['fixed_fee_amount'] ?? 0))), 2);
-            foreach (range(1, 12) as $n) {
-                $pagarmeProcessingFees['rates'][$n] = round(max(0, min(100, (float) ($pagarmeProcessingFeesRaw['rates'][$n] ?? $pagarmeProcessingFeesRaw['rates'][(string) $n] ?? 0))), 4);
+                $pagarmeInstallments['rates'][$n] = round(max(0, min(99.9999, (float) ($pagarmeInstallmentsRaw['rates'][$n] ?? $pagarmeInstallmentsRaw['rates'][(string) $n] ?? 0))), 4);
             }
         }
 
@@ -254,7 +244,6 @@ class IntegrationsController extends Controller
             'gateways' => $gateways,
             'gateway_order' => $gatewayOrder,
             'pagarme_installments' => $pagarmeInstallments,
-            'pagarme_processing_fees' => $pagarmeProcessingFees,
             'webhooks' => $webhooks,
             'webhook_events' => $webhookEvents,
             'webhook_event_catalog' => WebhookEventCatalog::forUi(),
@@ -275,46 +264,29 @@ class IntegrationsController extends Controller
     {
         $validated = $request->validate([
             'enabled' => ['nullable', 'boolean'],
+            'pass_1x_fee_to_customer' => ['nullable', 'boolean'],
+            'producer_fee_assumption_percent' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'minimum_installment_amount' => ['required', 'numeric', 'min:0', 'max:100000'],
             'sale_fee_amount' => ['nullable', 'numeric', 'min:0', 'max:100000'],
             'rates' => ['required', 'array'],
-            'rates.*' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'rates.*' => ['nullable', 'numeric', 'min:0', 'lt:100'],
         ]);
 
         $rates = [];
         foreach (range(1, 12) as $n) {
-            $rates[$n] = round(max(0, min(100, (float) ($validated['rates'][$n] ?? $validated['rates'][(string) $n] ?? 0))), 2);
+            $rates[$n] = round(max(0, min(99.9999, (float) ($validated['rates'][$n] ?? $validated['rates'][(string) $n] ?? 0))), 4);
         }
         Setting::set('pagarme_installments', [
             'enabled' => ! empty($validated['enabled']),
+            'pass_1x_fee_to_customer' => ! empty($validated['pass_1x_fee_to_customer']),
+            'producer_fee_assumption_percent' => round(max(0, min(100, (float) ($validated['producer_fee_assumption_percent'] ?? 0))), 4),
             'minimum_installment_amount' => round((float) $validated['minimum_installment_amount'], 2),
             'sale_fee_amount' => round(max(0, min(100000, (float) ($validated['sale_fee_amount'] ?? 0))), 2),
             'rates' => $rates,
         ], auth()->user()->tenant_id);
-
-        return back()->with('success', 'Taxas de parcelamento da Pagar.me atualizadas.');
-    }
-
-    public function updatePagarmeProcessingFees(Request $request): RedirectResponse
-    {
-        $validated = $request->validate([
-            'fixed_fee_amount' => ['nullable', 'numeric', 'min:0', 'max:100000'],
-            'rates' => ['required', 'array'],
-            'rates.*' => ['nullable', 'numeric', 'min:0', 'max:100'],
-        ]);
-
-        $rates = [];
-        foreach (range(1, 12) as $n) {
-            $rates[$n] = round(max(0, min(100, (float) ($validated['rates'][$n] ?? $validated['rates'][(string) $n] ?? 0))), 4);
-        }
-
-        Setting::set('pagarme_processing_fees', [
-            'fixed_fee_amount' => round(max(0, min(100000, (float) ($validated['fixed_fee_amount'] ?? 0))), 2),
-            'rates' => $rates,
-        ], auth()->user()->tenant_id);
         ReportingPeriod::bustDashboardCache(auth()->user()->tenant_id);
 
-        return back()->with('success', 'Custos de processamento da Pagar.me atualizados.');
+        return back()->with('success', 'Taxas de parcelamento da Pagar.me atualizadas.');
     }
 
     /**

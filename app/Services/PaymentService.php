@@ -187,23 +187,29 @@ class PaymentService
                 $shouldPersistChargedAmount = false;
                 if ($gatewaySlug === 'pagarme') {
                     $installments = max(1, min(12, (int) ($card['installments'] ?? 1)));
-                    $metadata = is_array($order->metadata) ? $order->metadata : [];
-                    $metadata['card_installments'] = $installments;
-                    $order->update(['metadata' => $metadata]);
                     $pagarmeRaw = Setting::get('pagarme_installments', null, $tenantId);
                     $pagarmeConfig = is_string($pagarmeRaw) ? json_decode($pagarmeRaw, true) : $pagarmeRaw;
                     $pagarmeConfig = is_array($pagarmeConfig) ? $pagarmeConfig : [];
                     $rates = is_array($pagarmeConfig['rates'] ?? null) ? $pagarmeConfig['rates'] : [];
-                    $rate = ! empty($pagarmeConfig['enabled'])
-                        ? (float) ($rates[$installments] ?? $rates[(string) $installments] ?? 0)
-                        : 0;
+                    $rate = min(99.9999, max(0, (float) ($rates[$installments] ?? $rates[(string) $installments] ?? 0)));
+                    $passFeeToCustomer = $installments === 1
+                        ? ! empty($pagarmeConfig['pass_1x_fee_to_customer'])
+                        : ! empty($pagarmeConfig['enabled']);
+                    $producerFeeAssumptionPercent = min(100, max(0, (float) ($pagarmeConfig['producer_fee_assumption_percent'] ?? 0)));
                     $saleFee = $installments > 1
                         ? max(0, (float) ($pagarmeConfig['sale_fee_amount'] ?? 0))
-                        : 0;
-                    if ($installments > 1 && ($rate > 0 || $saleFee > 0)) {
-                        $chargedAmount = round($baseAmount * (1 + ($rate / 100)) + $saleFee, 2);
-                        $shouldPersistChargedAmount = true;
-                    }
+                        : 0.0;
+                    $chargedAmount = $passFeeToCustomer && $rate > 0
+                        ? round((round($baseAmount * (1 - ($producerFeeAssumptionPercent / 100)), 2) / (1 - ($rate / 100))) + $saleFee, 2)
+                        : round($baseAmount + $saleFee, 2);
+                    $shouldPersistChargedAmount = abs($chargedAmount - $baseAmount) >= 0.005;
+
+                    $metadata = is_array($order->metadata) ? $order->metadata : [];
+                    $metadata['card_installments'] = $installments;
+                    $metadata['pagarme_fee_rate_percent'] = $rate;
+                    $metadata['pagarme_fee_passed_to_customer'] = $passFeeToCustomer;
+                    $metadata['pagarme_fee_assumption_percent'] = $producerFeeAssumptionPercent;
+                    $order->update(['metadata' => $metadata]);
                 }
                 $result = $driver->createCardPayment(
                     $credentials,

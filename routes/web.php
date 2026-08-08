@@ -619,7 +619,6 @@ Route::middleware(['auth', 'admin.tenant', 'role:admin|infoprodutor|team', 'audi
     });
     Route::middleware('team.permission:integracoes.view')->group(function () {
         Route::put('/integracoes/pagarme-installments', [\App\Http\Controllers\IntegrationsController::class, 'updatePagarmeInstallments'])->name('integrations.pagarme-installments.update');
-        Route::put('/integracoes/pagarme-processing-fees', [\App\Http\Controllers\IntegrationsController::class, 'updatePagarmeProcessingFees'])->name('integrations.pagarme-processing-fees.update');
         Route::post('/integracoes/plugins/{slug}/enable', [\App\Http\Controllers\IntegrationsController::class, 'enablePlugin'])->name('integrations.plugins.enable');
         Route::post('/integracoes/plugins/{slug}/disable', [\App\Http\Controllers\IntegrationsController::class, 'disablePlugin'])->name('integrations.plugins.disable');
         Route::delete('/integracoes/plugins/{slug}', [\App\Http\Controllers\IntegrationsController::class, 'uninstallPlugin'])->name('integrations.plugins.uninstall');

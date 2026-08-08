@@ -84,11 +84,7 @@ const props = defineProps({
     },
     pagarme_installments: {
         type: Object,
-        default: () => ({ enabled: false, minimum_installment_amount: 5, sale_fee_amount: 0, rates: {} }),
-    },
-    pagarme_processing_fees: {
-        type: Object,
-        default: () => ({ fixed_fee_amount: 0, rates: {} }),
+        default: () => ({ enabled: false, pass_1x_fee_to_customer: false, producer_fee_assumption_percent: 0, minimum_installment_amount: 5, sale_fee_amount: 0, rates: {} }),
     },
     webhooks: { type: Array, default: () => [] },
     webhook_events: { type: Object, default: () => ({}) },
@@ -217,10 +213,10 @@ const integraxSidebarOpen = ref(false);
 const pluginSidebarOpen = ref(false);
 const selectedPluginSlot = ref(null);
 const selectedPluginAppName = ref(null);
-const pagarmeConfigTab = ref('customer');
-
 const pagarmeForm = useForm({
     enabled: Boolean(props.pagarme_installments?.enabled),
+    pass_1x_fee_to_customer: Boolean(props.pagarme_installments?.pass_1x_fee_to_customer),
+    producer_fee_assumption_percent: Number(props.pagarme_installments?.producer_fee_assumption_percent ?? 0),
     minimum_installment_amount: Number(props.pagarme_installments?.minimum_installment_amount ?? 5),
     sale_fee_amount: Number(props.pagarme_installments?.sale_fee_amount ?? 0),
     rates: Object.fromEntries(Array.from({ length: 12 }, (_, i) => {
@@ -231,18 +227,6 @@ const pagarmeForm = useForm({
 
 function savePagarmeInstallments() {
     pagarmeForm.put('/integracoes/pagarme-installments', { preserveScroll: true });
-}
-
-const pagarmeProcessingFeesForm = useForm({
-    fixed_fee_amount: Number(props.pagarme_processing_fees?.fixed_fee_amount ?? 0),
-    rates: Object.fromEntries(Array.from({ length: 12 }, (_, i) => {
-        const n = i + 1;
-        return [n, props.pagarme_processing_fees?.rates?.[n] ?? props.pagarme_processing_fees?.rates?.[String(n)] ?? 0];
-    })),
-});
-
-function savePagarmeProcessingFees() {
-    pagarmeProcessingFeesForm.put('/integracoes/pagarme-processing-fees', { preserveScroll: true });
 }
 
 function openGatewaySidebar(slug) {
@@ -510,41 +494,38 @@ watch(() => page.url, () => syncGatewayFromQuery());
         <!-- Aba Pagar.me -->
         <template v-if="currentTab === 'pagarme'">
             <section class="space-y-6">
-                <div class="flex gap-2 border-b border-zinc-200 dark:border-zinc-800">
-                    <button
-                        type="button"
-                        class="border-b-2 px-3 py-2 text-sm font-medium"
-                        :class="pagarmeConfigTab === 'customer' ? 'border-[var(--color-primary)] text-[var(--color-primary)]' : 'border-transparent text-zinc-500'"
-                        @click="pagarmeConfigTab = 'customer'"
-                    >
-                        Juros repassados ao cliente
-                    </button>
-                    <button
-                        type="button"
-                        class="border-b-2 px-3 py-2 text-sm font-medium"
-                        :class="pagarmeConfigTab === 'processing' ? 'border-[var(--color-primary)] text-[var(--color-primary)]' : 'border-transparent text-zinc-500'"
-                        @click="pagarmeConfigTab = 'processing'"
-                    >
-                        Custo Pagar.me
-                    </button>
-                </div>
-                <div v-if="pagarmeConfigTab === 'customer'" class="panel-card-lg max-w-4xl">
+                <div class="panel-card-lg max-w-4xl">
                     <div class="mb-6 flex items-start gap-4">
                         <div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-violet-100 text-violet-700 dark:bg-violet-950/50 dark:text-violet-300">
                             <Percent class="h-6 w-6" aria-hidden="true" />
                         </div>
                         <div>
-                            <h2 class="text-lg font-semibold text-zinc-900 dark:text-white">Juros de parcelamento Pagar.me</h2>
-                            <p class="mt-1 text-sm text-zinc-600 dark:text-zinc-400">Configure uma única tabela de taxas para todos os produtos que usam Pagar.me.</p>
+                            <h2 class="text-lg font-semibold text-zinc-900 dark:text-white">Taxas Pagar.me</h2>
+                            <p class="mt-1 text-sm text-zinc-600 dark:text-zinc-400">Informe a taxa da Pagar.me por parcela. O checkout calcula automaticamente quanto cobrar para preservar o valor líquido do produto.</p>
                         </div>
                     </div>
                     <div class="mb-6 flex items-center justify-between rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 dark:border-zinc-700 dark:bg-zinc-800/50">
                         <div>
-                            <p class="text-sm font-medium text-zinc-800 dark:text-zinc-200">Repassar juros ao cliente</p>
-                            <p class="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">O total com juros será enviado à Pagar.me e exibido no checkout.</p>
+                            <p class="text-sm font-medium text-zinc-800 dark:text-zinc-200">Repassar taxa ao cliente em 2x ou mais</p>
+                            <p class="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">O sistema aplica gross-up para que o valor líquido estimado preserve o preço original.</p>
                         </div>
                         <input v-model="pagarmeForm.enabled" type="checkbox" class="h-5 w-5 rounded border-zinc-300 text-[var(--color-primary)] focus:ring-[var(--color-primary)]" />
                     </div>
+                    <div class="mb-6 flex items-center justify-between rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 dark:border-zinc-700 dark:bg-zinc-800/50">
+                        <div>
+                            <p class="text-sm font-medium text-zinc-800 dark:text-zinc-200">Repassar taxa ao cliente em 1x</p>
+                            <p class="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">Quando desligado, o cliente paga o preço original à vista e a taxa de 1x é descontada do líquido estimado.</p>
+                        </div>
+                        <input v-model="pagarmeForm.pass_1x_fee_to_customer" type="checkbox" class="h-5 w-5 rounded border-zinc-300 text-[var(--color-primary)] focus:ring-[var(--color-primary)]" />
+                    </div>
+                    <label class="mb-6 block max-w-xs text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                        Percentual da taxa assumido por você
+                        <div class="mt-1 flex items-center rounded-lg border border-zinc-300 bg-white dark:border-zinc-600 dark:bg-zinc-700">
+                            <input v-model.number="pagarmeForm.producer_fee_assumption_percent" type="number" min="0" max="100" step="0.0001" class="w-full rounded-lg border-0 bg-transparent px-3 py-2.5 text-sm text-zinc-900 focus:ring-0 dark:text-zinc-100" />
+                            <span class="pr-3 text-zinc-500">%</span>
+                        </div>
+                        <span class="mt-1 block text-xs font-normal text-zinc-500 dark:text-zinc-400">Use 0% para receber o valor integral do produto. Este percentual só é aplicado quando o repasse da taxa estiver ativado para a parcela.</span>
+                    </label>
                     <label class="mb-6 block max-w-xs text-sm font-medium text-zinc-700 dark:text-zinc-300">
                         Valor mínimo por parcela
                         <div class="mt-1 flex items-center rounded-lg border border-zinc-300 bg-white dark:border-zinc-600 dark:bg-zinc-700">
@@ -565,7 +546,7 @@ watch(() => page.url, () => syncGatewayFromQuery());
                         <label v-for="n in 12" :key="n" class="text-sm font-medium text-zinc-700 dark:text-zinc-300">
                             {{ n }}x
                             <div class="mt-1 flex items-center rounded-lg border border-zinc-300 bg-white dark:border-zinc-600 dark:bg-zinc-700">
-                                <input v-model.number="pagarmeForm.rates[n]" type="number" min="0" max="100" step="0.01" class="w-full rounded-lg border-0 bg-transparent px-3 py-2.5 text-sm text-zinc-900 focus:ring-0 dark:text-zinc-100" />
+                                <input v-model.number="pagarmeForm.rates[n]" type="number" min="0" max="99.9999" step="0.0001" class="w-full rounded-lg border-0 bg-transparent px-3 py-2.5 text-sm text-zinc-900 focus:ring-0 dark:text-zinc-100" />
                                 <span class="pr-3 text-zinc-500">%</span>
                             </div>
                         </label>
@@ -573,40 +554,6 @@ watch(() => page.url, () => syncGatewayFromQuery());
                     <div class="mt-6 flex justify-end">
                         <Button type="button" :disabled="pagarmeForm.processing" @click="savePagarmeInstallments">
                             {{ pagarmeForm.processing ? 'Salvando…' : 'Salvar configuração' }}
-                        </Button>
-                    </div>
-                </div>
-                <div v-else class="panel-card-lg max-w-4xl">
-                    <div class="mb-6 flex items-start gap-4">
-                        <div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300">
-                            <Percent class="h-6 w-6" aria-hidden="true" />
-                        </div>
-                        <div>
-                            <h2 class="text-lg font-semibold text-zinc-900 dark:text-white">Custo real da Pagar.me</h2>
-                            <p class="mt-1 text-sm text-zinc-600 dark:text-zinc-400">Estas taxas servem somente para calcular o lucro líquido. Elas não alteram o total mostrado ou cobrado no checkout.</p>
-                        </div>
-                    </div>
-                    <label class="mb-6 block max-w-xs text-sm font-medium text-zinc-700 dark:text-zinc-300">
-                        Taxa fixa por venda
-                        <div class="mt-1 flex items-center rounded-lg border border-zinc-300 bg-white dark:border-zinc-600 dark:bg-zinc-700">
-                            <span class="pl-3 text-zinc-500">R$</span>
-                            <input v-model.number="pagarmeProcessingFeesForm.fixed_fee_amount" type="number" min="0" max="100000" step="0.01" class="w-full rounded-lg border-0 bg-transparent px-2 py-2.5 text-sm text-zinc-900 focus:ring-0 dark:text-zinc-100" />
-                        </div>
-                        <span class="mt-1 block text-xs font-normal text-zinc-500 dark:text-zinc-400">Descontada uma vez em todas as vendas de cartão, inclusive em 1x.</span>
-                    </label>
-                    <div class="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-                        <label v-for="n in 12" :key="n" class="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-                            {{ n }}x
-                            <div class="mt-1 flex items-center rounded-lg border border-zinc-300 bg-white dark:border-zinc-600 dark:bg-zinc-700">
-                                <input v-model.number="pagarmeProcessingFeesForm.rates[n]" type="number" min="0" max="100" step="0.0001" class="w-full rounded-lg border-0 bg-transparent px-3 py-2.5 text-sm text-zinc-900 focus:ring-0 dark:text-zinc-100" />
-                                <span class="pr-3 text-zinc-500">%</span>
-                            </div>
-                        </label>
-                    </div>
-                    <p class="mt-4 text-xs text-zinc-500 dark:text-zinc-400">Cálculo: valor total cobrado do cliente − (valor × taxa da parcela) − taxa fixa.</p>
-                    <div class="mt-6 flex justify-end">
-                        <Button type="button" :disabled="pagarmeProcessingFeesForm.processing" @click="savePagarmeProcessingFees">
-                            {{ pagarmeProcessingFeesForm.processing ? 'Salvando…' : 'Salvar custos de processamento' }}
                         </Button>
                     </div>
                 </div>
