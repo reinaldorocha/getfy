@@ -22,6 +22,7 @@ import {
     Box,
     Mail,
     CodeXml,
+    MessageSquare,
 } from 'lucide-vue-next';
 import { useSidebar } from '@/composables/useSidebar';
 import { isNavItemActive } from '@/lib/nav';
@@ -54,6 +55,7 @@ const iconMap = {
     BarChart3,
     Mail,
     CodeXml,
+    MessageSquare,
 };
 
 const pluginNavItems = computed(() => {

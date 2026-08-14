@@ -98,6 +98,25 @@ async function save() {
     }
 }
 
+async function test() {
+    saving.value = true;
+    error.value = '';
+    ok.value = '';
+    try {
+        await save();
+        const { data } = await axios.post('/autozap/connection/test');
+        if (data?.ok) {
+            ok.value = 'Conexão testada com sucesso! WhatsApp conectado e pronto para uso.';
+        } else {
+            error.value = data?.message || 'Falha ao testar conexão.';
+        }
+    } catch (e) {
+        error.value = e.response?.data?.message || 'Erro ao testar conexão.';
+    } finally {
+        saving.value = false;
+    }
+}
+
 load();
 </script>
 
@@ -162,23 +181,26 @@ load();
             </div>
 
             <div v-else-if="provider === 'evolution'" class="space-y-3">
+                <div class="rounded-xl border border-emerald-500/20 bg-emerald-50/50 p-3 text-xs text-emerald-900 dark:border-emerald-900/40 dark:bg-emerald-950/30 dark:text-emerald-200">
+                    Compatível com <strong>Evolution API v1, v2 e Evolution Go (evo-go)</strong>. A instância precisa estar criada e conectada no WhatsApp.
+                </div>
                 <div>
                     <label class="mb-1 block text-sm font-medium text-zinc-700 dark:text-zinc-300">Base URL</label>
-                    <input v-model="evolution.base_url" type="url" placeholder="https://seu-evolution-api.com" class="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900" />
+                    <input v-model="evolution.base_url" type="url" placeholder="https://api.seuevolution.com" class="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900" />
                 </div>
                 <div class="grid gap-3 sm:grid-cols-2">
                     <div>
-                        <label class="mb-1 block text-sm font-medium text-zinc-700 dark:text-zinc-300">API Key</label>
+                        <label class="mb-1 block text-sm font-medium text-zinc-700 dark:text-zinc-300">API Key (Global ou Instância)</label>
                         <input
                             v-model="evolution.apikey"
                             type="password"
-                            :placeholder="secretStatus?.apikey_masked ? `Salva: ${secretStatus.apikey_masked}` : ''"
+                            :placeholder="secretStatus?.apikey_masked ? `Salva: ${secretStatus.apikey_masked}` : 'Chave API'"
                             class="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm placeholder:text-zinc-400 dark:border-zinc-700 dark:bg-zinc-900 dark:placeholder:text-zinc-500"
                         />
                     </div>
                     <div>
-                        <label class="mb-1 block text-sm font-medium text-zinc-700 dark:text-zinc-300">Instance</label>
-                        <input v-model="evolution.instance" type="text" class="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900" />
+                        <label class="mb-1 block text-sm font-medium text-zinc-700 dark:text-zinc-300">Nome da Instância</label>
+                        <input v-model="evolution.instance" type="text" placeholder="Ex: getfy-bot" class="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900" />
                     </div>
                 </div>
             </div>
@@ -220,7 +242,8 @@ load();
             </div>
 
             <div class="flex gap-2">
-                <Button type="button" :disabled="saving" class="flex-1" @click="save">Salvar</Button>
+                <Button type="button" :disabled="saving" class="flex-1" @click="save">Salvar Configuração</Button>
+                <Button type="button" variant="outline" :disabled="saving" @click="test">Testar</Button>
             </div>
 
             <p v-if="error" class="rounded-lg bg-red-100 px-3 py-2 text-sm text-red-700 dark:bg-red-900/30 dark:text-red-300">

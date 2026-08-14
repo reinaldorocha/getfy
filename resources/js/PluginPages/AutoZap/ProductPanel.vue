@@ -157,12 +157,13 @@ function openEditor(flow) {
     editorFullscreen.value = true;
 }
 
-async function saveGraph(graphJson) {
+async function saveGraph(payload) {
     if (!editorFlow.value?.id) return;
     editorSaving.value = true;
     editorError.value = '';
     try {
-        await axios.put(`/autozap/flows/${editorFlow.value.id}`, { graph_json: graphJson });
+        const body = payload?.graph_json ? payload : { graph_json: payload };
+        await axios.put(`/autozap/flows/${editorFlow.value.id}`, body);
         editorOpen.value = false;
         editorFlow.value = null;
         await loadFlows();
