@@ -1,1 +1,0 @@
-const e="aspect-[3/1]",o="relative w-full overflow-hidden rounded-2xl bg-zinc-900/80 aspect-[3/1]",N="absolute inset-0 h-full w-full object-cover object-center",t="1200×400 px (proporção 3:1)";export{o as C,N as a,t as b,e as c};
