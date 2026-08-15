@@ -10,6 +10,7 @@ import {
     Search,
     Filter,
     Clock,
+    Calendar,
     Sparkles,
     ShieldCheck,
     AlertCircle,
@@ -18,6 +19,7 @@ import {
     Check,
     Loader2,
     Phone,
+    Zap,
 } from 'lucide-vue-next';
 import Button from '@/components/ui/Button.vue';
 
@@ -38,6 +40,8 @@ const form = ref({
     name: '',
     autozap_connection_id: null,
     throttle_seconds: 5,
+    schedule_mode: 'immediate', // 'immediate' | 'scheduled'
+    scheduled_at: '',
     message: 'Olá {{primeiro_nome}}, temos uma novidade especial sobre o {{produto}} para você!',
     product_ids: [],
     selected_contact_keys: [],
@@ -57,6 +61,13 @@ const contactSearch = ref('');
 const originFilter = ref('all');
 const selectedProductFilter = ref([]);
 const selectAllMode = ref(true);
+
+// Data mínima para agendamento (formato YYYY-MM-DDTHH:mm)
+const minScheduledDate = computed(() => {
+    const now = new Date();
+    now.setMinutes(now.getMinutes() + 2); // mínimo 2 minutos no futuro
+    return now.toISOString().slice(0, 16);
+});
 
 // Carregar conexões ativas
 async function loadConnections() {
@@ -109,6 +120,8 @@ watch(
         if (val) {
             step.value = 1;
             errorMessage.value = '';
+            form.value.schedule_mode = 'immediate';
+            form.value.scheduled_at = '';
             loadConnections();
             if (props.initialSelectedKeys?.length) {
                 form.value.selected_contact_keys = [...props.initialSelectedKeys];
@@ -188,6 +201,17 @@ function nextStep() {
             errorMessage.value = 'Selecione uma instância de WhatsApp conectada.';
             return;
         }
+        if (form.value.schedule_mode === 'scheduled') {
+            if (!form.value.scheduled_at) {
+                errorMessage.value = 'Selecione a data e horário para o agendamento da campanha.';
+                return;
+            }
+            const target = new Date(form.value.scheduled_at);
+            if (target <= new Date()) {
+                errorMessage.value = 'A data de agendamento deve ser no futuro.';
+                return;
+            }
+        }
     } else if (step.value === 2) {
         if (!form.value.selected_contact_keys.length) {
             errorMessage.value = 'Selecione ao menos um destinatário para o disparo.';
@@ -218,6 +242,8 @@ async function submitCampaign() {
                 search: contactSearch.value,
             },
             throttle_seconds: form.value.throttle_seconds,
+            schedule_mode: form.value.schedule_mode,
+            scheduled_at: form.value.schedule_mode === 'scheduled' ? form.value.scheduled_at : null,
         };
 
         const res = await axios.post('/autozap/campaigns', payload);
@@ -246,7 +272,7 @@ async function submitCampaign() {
                     </div>
                     <div>
                         <h3 class="font-bold text-white text-base">Criar Nova Campanha WhatsApp</h3>
-                        <p class="text-xs text-zinc-400">Disparo em massa segmentado com proteção anti-bloqueio</p>
+                        <p class="text-xs text-zinc-400">Disparo em massa imediato ou agendado com proteção anti-bloqueio</p>
                     </div>
                 </div>
 
@@ -274,8 +300,8 @@ async function submitCampaign() {
 
             <!-- Body Steps -->
             <div class="flex-1 overflow-y-auto p-6">
-                <!-- STEP 1: Configuração Básica -->
-                <div v-if="step === 1" class="space-y-6 max-w-xl mx-auto py-2">
+                <!-- STEP 1: Configuração Básica & Agendamento -->
+                <div v-if="step === 1" class="space-y-5 max-w-xl mx-auto py-2">
                     <div>
                         <label class="block text-xs font-semibold text-zinc-300 mb-1.5">Nome da Campanha *</label>
                         <input
@@ -295,15 +321,73 @@ async function submitCampaign() {
                         >
                             <option :value="null" disabled>Selecione a conexão do WhatsApp...</option>
                             <option v-for="conn in connections" :key="conn.id" :value="conn.id">
-                                {{ conn.name || conn.driver }} • {{ conn.driver?.toUpperCase() }} (Conectado)
+                                {{ conn.name || conn.driver || conn.provider }} • {{ (conn.provider || conn.driver || 'WHATSAPP').toUpperCase() }} (Conectado)
                             </option>
                         </select>
                         <p v-if="!connections.length" class="text-[11px] text-amber-400 mt-1 flex items-center gap-1">
                             <AlertCircle class="w-3.5 h-3.5" />
-                            Nenhum WhatsApp conectado. Configure sua conexão na aba "Conexão WhatsApp".
+                            Nenhum WhatsApp conectado. Configure sua conexão na aba "Conexões".
                         </p>
                     </div>
 
+                    <!-- Modo de Disparo (Imediato vs Agendado) -->
+                    <div class="space-y-2">
+                        <label class="block text-xs font-semibold text-zinc-300">Programação de Envio *</label>
+                        <div class="grid grid-cols-2 gap-3">
+                            <button
+                                type="button"
+                                @click="form.schedule_mode = 'immediate'"
+                                :class="[
+                                    'p-3.5 rounded-xl border text-left transition flex flex-col justify-between',
+                                    form.schedule_mode === 'immediate'
+                                        ? 'border-emerald-500 bg-emerald-500/10 text-white shadow-sm'
+                                        : 'border-zinc-800 bg-zinc-800/40 text-zinc-400 hover:border-zinc-700'
+                                ]"
+                            >
+                                <div class="flex items-center gap-2">
+                                    <Zap class="w-4 h-4 text-emerald-400" />
+                                    <span class="text-xs font-bold">Disparo Imediato</span>
+                                </div>
+                                <p class="text-[10px] text-zinc-400 mt-1">Inicia o envio assim que confirmar.</p>
+                            </button>
+
+                            <button
+                                type="button"
+                                @click="form.schedule_mode = 'scheduled'"
+                                :class="[
+                                    'p-3.5 rounded-xl border text-left transition flex flex-col justify-between',
+                                    form.schedule_mode === 'scheduled'
+                                        ? 'border-emerald-500 bg-emerald-500/10 text-white shadow-sm'
+                                        : 'border-zinc-800 bg-zinc-800/40 text-zinc-400 hover:border-zinc-700'
+                                ]"
+                            >
+                                <div class="flex items-center gap-2">
+                                    <Calendar class="w-4 h-4 text-emerald-400" />
+                                    <span class="text-xs font-bold">Agendar Envio</span>
+                                </div>
+                                <p class="text-[10px] text-zinc-400 mt-1">Programa data e hora futura.</p>
+                            </button>
+                        </div>
+
+                        <!-- Date Time Picker for Scheduled Campaign -->
+                        <div v-if="form.schedule_mode === 'scheduled'" class="mt-3 p-4 rounded-xl bg-zinc-950/80 border border-emerald-500/30 animate-in fade-in space-y-2">
+                            <label class="block text-xs font-bold text-emerald-400 flex items-center gap-1.5">
+                                <Clock class="w-3.5 h-3.5" />
+                                Data e Horário de Início do Disparo *
+                            </label>
+                            <input
+                                v-model="form.scheduled_at"
+                                type="datetime-local"
+                                :min="minScheduledDate"
+                                class="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-emerald-500"
+                            />
+                            <p class="text-[11px] text-zinc-400">
+                                A campanha ficará com status <strong class="text-purple-400">Agendada</strong> e a fila iniciará automaticamente no momento programado.
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- Throttle Anti-bloqueio -->
                     <div class="p-4 rounded-xl bg-zinc-800/50 border border-zinc-700/60 space-y-3">
                         <div class="flex items-center justify-between">
                             <div class="flex items-center gap-2">
@@ -513,7 +597,7 @@ async function submitCampaign() {
                     </div>
                 </div>
 
-                <!-- STEP 4: Revisão & Disparo -->
+                <!-- STEP 4: Revisão & Confirmação -->
                 <div v-else-if="step === 4" class="space-y-5 max-w-xl mx-auto py-2">
                     <div class="p-5 rounded-2xl bg-zinc-950/80 border border-zinc-800 space-y-4">
                         <h4 class="font-bold text-white text-sm border-b border-zinc-800 pb-2">Resumo da Campanha</h4>
@@ -527,8 +611,11 @@ async function submitCampaign() {
                                 <p class="font-black text-emerald-400 text-base mt-0.5">{{ form.selected_contact_keys.length }} contatos</p>
                             </div>
                             <div>
-                                <span class="text-zinc-500">Origem:</span>
-                                <p class="text-zinc-300 mt-0.5">{{ originFilter === 'all' ? 'Todos (Compradores + Importados)' : (originFilter === 'buyers' ? 'Compradores' : 'Importados') }}</p>
+                                <span class="text-zinc-500">Programação:</span>
+                                <p :class="['font-bold mt-0.5 flex items-center gap-1', form.schedule_mode === 'scheduled' ? 'text-purple-400' : 'text-emerald-400']">
+                                    <component :is="form.schedule_mode === 'scheduled' ? Calendar : Zap" class="w-3.5 h-3.5" />
+                                    {{ form.schedule_mode === 'scheduled' ? `Agendado para ${new Date(form.scheduled_at).toLocaleString('pt-BR')}` : 'Disparo Imediato' }}
+                                </p>
                             </div>
                             <div>
                                 <span class="text-zinc-500">Intervalo de Segurança:</span>
@@ -578,11 +665,16 @@ async function submitCampaign() {
                         type="button"
                         :disabled="saving"
                         @click="submitCampaign"
-                        class="bg-emerald-500 hover:bg-emerald-600 text-zinc-950 font-black px-6 shadow-lg shadow-emerald-500/20"
+                        :class="[
+                            'font-black px-6 shadow-lg',
+                            form.schedule_mode === 'scheduled'
+                                ? 'bg-purple-600 hover:bg-purple-500 text-white shadow-purple-500/20'
+                                : 'bg-emerald-500 hover:bg-emerald-600 text-zinc-950 shadow-emerald-500/20'
+                        ]"
                     >
                         <Loader2 v-if="saving" class="w-4 h-4 mr-2 animate-spin" />
-                        <Send v-else class="w-4 h-4 mr-2" />
-                        {{ saving ? 'Iniciando...' : 'Iniciar Disparos' }}
+                        <component :is="form.schedule_mode === 'scheduled' ? Calendar : Send" v-else class="w-4 h-4 mr-2" />
+                        {{ saving ? 'Salvando...' : (form.schedule_mode === 'scheduled' ? 'Confirmar Agendamento' : 'Iniciar Disparos') }}
                     </Button>
                 </div>
             </div>

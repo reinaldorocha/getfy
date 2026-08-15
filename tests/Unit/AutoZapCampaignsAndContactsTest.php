@@ -142,4 +142,39 @@ class AutoZapCampaignsAndContactsTest extends TestCase
             'status' => 'pending',
         ]);
     }
+
+    public function test_campaign_service_schedules_campaign_for_future_datetime(): void
+    {
+        $connection = AutoZapConnection::create([
+            'provider' => 'evolution',
+            'credentials' => ['server_url' => 'https://api.test', 'api_key' => '123', 'instance_name' => 'test'],
+            'is_active' => true,
+        ]);
+
+        AutoZapImportedContact::create([
+            'name' => 'Ana Beatriz',
+            'email' => 'ana@example.com',
+            'phone' => '5511988887777',
+            'products' => ['Curso PMMA'],
+        ]);
+
+        $contactService = new AutoZapContactService();
+        $campaignService = new AutoZapCampaignService($contactService);
+
+        $futureDate = now()->addDays(2)->format('Y-m-d H:i:s');
+
+        $campaign = $campaignService->createAndDispatchCampaign(null, [
+            'name' => 'Campanha Black Friday Agendada',
+            'message' => 'Olá {{primeiro_nome}}, sua oferta chegou!',
+            'autozap_connection_id' => $connection->id,
+            'schedule_mode' => 'scheduled',
+            'scheduled_at' => $futureDate,
+        ]);
+
+        $this->assertEquals('scheduled', $campaign->status);
+        $this->assertNotNull($campaign->scheduled_at);
+        $this->assertNull($campaign->started_at);
+        $this->assertEquals(1, $campaign->total_recipients);
+    }
 }
+

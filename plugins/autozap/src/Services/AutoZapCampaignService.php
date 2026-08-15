@@ -2,6 +2,7 @@
 
 namespace Plugins\AutoZap\Services;
 
+use Carbon\Carbon;
 use Plugins\AutoZap\Jobs\AutoZapSendCampaignJob;
 use Plugins\AutoZap\Models\AutoZapCampaign;
 use Plugins\AutoZap\Models\AutoZapCampaignSend;
@@ -13,7 +14,7 @@ class AutoZapCampaignService
     ) {}
 
     /**
-     * Criar e iniciar o disparo de uma nova campanha.
+     * Criar e iniciar o disparo ou agendamento de uma nova campanha.
      */
     public function createAndDispatchCampaign(?int $tenantId, array $data): AutoZapCampaign
     {
@@ -21,9 +22,24 @@ class AutoZapCampaignService
         $message = trim($data['message'] ?? '');
         $connectionId = $data['autozap_connection_id'] ?? null;
         $productIds = $data['product_ids'] ?? [];
-        $selectedKeys = $data['selected_contact_keys'] ?? []; // array de chaves selecionadas
+        $selectedKeys = $data['selected_contact_keys'] ?? [];
         $audienceFilter = $data['audience_filter'] ?? [];
-        $throttleSeconds = (int) ($data['throttle_seconds'] ?? 5); // intervalo médio entre disparos (5-15s)
+        $throttleSeconds = (int) ($data['throttle_seconds'] ?? 5);
+        $scheduleMode = $data['schedule_mode'] ?? 'immediate';
+        $scheduledAtRaw = $data['scheduled_at'] ?? null;
+
+        // Calcular se é agendado
+        $isScheduled = ($scheduleMode === 'scheduled') && !empty($scheduledAtRaw);
+        $scheduledAt = null;
+        $baseDelaySeconds = 0;
+
+        if ($isScheduled) {
+            $scheduledAt = Carbon::parse($scheduledAtRaw);
+            if ($scheduledAt->isPast()) {
+                throw new \InvalidArgumentException('A data de agendamento deve ser uma data e hora futura.');
+            }
+            $baseDelaySeconds = max(0, (int) now()->diffInSeconds($scheduledAt, false));
+        }
 
         // 1. Obter os contatos correspondentes aos filtros
         $contactsResult = $this->contactService->getUnifiedContacts($tenantId, [
@@ -60,12 +76,13 @@ class AutoZapCampaignService
             'sent_count' => 0,
             'delivered_count' => 0,
             'error_count' => 0,
-            'status' => 'processing',
-            'started_at' => now(),
+            'status' => $isScheduled ? 'scheduled' : 'processing',
+            'scheduled_at' => $scheduledAt,
+            'started_at' => $isScheduled ? null : now(),
         ]);
 
         // 3. Criar os registros individuais de envio e enfileirar com delay escalonado
-        $currentDelay = 0;
+        $currentDelay = $baseDelaySeconds;
 
         foreach ($selectedContacts as $contact) {
             $productNames = collect($contact['products'] ?? [])->pluck('name')->filter()->implode(', ');
@@ -84,8 +101,7 @@ class AutoZapCampaignService
                 'status' => 'pending',
             ]);
 
-            // Enfileirar o job de disparo com delay escalonado (ex: a cada 5 segundos)
-            // Se o queue worker não estiver rodando no modo síncrono, dispatchAfterResponse ou delay normal
+            // Enfileirar com o delay calculado (base agendada + throttle escalonado)
             if ($currentDelay === 0) {
                 AutoZapSendCampaignJob::dispatch($send->id, 0);
             } else {

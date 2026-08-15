@@ -120,7 +120,7 @@ class AutoZapCampaignsController extends Controller
     }
 
     /**
-     * Criar e iniciar disparo de nova campanha.
+     * Criar e iniciar disparo ou agendamento de nova campanha.
      */
     public function store(Request $request): JsonResponse
     {
@@ -132,6 +132,8 @@ class AutoZapCampaignsController extends Controller
             'selected_contact_keys' => 'nullable|array',
             'audience_filter' => 'nullable|array',
             'throttle_seconds' => 'nullable|integer|min:1|max:60',
+            'schedule_mode' => 'nullable|string|in:immediate,scheduled',
+            'scheduled_at' => 'nullable|date',
         ]);
 
         $tenantId = $request->user()?->tenant_id;
@@ -139,9 +141,13 @@ class AutoZapCampaignsController extends Controller
         try {
             $campaign = $this->campaignService->createAndDispatchCampaign($tenantId, $validated);
 
+            $msg = $campaign->status === 'scheduled'
+                ? 'Campanha agendada com sucesso!'
+                : 'Campanha criada e disparos iniciados com sucesso!';
+
             return response()->json([
                 'success' => true,
-                'message' => 'Campanha criada e disparos iniciados com sucesso!',
+                'message' => $msg,
                 'campaign' => $campaign->load('connection'),
             ]);
         } catch (\Throwable $e) {
@@ -151,6 +157,7 @@ class AutoZapCampaignsController extends Controller
             ], 422);
         }
     }
+
 
     /**
      * Detalhes e logs individuais da campanha.
