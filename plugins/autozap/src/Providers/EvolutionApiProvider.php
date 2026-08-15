@@ -73,42 +73,67 @@ class EvolutionApiProvider implements AutoZapProviderInterface
     public function testConnection(): void
     {
         $instanceName = $this->instance();
-        $instanceUrl = $this->baseUrl() . '/instance/connectionState/' . rawurlencode($instanceName);
+        $endpoints = [
+            $this->baseUrl() . '/instance/connectionState/' . rawurlencode($instanceName),
+            $this->baseUrl() . '/instance/connect/' . rawurlencode($instanceName),
+            $this->baseUrl() . '/chat/findStatusMessage/' . rawurlencode($instanceName),
+        ];
 
-        try {
-            $res = $this->client()->get($instanceUrl);
+        $lastError = '';
+        $lastStatus = 0;
+        $lastBody = '';
 
-            if ($res->status() === 404) {
-                throw new \RuntimeException("Evolution API: Instância \"{$instanceName}\" não foi encontrada no servidor (HTTP 404). Verifique se o Nome da Instância está exatamente igual ao criado no painel da Evolution API.");
-            }
+        foreach ($endpoints as $url) {
+            try {
+                $res = $this->client()->get($url);
+                $lastStatus = $res->status();
+                $lastBody = $res->body();
 
-            if ($res->status() === 401 || $res->status() === 403) {
-                throw new \RuntimeException('Evolution API: Chave de API (apikey) inválida ou não autorizada (HTTP ' . $res->status() . ').');
-            }
-
-            if ($res->successful()) {
-                $json = $res->json();
-                $state = strtolower((string) ($json['instance']['state'] ?? $json['state'] ?? ''));
-                if ($state === 'close' || $state === 'connecting') {
-                    throw new \RuntimeException("Evolution API: A instância \"{$instanceName}\" existe, mas está desconectada (status: {$state}). Escaneie o QR Code no painel da Evolution API.");
+                if ($res->successful()) {
+                    $json = $res->json();
+                    $state = strtolower((string) ($json['instance']['state'] ?? $json['state'] ?? $json['connectionStatus'] ?? 'open'));
+                    if ($state === 'close' || $state === 'connecting') {
+                        throw new \RuntimeException("Evolution API: A instância \"{$instanceName}\" existe, mas está desconectada (status: {$state}). Escaneie o QR Code no painel da Evolution API.");
+                    }
+                    return;
                 }
-                return;
+
+                if ($res->status() === 401 || $res->status() === 403) {
+                    throw new \RuntimeException('Evolution API: Chave de API (apikey / Token) inválida ou não autorizada (HTTP ' . $res->status() . '). Verifique o Token da Instância ou a Global API Key.');
+                }
+            } catch (\RuntimeException $e) {
+                throw $e;
+            } catch (\Throwable $e) {
+                $lastError = $e->getMessage();
+            }
+        }
+
+        // Tenta também listar instâncias com GET /instance/fetchInstances
+        try {
+            $fetchRes = $this->client()->get($this->baseUrl() . '/instance/fetchInstances');
+            if ($fetchRes->successful()) {
+                $instances = $fetchRes->json();
+                $names = [];
+                if (is_array($instances)) {
+                    foreach ($instances as $inst) {
+                        if (isset($inst['name'])) $names[] = $inst['name'];
+                        elseif (isset($inst['instance']['instanceName'])) $names[] = $inst['instance']['instanceName'];
+                        elseif (isset($inst['instanceName'])) $names[] = $inst['instanceName'];
+                    }
+                }
+                $available = $names ? implode(', ', $names) : 'nenhuma';
+                throw new \RuntimeException("Evolution API: Conectou no servidor, mas a instância \"{$instanceName}\" não foi encontrada. Instâncias disponíveis no servidor: [{$available}].");
             }
         } catch (\RuntimeException $e) {
             throw $e;
-        } catch (\Throwable $e) {
-            throw new \RuntimeException('Evolution API: falha ao conectar no servidor: ' . $e->getMessage());
+        } catch (\Throwable) {
+            // Segue para a mensagem padrão
         }
 
-        // Tenta checar lista geral de instâncias
-        $fetchUrl = $this->baseUrl() . '/instance/fetchInstances';
-        $resFetch = $this->client()->get($fetchUrl);
-        if ($resFetch->successful()) {
-            throw new \RuntimeException("Evolution API: Servidor online, porém a instância \"{$instanceName}\" não foi localizada. Verifique o nome da instância.");
-        }
-
-        throw new \RuntimeException('Evolution API: falha ao conectar (HTTP ' . $resFetch->status() . '). Verifique a URL do Servidor e a API Key.');
+        $detail = $lastBody ? " Resposta da Evolution API: " . substr($lastBody, 0, 150) : ($lastError ? " Detalhe: {$lastError}" : "");
+        throw new \RuntimeException("Evolution API: Falha ao validar instância \"{$instanceName}\" (HTTP {$lastStatus}).{$detail}");
     }
+
 
 
     public function sendText(string $toE164OrDigits, string $text, array $payload = []): array
