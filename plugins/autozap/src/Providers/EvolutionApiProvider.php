@@ -26,7 +26,7 @@ class EvolutionApiProvider implements AutoZapProviderInterface
 
     private function apiKey(): string
     {
-        $key = trim((string) ($this->credentials['apikey'] ?? $this->credentials['api_key'] ?? ''));
+        $key = trim((string) ($this->credentials['apikey'] ?? $this->credentials['api_key'] ?? $this->credentials['token'] ?? ''));
         if ($key === '') {
             throw new \RuntimeException('Evolution API: informe a apikey.');
         }
@@ -44,17 +44,20 @@ class EvolutionApiProvider implements AutoZapProviderInterface
 
     private function client(int $timeout = 10, int $connectTimeout = 4)
     {
+        $key = $this->apiKey();
         return Http::withoutVerifying()
             ->timeout($timeout)
             ->connectTimeout($connectTimeout)
             ->withHeaders([
-                'apikey' => $this->apiKey(),
+                'apikey' => $key,
+                'token' => $key,
+                'Authorization' => 'Bearer ' . $key,
                 'Content-Type' => 'application/json',
             ]);
     }
 
     /**
-     * Normalize destination phone number for Evolution API.
+     * Normalize destination phone number for Evolution API / Evo-Go.
      */
     private function formatNumber(string $number): string
     {
@@ -73,10 +76,13 @@ class EvolutionApiProvider implements AutoZapProviderInterface
     public function testConnection(): void
     {
         $instanceName = $this->instance();
+
+        // 1. Tentar endpoint da Evolution API Node (v1 / v2)
         $endpoints = [
-            $this->baseUrl() . '/instance/connectionState/' . rawurlencode($instanceName),
+            $this->baseUrl() . '/instance/status', // Evo-Go (WhatsApp-Go)
+            $this->baseUrl() . '/instance/connectionState/' . rawurlencode($instanceName), // Evolution Node v1/v2
+            $this->baseUrl() . '/instance/info/' . rawurlencode($instanceName),
             $this->baseUrl() . '/instance/connect/' . rawurlencode($instanceName),
-            $this->baseUrl() . '/chat/findStatusMessage/' . rawurlencode($instanceName),
         ];
 
         $lastError = '';
@@ -85,22 +91,31 @@ class EvolutionApiProvider implements AutoZapProviderInterface
 
         foreach ($endpoints as $url) {
             try {
-                $res = $this->client(4, 2)->get($url);
+                $res = $this->client(5, 3)->get($url);
                 $lastStatus = $res->status();
                 $lastBody = $res->body();
 
-
                 if ($res->successful()) {
                     $json = $res->json();
+                    
+                    // Tratamento para Evo-Go (data: {Connected: true, LoggedIn: true})
+                    if (isset($json['data']['Connected'])) {
+                        if (!$json['data']['Connected']) {
+                            throw new \RuntimeException("Evolution Go: A instância \"{$instanceName}\" está desconectada no WhatsApp. Escaneie o QR Code.");
+                        }
+                        return;
+                    }
+
+                    // Tratamento para Evolution Node (instance: {state: 'open'})
                     $state = strtolower((string) ($json['instance']['state'] ?? $json['state'] ?? $json['connectionStatus'] ?? 'open'));
                     if ($state === 'close' || $state === 'connecting') {
-                        throw new \RuntimeException("Evolution API: A instância \"{$instanceName}\" existe, mas está desconectada (status: {$state}). Escaneie o QR Code no painel da Evolution API.");
+                        throw new \RuntimeException("Evolution API: A instância \"{$instanceName}\" existe, mas está desconectada (status: {$state}). Escaneie o QR Code.");
                     }
                     return;
                 }
 
                 if ($res->status() === 401 || $res->status() === 403) {
-                    throw new \RuntimeException('Evolution API: Chave de API (apikey / Token) inválida ou não autorizada (HTTP ' . $res->status() . '). Verifique o Token da Instância ou a Global API Key.');
+                    throw new \RuntimeException('Evolution API: Chave de API (apikey / Token) inválida ou não autorizada (HTTP ' . $res->status() . '). Verifique o Token da Instância.');
                 }
             } catch (\RuntimeException $e) {
                 throw $e;
@@ -109,55 +124,51 @@ class EvolutionApiProvider implements AutoZapProviderInterface
             }
         }
 
-        // Tenta também listar instâncias com GET /instance/fetchInstances
-        try {
-            $fetchRes = $this->client()->get($this->baseUrl() . '/instance/fetchInstances');
-            if ($fetchRes->successful()) {
-                $instances = $fetchRes->json();
-                $names = [];
-                if (is_array($instances)) {
-                    foreach ($instances as $inst) {
-                        if (isset($inst['name'])) $names[] = $inst['name'];
-                        elseif (isset($inst['instance']['instanceName'])) $names[] = $inst['instance']['instanceName'];
-                        elseif (isset($inst['instanceName'])) $names[] = $inst['instanceName'];
-                    }
-                }
-                $available = $names ? implode(', ', $names) : 'nenhuma';
-                throw new \RuntimeException("Evolution API: Conectou no servidor, mas a instância \"{$instanceName}\" não foi encontrada. Instâncias disponíveis no servidor: [{$available}].");
-            }
-        } catch (\RuntimeException $e) {
-            throw $e;
-        } catch (\Throwable) {
-            // Segue para a mensagem padrão
-        }
-
-        $detail = $lastBody ? " Resposta da Evolution API: " . substr($lastBody, 0, 150) : ($lastError ? " Detalhe: {$lastError}" : "");
+        $detail = $lastBody ? " Resposta do servidor: " . substr($lastBody, 0, 150) : ($lastError ? " Detalhe: {$lastError}" : "");
         throw new \RuntimeException("Evolution API: Falha ao validar instância \"{$instanceName}\" (HTTP {$lastStatus}).{$detail}");
     }
 
-
-
     public function sendText(string $toE164OrDigits, string $text, array $payload = []): array
     {
-        $url = $this->baseUrl() . '/message/sendText/' . rawurlencode($this->instance());
-        $body = [
-            'number' => $this->formatNumber($toE164OrDigits),
+        $number = $this->formatNumber($toE164OrDigits);
+
+        // 1. Tentar rota padrão da Evolution Node (/message/sendText/{instance})
+        $urlNode = $this->baseUrl() . '/message/sendText/' . rawurlencode($this->instance());
+        $bodyNode = [
+            'number' => $number,
             'text' => $text,
             'linkPreview' => true,
             'delay' => 1200,
         ];
 
-        $res = $this->client()->post($url, $body);
-        if (! $res->successful()) {
-            $err = $res->json('message') ?: ('HTTP ' . $res->status());
+        $res = $this->client()->post($urlNode, $bodyNode);
+        if ($res->successful()) {
+            return (array) ($res->json() ?? []);
+        }
+
+        // 2. Se deu 404, tentar rota do Evolution Go (/send/text)
+        if ($res->status() === 404) {
+            $urlGo = $this->baseUrl() . '/send/text';
+            $bodyGo = [
+                'number' => $number,
+                'text' => $text,
+            ];
+            $resGo = $this->client()->post($urlGo, $bodyGo);
+            if ($resGo->successful()) {
+                return (array) ($resGo->json() ?? []);
+            }
+            $err = $resGo->json('error') ?: $resGo->json('message') ?: ('HTTP ' . $resGo->status());
             throw new \RuntimeException('Evolution API: erro ao enviar mensagem (' . $err . ').');
         }
-        return (array) ($res->json() ?? []);
+
+        $err = $res->json('message') ?: $res->json('error') ?: ('HTTP ' . $res->status());
+        throw new \RuntimeException('Evolution API: erro ao enviar mensagem (' . $err . ').');
     }
 
     public function sendMedia(string $toE164OrDigits, string $caption, string $mediaUrl, string $mimeType, array $payload = [], ?string $fileName = null): array
     {
-        $url = $this->baseUrl() . '/message/sendMedia/' . rawurlencode($this->instance());
+        $number = $this->formatNumber($toE164OrDigits);
+        $urlNode = $this->baseUrl() . '/message/sendMedia/' . rawurlencode($this->instance());
         
         $mediaType = 'document';
         if (str_starts_with($mimeType, 'image/')) {
@@ -168,8 +179,8 @@ class EvolutionApiProvider implements AutoZapProviderInterface
             $mediaType = 'audio';
         }
 
-        $body = [
-            'number' => $this->formatNumber($toE164OrDigits),
+        $bodyNode = [
+            'number' => $number,
             'mediatype' => $mediaType,
             'mimetype' => $mimeType,
             'caption' => $caption,
@@ -177,41 +188,59 @@ class EvolutionApiProvider implements AutoZapProviderInterface
             'delay' => 1200,
         ];
         if ($fileName) {
-            $body['fileName'] = $fileName;
+            $bodyNode['fileName'] = $fileName;
         }
 
-        $res = $this->client()->post($url, $body);
-        if (! $res->successful()) {
-            $err = $res->json('message') ?: ('HTTP ' . $res->status());
+        $res = $this->client()->post($urlNode, $bodyNode);
+        if ($res->successful()) {
+            return (array) ($res->json() ?? []);
+        }
+
+        // Fallback Evo-Go
+        if ($res->status() === 404) {
+            $urlGo = $this->baseUrl() . '/send/media';
+            $bodyGo = [
+                'number' => $number,
+                'url' => $mediaUrl,
+                'caption' => $caption,
+            ];
+            $resGo = $this->client()->post($urlGo, $bodyGo);
+            if ($resGo->successful()) {
+                return (array) ($resGo->json() ?? []);
+            }
+            $err = $resGo->json('error') ?: $resGo->json('message') ?: ('HTTP ' . $resGo->status());
             throw new \RuntimeException('Evolution API: erro ao enviar mídia (' . $err . ').');
         }
-        return (array) ($res->json() ?? []);
+
+        $err = $res->json('message') ?: $res->json('error') ?: ('HTTP ' . $res->status());
+        throw new \RuntimeException('Evolution API: erro ao enviar mídia (' . $err . ').');
     }
 
     public function sendAudio(string $toE164OrDigits, string $audioUrl, bool $isPtt = true, array $payload = []): array
     {
-        // Se for gravação simulada (nota de voz WhatsApp / PTT)
+        $number = $this->formatNumber($toE164OrDigits);
+
         if ($isPtt) {
-            $url = $this->baseUrl() . '/message/sendWhatsAppAudio/' . rawurlencode($this->instance());
-            $body = [
-                'number' => $this->formatNumber($toE164OrDigits),
+            $urlNode = $this->baseUrl() . '/message/sendWhatsAppAudio/' . rawurlencode($this->instance());
+            $bodyNode = [
+                'number' => $number,
                 'audio' => $audioUrl,
                 'delay' => 1200,
                 'encoding' => true,
             ];
-            $res = $this->client()->post($url, $body);
+            $res = $this->client()->post($urlNode, $bodyNode);
             if ($res->successful()) {
                 return (array) ($res->json() ?? []);
             }
         }
 
-        // Fallback para sendMedia como áudio
         return $this->sendMedia($toE164OrDigits, '', $audioUrl, 'audio/mp3', $payload);
     }
 
     public function sendButtons(string $toE164OrDigits, string $title, string $description, array $buttons, string $footer = '', array $payload = []): array
     {
-        $url = $this->baseUrl() . '/message/sendButtons/' . rawurlencode($this->instance());
+        $number = $this->formatNumber($toE164OrDigits);
+        $urlNode = $this->baseUrl() . '/message/sendButtons/' . rawurlencode($this->instance());
         
         $formattedButtons = [];
         foreach ($buttons as $idx => $btn) {
@@ -234,8 +263,8 @@ class EvolutionApiProvider implements AutoZapProviderInterface
             }
         }
 
-        $body = [
-            'number' => $this->formatNumber($toE164OrDigits),
+        $bodyNode = [
+            'number' => $number,
             'title' => $title,
             'description' => $description,
             'footer' => $footer,
@@ -243,75 +272,78 @@ class EvolutionApiProvider implements AutoZapProviderInterface
             'delay' => 1200,
         ];
 
-        try {
-            $res = $this->client()->post($url, $body);
-            if ($res->successful()) {
-                return (array) ($res->json() ?? []);
-            }
-        } catch (\Throwable) {
-            // Fallback para texto formatado abaixo
+        $res = $this->client()->post($urlNode, $bodyNode);
+        if ($res->successful()) {
+            return (array) ($res->json() ?? []);
         }
 
-        // Fallback em caso do endpoint de botões não estar disponível
-        $fallbackText = ($title !== '' ? "*{$title}*\n\n" : '') . $description;
-        if (! empty($buttons)) {
-            $fallbackText .= "\n\nOpções:";
-            foreach ($buttons as $btn) {
-                $btnText = is_array($btn) ? ($btn['text'] ?? $btn['title'] ?? '') : (string) $btn;
-                $btnUrl = is_array($btn) ? ($btn['url'] ?? '') : '';
-                if ($btnUrl !== '') {
-                    $fallbackText .= "\n👉 {$btnText}: {$btnUrl}";
-                } else {
-                    $fallbackText .= "\n👉 {$btnText}";
-                }
+        // Fallback Evo-Go button
+        if ($res->status() === 404) {
+            $urlGo = $this->baseUrl() . '/send/button';
+            $bodyGo = [
+                'number' => $number,
+                'title' => $title,
+                'description' => $description,
+                'footer' => $footer,
+                'buttons' => $formattedButtons,
+            ];
+            $resGo = $this->client()->post($urlGo, $bodyGo);
+            if ($resGo->successful()) {
+                return (array) ($resGo->json() ?? []);
             }
         }
-        return $this->sendText($toE164OrDigits, $fallbackText, $payload);
+
+        $err = $res->json('message') ?: $res->json('error') ?: ('HTTP ' . $res->status());
+        throw new \RuntimeException('Evolution API: erro ao enviar botões (' . $err . ').');
     }
+
+    public function sendList(string $toE164OrDigits, string $title, string $description, string $buttonText, array $sections, string $footer = '', array $payload = []): array
+    {
+        $url = $this->baseUrl() . '/message/sendList/' . rawurlencode($this->instance());
+        
+        $body = [
+            'number' => $this->formatNumber($toE164OrDigits),
+            'title' => $title,
+            'description' => $description,
+            'buttonText' => $buttonText,
+            'footerText' => $footer,
+            'sections' => $sections,
+            'delay' => 1200,
+        ];
+
+        $res = $this->client()->post($url, $body);
+        if (! $res->successful()) {
+            $err = $res->json('message') ?: ('HTTP ' . $res->status());
+            throw new \RuntimeException('Evolution API: erro ao enviar lista (' . $err . ').');
+        }
+        return (array) ($res->json() ?? []);
+    }
+
 
     public function sendInteractive(string $toE164OrDigits, array $interactive, array $payload = []): array
     {
-        $title = (string) ($interactive['title'] ?? '');
-        $text = (string) ($interactive['text'] ?? $interactive['description'] ?? '');
-        $buttons = (array) ($interactive['buttons'] ?? []);
-        $footer = (string) ($interactive['footer'] ?? '');
 
-        if (! empty($buttons)) {
-            return $this->sendButtons($toE164OrDigits, $title, $text, $buttons, $footer, $payload);
+        $type = $interactive['type'] ?? 'button';
+        if ($type === 'list') {
+            return $this->sendList(
+                $toE164OrDigits,
+                (string) ($interactive['title'] ?? ''),
+                (string) ($interactive['description'] ?? ''),
+                (string) ($interactive['button_text'] ?? 'Opções'),
+                (array) ($interactive['sections'] ?? []),
+                (string) ($interactive['footer'] ?? ''),
+                $payload
+            );
         }
 
-        return $this->sendText($toE164OrDigits, $text, $payload);
-    }
-
-    /**
-     * @return array<int, array{id: string, name: string, participants_count?: int}>
-     */
-    public function fetchGroups(): array
-    {
-        $url = $this->baseUrl() . '/group/fetchAllGroups/' . rawurlencode($this->instance()) . '?getParticipants=false';
-        try {
-            $res = $this->client()->get($url);
-            if ($res->successful()) {
-                $data = $res->json();
-                $items = is_array($data) ? (isset($data['response']) && is_array($data['response']) ? $data['response'] : $data) : [];
-                $groups = [];
-                foreach ($items as $item) {
-                    if (! is_array($item)) continue;
-                    $id = (string) ($item['id'] ?? $item['jid'] ?? '');
-                    $name = (string) ($item['subject'] ?? $item['name'] ?? $item['title'] ?? $id);
-                    if ($id !== '') {
-                        $groups[] = [
-                            'id' => $id,
-                            'name' => $name ?: $id,
-                            'participants_count' => count((array) ($item['participants'] ?? [])),
-                        ];
-                    }
-                }
-                return $groups;
-            }
-        } catch (\Throwable $e) {
-            \Log::warning('Evolution API fetchGroups failed: ' . $e->getMessage());
-        }
-        return [];
+        return $this->sendButtons(
+            $toE164OrDigits,
+            (string) ($interactive['title'] ?? ''),
+            (string) ($interactive['description'] ?? $interactive['body'] ?? ''),
+            (array) ($interactive['buttons'] ?? []),
+            (string) ($interactive['footer'] ?? ''),
+            $payload
+        );
     }
 }
+
