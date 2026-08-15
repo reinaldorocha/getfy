@@ -2,9 +2,13 @@
   "slug": "autozap",
   "name": "AutoZap",
   "version": "1.0.0",
-  "description": "Automação de WhatsApp para envio de acesos, recuperação de carrinho, etc.",
-  "author": "Getfy",
   "type": "integration",
+  "requires": {
+    "getfy": ">=2.0.0",
+    "plugin_api": 2
+  },
+  "description": "Automação de WhatsApp para envio de acessos, recuperação de carrinho, etc.",
+  "author": "Getfy",
   "category": "whatsapp",
   "banner": "capa.png",
   "routes": "routes.php",
