@@ -42,11 +42,11 @@ class EvolutionApiProvider implements AutoZapProviderInterface
         return $instance;
     }
 
-    private function client()
+    private function client(int $timeout = 10, int $connectTimeout = 4)
     {
         return Http::withoutVerifying()
-            ->timeout(15)
-            ->connectTimeout(5)
+            ->timeout($timeout)
+            ->connectTimeout($connectTimeout)
             ->withHeaders([
                 'apikey' => $this->apiKey(),
                 'Content-Type' => 'application/json',
@@ -85,9 +85,10 @@ class EvolutionApiProvider implements AutoZapProviderInterface
 
         foreach ($endpoints as $url) {
             try {
-                $res = $this->client()->get($url);
+                $res = $this->client(4, 2)->get($url);
                 $lastStatus = $res->status();
                 $lastBody = $res->body();
+
 
                 if ($res->successful()) {
                     $json = $res->json();
