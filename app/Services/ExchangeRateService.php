@@ -84,16 +84,11 @@ class ExchangeRateService
     {
         $to = implode(',', $codes);
         try {
-            $response = Http::timeout(15)->get(self::FRANKFURTER_URL, [
+            $response = Http::withoutVerifying()->timeout(3)->get(self::FRANKFURTER_URL, [
                 'from' => 'BRL',
                 'to' => $to,
             ]);
             if (! $response->successful()) {
-                Log::warning('ExchangeRateService: Frankfurter HTTP error', [
-                    'status' => $response->status(),
-                    'codes' => $codes,
-                ]);
-
                 return [];
             }
             $data = $response->json();
@@ -107,11 +102,6 @@ class ExchangeRateService
 
             return $out;
         } catch (\Throwable $e) {
-            Log::warning('ExchangeRateService: Frankfurter exception', [
-                'message' => $e->getMessage(),
-                'codes' => $codes,
-            ]);
-
             return [];
         }
     }
@@ -124,12 +114,8 @@ class ExchangeRateService
     public function fetchAllRatesFromBrlErApi(): array
     {
         try {
-            $response = Http::timeout(25)->get(self::ER_API_URL);
+            $response = Http::withoutVerifying()->timeout(4)->get(self::ER_API_URL);
             if (! $response->successful()) {
-                Log::warning('ExchangeRateService: open.er-api HTTP error', [
-                    'status' => $response->status(),
-                ]);
-
                 return [];
             }
             $data = $response->json();
@@ -151,10 +137,6 @@ class ExchangeRateService
 
             return $out;
         } catch (\Throwable $e) {
-            Log::warning('ExchangeRateService: open.er-api exception', [
-                'message' => $e->getMessage(),
-            ]);
-
             return [];
         }
     }
@@ -251,18 +233,9 @@ class ExchangeRateService
      */
     public function getCachedRatesMap(): array
     {
-        $cached = Cache::get(self::CACHE_KEY_RATES_FROM_BRL);
-        if (is_array($cached) && count($cached) >= self::MIN_CACHE_ENTRIES) {
-            return $cached;
-        }
-
-        $map = $this->buildRatesMap();
-
-        if (count($map) >= self::MIN_CACHE_ENTRIES) {
-            Cache::put(self::CACHE_KEY_RATES_FROM_BRL, $map, now()->addHours(self::CACHE_TTL_HOURS));
-        }
-
-        return $map;
+        return Cache::remember(self::CACHE_KEY_RATES_FROM_BRL, now()->addHours(self::CACHE_TTL_HOURS), function () {
+            return $this->buildRatesMap();
+        });
     }
 
     /**
@@ -281,6 +254,16 @@ class ExchangeRateService
             }
         }
 
+        // Completa com fallbacks locais de todas as moedas suportadas para nunca ficar vazio nem travar requests
+        foreach (CheckoutCurrencyCatalog::supportedCodes() as $code) {
+            if (! isset($map[$code]) || $map[$code] <= 0) {
+                $fallback = CheckoutCurrencyCatalog::fallbackRateToBrl($code);
+                if ($fallback > 0) {
+                    $map[$code] = $fallback;
+                }
+            }
+        }
+
         $defaults = config('products.rates', []);
         if (! isset($map['USD']) || $map['USD'] <= 0) {
             $map['USD'] = (float) ($defaults['brl_usd'] ?? 0.18);
@@ -291,6 +274,7 @@ class ExchangeRateService
 
         return $map;
     }
+
 
     public function forgetCachedRates(): void
     {
