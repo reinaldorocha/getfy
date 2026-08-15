@@ -6,6 +6,7 @@ use App\Models\Order;
 use App\Models\Product;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Str;
 use Plugins\AutoZap\Models\AutoZapCampaign;
 use Plugins\AutoZap\Models\AutoZapCampaignSend;
 use Plugins\AutoZap\Models\AutoZapConnection;
@@ -21,8 +22,20 @@ class AutoZapCampaignsAndContactsTest extends TestCase
     public function test_unified_contacts_aggregates_multiple_products_for_same_buyer(): void
     {
         $user = User::factory()->create(['name' => 'Carlos Silva', 'email' => 'carlos@example.com']);
-        $product1 = Product::factory()->create(['name' => 'Curso de Tráfego']);
-        $product2 = Product::factory()->create(['name' => 'Mentoria VIP']);
+        $product1 = Product::create([
+            'id' => (string) Str::uuid(),
+            'name' => 'Curso de Tráfego',
+            'slug' => 'curso-de-trafego',
+            'type' => Product::TYPE_LINK,
+            'price' => 197.00,
+        ]);
+        $product2 = Product::create([
+            'id' => (string) Str::uuid(),
+            'name' => 'Mentoria VIP',
+            'slug' => 'mentoria-vip',
+            'type' => Product::TYPE_LINK,
+            'price' => 997.00,
+        ]);
 
         // 2 pedidos do mesmo comprador com produtos diferentes
         Order::create([
@@ -96,8 +109,7 @@ class AutoZapCampaignsAndContactsTest extends TestCase
     public function test_campaign_service_creates_campaign_and_sends_queue_records(): void
     {
         $connection = AutoZapConnection::create([
-            'driver' => 'evolution',
-            'name' => 'Principal',
+            'provider' => 'evolution',
             'credentials' => ['server_url' => 'https://api.test', 'api_key' => '123', 'instance_name' => 'test'],
             'is_active' => true,
         ]);
