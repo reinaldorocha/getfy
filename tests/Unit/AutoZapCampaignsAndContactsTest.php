@@ -6,7 +6,8 @@ use App\Models\Order;
 use App\Models\Product;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Queue;
+use Plugins\AutoZap\Jobs\AutoZapSendCampaignJob;
 use Plugins\AutoZap\Models\AutoZapCampaign;
 use Plugins\AutoZap\Models\AutoZapCampaignSend;
 use Plugins\AutoZap\Models\AutoZapConnection;
@@ -23,17 +24,15 @@ class AutoZapCampaignsAndContactsTest extends TestCase
     {
         $user = User::factory()->create(['name' => 'Carlos Silva', 'email' => 'carlos@example.com']);
         $product1 = Product::create([
-            'id' => (string) Str::uuid(),
             'name' => 'Curso de Tráfego',
             'slug' => 'curso-de-trafego',
-            'type' => Product::TYPE_LINK,
+            'type' => 'course',
             'price' => 197.00,
         ]);
         $product2 = Product::create([
-            'id' => (string) Str::uuid(),
             'name' => 'Mentoria VIP',
             'slug' => 'mentoria-vip',
-            'type' => Product::TYPE_LINK,
+            'type' => 'course',
             'price' => 997.00,
         ]);
 
@@ -108,6 +107,8 @@ class AutoZapCampaignsAndContactsTest extends TestCase
 
     public function test_campaign_service_creates_campaign_and_sends_queue_records(): void
     {
+        Queue::fake();
+
         $connection = AutoZapConnection::create([
             'provider' => 'evolution',
             'credentials' => ['server_url' => 'https://api.test', 'api_key' => '123', 'instance_name' => 'test'],
@@ -141,10 +142,14 @@ class AutoZapCampaignsAndContactsTest extends TestCase
             'phone' => '5511977776666',
             'status' => 'pending',
         ]);
+
+        Queue::assertPushed(AutoZapSendCampaignJob::class, 1);
     }
 
     public function test_campaign_service_schedules_campaign_for_future_datetime(): void
     {
+        Queue::fake();
+
         $connection = AutoZapConnection::create([
             'provider' => 'evolution',
             'credentials' => ['server_url' => 'https://api.test', 'api_key' => '123', 'instance_name' => 'test'],
@@ -175,6 +180,7 @@ class AutoZapCampaignsAndContactsTest extends TestCase
         $this->assertNotNull($campaign->scheduled_at);
         $this->assertNull($campaign->started_at);
         $this->assertEquals(1, $campaign->total_recipients);
+
+        Queue::assertPushed(AutoZapSendCampaignJob::class, 1);
     }
 }
-
