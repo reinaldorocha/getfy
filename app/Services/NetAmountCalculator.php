@@ -16,8 +16,6 @@ class NetAmountCalculator
 
     public const FEE_SOURCE_ESTIMATED = 'estimated';
 
-    public const FEE_SOURCE_MANUAL = 'manual';
-
     /** @var array<int, array<int, float>> */
     private array $pagarmeRatesByTenant = [];
 
@@ -26,16 +24,6 @@ class NetAmountCalculator
      */
     public function forOrder(Order $order): array
     {
-        $manualNetAmount = $this->manualNetAmountForOrder($order);
-        if ($manualNetAmount !== null) {
-            return [
-                'gross' => round((float) $order->amount, 2),
-                'fee' => 0.0,
-                'net' => $manualNetAmount,
-                'fee_source' => self::FEE_SOURCE_MANUAL,
-            ];
-        }
-
         $method = $order->checkoutPaymentMethod();
         $gateway = strtolower((string) ($order->gateway ?? ''));
         $gross = $gateway === 'pagarme' && $method === 'card'
@@ -102,16 +90,6 @@ class NetAmountCalculator
             'net' => $net,
             'fee_source' => self::FEE_SOURCE_ESTIMATED,
         ];
-    }
-
-    public function manualNetAmountForOrder(Order $order): ?float
-    {
-        $metadata = is_array($order->metadata) ? $order->metadata : [];
-        $manualNetAmount = $metadata['manual_net_amount'] ?? null;
-
-        return is_numeric($manualNetAmount)
-            ? max(0, round((float) $manualNetAmount, 2))
-            : null;
     }
 
     public function estimateFee(int $tenantId, string $gatewaySlug, string $method, float $gross): float

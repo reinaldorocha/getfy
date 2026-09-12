@@ -217,26 +217,11 @@ function displayCurrency(value) {
     return valuesVisible.value ? formatBRL(value) : '••••••';
 }
 
-function vendaBilledAmount(v) {
-    return v?.billed_amount ?? v?.amount_total ?? v?.amount ?? 0;
-}
-
 function vendaDisplayAmount(v) {
-    return v?.display_amount_is_producer_share && v.display_amount != null
-        ? v.display_amount
-        : vendaBilledAmount(v);
-}
-
-function vendaNetProfitAmount(v) {
-    return v?.net_profit_amount ?? v?.display_amount ?? 0;
-}
-
-function hasNetProfitAmount(v) {
-    return v?.net_profit_amount !== null && v?.net_profit_amount !== undefined;
-}
-
-function displayNetProfit(v) {
-    return hasNetProfitAmount(v) ? displayMoney(vendaNetProfitAmount(v), v.currency) : '–';
+    if (v?.display_amount_is_producer_share && v.display_amount != null) {
+        return v.display_amount;
+    }
+    return v?.amount_total ?? v?.amount ?? 0;
 }
 
 function displayMoney(value, currency = 'BRL') {
@@ -337,30 +322,6 @@ function pluginActionHref(action, venda) {
 function closeMenu() {
     openMenuId.value = null;
     menuAnchorEl.value = null;
-}
-
-function handleManualNetAmountUpdated({ orderId, netAmount, manualNetAmount }) {
-    if (String(selectedVenda.value?.id) === String(orderId)) {
-        const metadata = { ...(selectedVenda.value?.metadata ?? {}) };
-        if (manualNetAmount === null) {
-            delete metadata.manual_net_amount;
-        } else {
-            metadata.manual_net_amount = manualNetAmount;
-        }
-        selectedVenda.value = {
-            ...selectedVenda.value,
-            metadata,
-            net_profit_amount: netAmount,
-            net_profit_amount_is_estimated: manualNetAmount === null,
-        };
-    }
-
-    showToast(manualNetAmount === null ? 'Ajuste manual removido.' : 'Valor líquido ajustado.', 'success');
-    router.reload({
-        only: ['vendas', 'stats'],
-        preserveScroll: true,
-        preserveState: true,
-    });
 }
 
 function handleClickOutside(event) {
@@ -563,7 +524,7 @@ function openProofExport() {
                     <EyeOff v-else class="h-5 w-5" aria-hidden="true" />
                 </button>
             </div>
-            <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
                 <div
                     class="panel-card-md"
                 >
@@ -632,26 +593,6 @@ function openProofExport() {
                         </p>
                     </div>
                     <p v-else class="mt-2 text-2xl font-bold text-zinc-900 dark:text-white">
-                        {{ displayMoney(0, 'BRL') }}
-                    </p>
-                </div>
-                <div
-                    class="panel-card-md"
-                >
-                    <div class="flex items-center gap-2 text-zinc-600 dark:text-zinc-400">
-                        <Banknote class="h-5 w-5" />
-                        <span class="text-sm font-medium">Lucro líquido</span>
-                    </div>
-                    <div v-if="(stats.lucro_liquido_por_moeda ?? []).length" class="mt-2 space-y-1">
-                        <p
-                            v-for="row in stats.lucro_liquido_por_moeda"
-                            :key="row.currency"
-                            class="text-lg font-bold text-emerald-600 dark:text-emerald-400 sm:text-2xl"
-                        >
-                            {{ displayMoney(row.total, row.currency) }}
-                        </p>
-                    </div>
-                    <p v-else class="mt-2 text-2xl font-bold text-emerald-600 dark:text-emerald-400">
                         {{ displayMoney(0, 'BRL') }}
                     </p>
                 </div>
@@ -955,7 +896,7 @@ function openProofExport() {
                                 </span>
                             </div>
                         </div>
-                        <div class="col-span-2 grid grid-cols-2 gap-2">
+                        <div class="col-span-2 grid grid-cols-3 gap-2">
                             <div>
                                 <p class="text-[11px] font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">Bruto</p>
                                 <p class="text-sm font-semibold tabular-nums text-zinc-900 dark:text-white">
@@ -972,26 +913,6 @@ function openProofExport() {
                                 <p class="text-[11px] font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">Líquido</p>
                                 <p class="text-sm font-semibold tabular-nums text-zinc-900 dark:text-white">
                                     {{ v.status === 'completed' ? displayMoney(v.net_amount ?? v.gross_amount, v.currency) : displayMoney(vendaDisplayAmount(v), v.currency) }}
-                                </p>
-                            </div>
-                            <div>
-                                <p class="text-[11px] font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
-                                    Valor faturado
-                                </p>
-                                <p class="mt-1 text-base font-semibold tabular-nums text-zinc-900 dark:text-white">
-                                    {{ displayMoney(vendaBilledAmount(v), v.currency) }}
-                                </p>
-                            </div>
-                            <div class="text-right">
-                                <p class="text-[11px] font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
-                                    Lucro líquido
-                                </p>
-                                <p class="mt-1 text-base font-semibold tabular-nums text-emerald-600 dark:text-emerald-400">
-                                    {{ displayNetProfit(v) }}
-                                    <span
-                                        v-if="hasNetProfitAmount(v) && v.net_profit_amount_is_estimated"
-                                        title="Estimativa com base nas taxas configuradas"
-                                    >*</span>
                                 </p>
                             </div>
                         </div>
@@ -1045,14 +966,6 @@ function openProofExport() {
                             class="px-4 py-3 text-right text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400"
                         >
                             Líquido
-                        </th>
-                        <th class="px-4 py-3 text-right text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
-                            Valor faturado
-                        </th>
-                        <th
-                            class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400"
-                        >
-                            Lucro líquido
                         </th>
                         <th class="relative w-20 px-2 py-3">
                             <span class="sr-only">Ações</span>
@@ -1113,18 +1026,11 @@ function openProofExport() {
                         </td>
                         <td class="whitespace-nowrap px-4 py-3 text-right text-sm font-medium tabular-nums text-zinc-900 dark:text-white">
                             <p>{{ v.status === 'completed' ? displayMoney(v.net_amount ?? v.gross_amount, v.currency) : displayMoney(vendaDisplayAmount(v), v.currency) }}</p>
-                        </td>
-                        <td class="whitespace-nowrap px-4 py-3 text-sm font-medium text-zinc-900 dark:text-white">
-                            <p>{{ displayMoney(vendaBilledAmount(v), v.currency) }}</p>
-                        </td>
-                        <td class="whitespace-nowrap px-4 py-3 text-sm font-medium text-emerald-700 dark:text-emerald-300">
-                            <p>
-                                {{ displayNetProfit(v) }}
-                                <span
-                                    v-if="hasNetProfitAmount(v) && v.net_profit_amount_is_estimated"
-                                    class="text-xs font-normal text-zinc-500"
-                                    title="Estimativa com base nas taxas configuradas"
-                                >*</span>
+                            <p
+                                v-if="v.display_amount_is_producer_share && v.sale_gross_total != null"
+                                class="text-xs font-normal text-zinc-500 dark:text-zinc-400"
+                            >
+                                Sua parte
                             </p>
                         </td>
                         <td class="relative whitespace-nowrap px-2 py-3" @click.stop>
@@ -1156,7 +1062,7 @@ function openProofExport() {
                         </td>
                     </tr>
                     <tr v-if="!vendasList.length" class="dark:bg-zinc-800/60">
-                        <td colspan="10" class="px-4 py-12 text-center text-zinc-500 dark:text-zinc-400">
+                        <td colspan="6" class="px-4 py-12 text-center text-zinc-500 dark:text-zinc-400">
                             Nenhuma venda encontrada.
                         </td>
                     </tr>
@@ -1221,7 +1127,6 @@ function openProofExport() {
             :venda="selectedVenda"
             :plugin_order_detail_panels="plugin_order_detail_panels"
             @close="closeSidebar"
-            @manual-net-amount-updated="handleManualNetAmountUpdated"
         />
 
         <!-- Toast local -->

@@ -7,9 +7,7 @@ use App\Plugins\PluginExtensionRegistry;
 use App\Models\CheckoutSession;
 use App\Models\Order;
 use App\Models\Product;
-use App\Services\OrderNetProfitCalculator;
 use App\Support\OrderCurrencyTotals;
-use App\Support\MoneyMinorUnits;
 use App\Support\ReportingPeriod;
 use App\Services\TeamAccessService;
 use Illuminate\Http\Request;
@@ -64,30 +62,6 @@ class DashboardController extends Controller
                 ? [['currency' => 'BRL', 'total' => round($fallbackTotal, 2)]]
                 : [];
         }
-
-        $netProfitCalculator = app(OrderNetProfitCalculator::class);
-        $lucroLiquidoPorMoeda = [];
-        (clone $ordersCompleted)
-            ->with([
-                'product:id',
-                'orderItems:id,order_id,amount',
-                'commissionEntries:id,order_id,role,commission_amount',
-            ])
-            ->orderBy('id')
-            ->chunkById(500, function ($orders) use (&$lucroLiquidoPorMoeda, $netProfitCalculator) {
-                foreach ($orders as $order) {
-                    $currency = MoneyMinorUnits::normalizeCurrencyCode($order->getCurrencyOrDefault());
-                    $lucroLiquidoPorMoeda[$currency] = ($lucroLiquidoPorMoeda[$currency] ?? 0.0)
-                        + $netProfitCalculator->forOrder($order);
-                }
-            });
-        ksort($lucroLiquidoPorMoeda);
-        $lucroLiquidoPorMoeda = collect($lucroLiquidoPorMoeda)
-            ->map(fn ($total, $currency) => ['currency' => $currency, 'total' => round((float) $total, 2)])
-            ->values()
-            ->all();
-        $lucroLiquidoRow = collect($lucroLiquidoPorMoeda)->firstWhere('currency', 'BRL');
-        $lucroLiquido = $lucroLiquidoRow ? (float) $lucroLiquidoRow['total'] : 0.0;
         $brlRow = collect($vendasTotaisPorMoeda)->firstWhere('currency', 'BRL');
         $vendasTotais = $brlRow ? (float) $brlRow['total'] : 0.0;
         $quantidadeVendas = $ordersCompleted->count();
@@ -154,8 +128,6 @@ class DashboardController extends Controller
                 'period' => $period,
                 'vendas_totais' => round($vendasTotais, 2),
                 'vendas_totais_por_moeda' => $vendasTotaisPorMoeda,
-                'lucro_liquido' => round($lucroLiquido, 2),
-                'lucro_liquido_por_moeda' => $lucroLiquidoPorMoeda,
                 'vendas_pendentes' => round($vendasPendentes, 2),
                 'quantidade_vendas' => $quantidadeVendas,
                 'ticket_medio' => round($ticketMedio, 2),
@@ -196,11 +168,6 @@ class DashboardController extends Controller
         return ucfirst($gateway);
     }
 
-    /**
-     * Soma o lucro líquido de pedidos completed agrupado por moeda, respeitando os mesmos filtros do dashboard.
-     *
-     * @return list<array{currency: string, total: float}>
-     */
     private function buildGraficoVendas(?int $tenantId, string $period, ?\Carbon\Carbon $start, ?\Carbon\Carbon $end): array
     {
         $query = Order::forTenant($tenantId)->where('status', 'completed');

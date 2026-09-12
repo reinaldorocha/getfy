@@ -14,14 +14,10 @@ use App\Support\AffiliateAttribution;
 use App\Models\OrderItem;
 use App\Models\Subscription;
 use App\Services\AccessEmailService;
-use App\Services\NetAmountCalculator;
-use App\Services\OrderNetProfitCalculator;
 use App\Services\ProducerSaleAmount;
 use App\Services\RefundService;
 use App\Services\TeamAccessService;
-use App\Support\MoneyMinorUnits;
 use App\Support\OrderCurrencyTotals;
-use App\Support\ReportingPeriod;
 use App\Support\OrderFinancialTotals;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -263,7 +259,7 @@ class VendasController extends Controller
                 'orderItems.productOffer:id,name',
                 'orderItems.subscriptionPlan:id,name',
                 'checkoutSession:id,order_id,utm_source,utm_medium,utm_campaign,tracking_metadata',
-                'commissionEntries:id,order_id,role,commission_amount,gateway_fee_amount,net_amount',
+                'commissionEntries:id,order_id,role,commission_amount',
             ])
             ->orderByDesc('created_at')
             ->paginate(20)
@@ -271,10 +267,8 @@ class VendasController extends Controller
 
         $affiliateLookup = $this->affiliateLookupForOrders($paginator->getCollection());
         $producerSaleAmount = app(ProducerSaleAmount::class);
-        $netAmountCalculator = app(NetAmountCalculator::class);
-        $orderNetProfitCalculator = app(OrderNetProfitCalculator::class);
 
-        $vendas = $paginator->through(function (Order $o) use ($affiliateLookup, $producerSaleAmount, $netAmountCalculator, $orderNetProfitCalculator) {
+        $vendas = $paginator->through(function (Order $o) use ($affiliateLookup, $producerSaleAmount) {
                 $arr = $o->toArray();
                 $arr['currency'] = $o->getCurrencyOrDefault();
                 $arr['gateway_label'] = $o->paymentMethodDisplayLabel();
@@ -282,24 +276,13 @@ class VendasController extends Controller
                 $arr['checkout_url'] = $this->checkoutUrlWithTracking($o);
                 $arr['payment_type_label'] = $this->paymentTypeLabel($o);
                 $arr['amount_total'] = $o->lineItemsTotalAmount();
-                $arr['billed_amount'] = $arr['amount_total'];
                 $producerAmount = $producerSaleAmount->forOrder($o);
-                $financial = $o->financialBreakdown();
-                if ($o->status === 'completed') {
-                    $netProfitAmount = $orderNetProfitCalculator->forOrder($o);
-                    $arr['net_profit_amount'] = round($netProfitAmount, 2);
-                    $arr['net_profit_amount_is_estimated'] = $netAmountCalculator->manualNetAmountForOrder($o) === null
-                        && ($producerAmount['is_estimated']
-                            || (! $producerAmount['is_producer_share'] && $financial['fee_source'] === NetAmountCalculator::FEE_SOURCE_ESTIMATED));
-                } else {
-                    $arr['net_profit_amount'] = null;
-                    $arr['net_profit_amount_is_estimated'] = false;
-                }
                 $arr['display_amount'] = $producerAmount['amount'];
                 $arr['display_amount_is_producer_share'] = $producerAmount['is_producer_share'];
                 $arr['display_amount_is_estimated'] = $producerAmount['is_estimated'];
                 $arr['sale_gross_total'] = $producerAmount['gross_total'];
                 $arr['has_partner_split'] = $producerAmount['has_partner_split'];
+                $financial = $o->financialBreakdown();
                 $arr['gross_amount'] = $financial['gross'];
                 $arr['gateway_fee'] = $financial['fee'];
                 $arr['net_amount'] = $financial['net'];
@@ -351,7 +334,6 @@ class VendasController extends Controller
                 ? [['currency' => 'BRL', 'gross' => round($fallbackTotal, 2), 'fees' => 0.0, 'net' => round($fallbackTotal, 2)]]
                 : [];
         }
-        $lucroLiquidoPorMoeda = $this->lucroLiquidoPorMoedaFromQuery($statsQuery, $orderNetProfitCalculator);
 
         $vendasPix = (clone $statsQuery)
             ->where(function ($q) {
@@ -385,9 +367,6 @@ class VendasController extends Controller
         $stats = [
             'vendas_encontradas' => $vendasEncontradas,
             'valor_por_moeda' => $valorPorMoeda,
-            'lucro_liquido_por_moeda' => $lucroLiquidoPorMoeda,
-            'valor_faturado' => ($brl = collect($valorPorMoeda)->firstWhere('currency', 'BRL')) ? (float) $brl['total'] : 0.0,
-            'lucro_liquido' => ($brl = collect($lucroLiquidoPorMoeda)->firstWhere('currency', 'BRL')) ? (float) $brl['total'] : 0.0,
             'valor_bruto_por_moeda' => collect($financeiroPorMoeda)->map(fn ($r) => [
                 'currency' => $r['currency'],
                 'total' => $r['gross'],
@@ -457,44 +436,6 @@ class VendasController extends Controller
         ]);
     }
 
-    /**
-     * Soma o lucro líquido de pedidos completed agrupado por moeda, respeitando os mesmos filtros da tela.
-     *
-     * @return list<array{currency: string, total: float}>
-     */
-    private function lucroLiquidoPorMoedaFromQuery($statsQuery, OrderNetProfitCalculator $orderNetProfitCalculator): array
-    {
-        $orders = (clone $statsQuery)
-            ->where('orders.status', 'completed')
-            ->with([
-                'orderItems:id,order_id,amount',
-                'commissionEntries:id,order_id,role,commission_amount,gateway_fee_amount,net_amount',
-            ])
-            ->get(['orders.id', 'orders.tenant_id', 'orders.amount', 'orders.gateway', 'orders.metadata', 'orders.currency', 'orders.product_id']);
-
-        if ($orders->isEmpty()) {
-            return [];
-        }
-
-        $merged = [];
-        foreach ($orders as $order) {
-            $netProfitAmount = $orderNetProfitCalculator->forOrder($order);
-
-            $currency = MoneyMinorUnits::normalizeCurrencyCode($order->getCurrencyOrDefault());
-            $merged[$currency] = ($merged[$currency] ?? 0.0) + $netProfitAmount;
-        }
-
-        ksort($merged);
-
-        return collect($merged)
-            ->map(fn ($total, $currency) => [
-                'currency' => $currency,
-                'total' => round((float) $total, 2),
-            ])
-            ->values()
-            ->all();
-    }
-
     public function export(Request $request): StreamedResponse
     {
         $format = $request->query('format', 'csv');
@@ -510,23 +451,15 @@ class VendasController extends Controller
                 'product:id,name',
                 'user:id,name,email',
                 'orderItems:id,order_id,amount',
-                'commissionEntries:id,order_id,role,commission_amount,gateway_fee_amount,net_amount',
+                'commissionEntries:id,order_id,role,commission_amount',
             ])
             ->orderByDesc('created_at')
             ->get();
 
         $producerSaleAmount = app(ProducerSaleAmount::class);
-        $netAmountCalculator = app(NetAmountCalculator::class);
 
-        $rows = $vendas->map(function (Order $o) use ($producerSaleAmount, $netAmountCalculator) {
-            $billedAmount = $o->lineItemsTotalAmount();
-            $netProfitAmount = null;
-            if ($o->status === 'completed') {
-                $display = $producerSaleAmount->forOrder($o);
-                $netProfitAmount = $display['is_producer_share']
-                    ? (float) $display['amount']
-                    : (float) $netAmountCalculator->forOrder($o)['net'];
-            }
+        $rows = $vendas->map(function (Order $o) use ($producerSaleAmount) {
+            $display = $producerSaleAmount->forOrder($o);
 
             return [
                 'data' => $o->created_at?->format('d/m/Y H:i'),
@@ -536,12 +469,11 @@ class VendasController extends Controller
                 'status' => $this->statusLabel($o->status),
                 'gateway' => $o->paymentMethodDisplayLabel(),
                 'moeda' => $o->getCurrencyOrDefault(),
-                'valor_faturado' => number_format($billedAmount, 2, ',', '.'),
-                'lucro_liquido' => $netProfitAmount === null ? '' : number_format($netProfitAmount, 2, ',', '.'),
+                'valor_liquido' => number_format($display['amount'], 2, ',', '.'),
             ];
         })->all();
 
-        $headers = ['Data', 'Produto', 'Cliente', 'E-mail', 'Status', 'Método', 'Moeda', 'Valor faturado', 'Lucro líquido'];
+        $headers = ['Data', 'Produto', 'Cliente', 'E-mail', 'Status', 'Método', 'Moeda', 'Valor líquido'];
 
         if ($format === 'csv') {
             $filename = 'vendas_'.date('Y-m-d_His').'.csv';
@@ -679,43 +611,6 @@ class VendasController extends Controller
             'success' => false,
             'message' => 'Não foi possível reenviar o e-mail. Verifique se o produto possui template de e-mail configurado.',
         ], 422);
-    }
-
-    public function updateNetAmount(Order $order, Request $request, OrderNetProfitCalculator $orderNetProfitCalculator): JsonResponse
-    {
-        $tenantId = auth()->user()->tenant_id;
-        if ($order->tenant_id !== $tenantId) {
-            return response()->json(['success' => false, 'message' => 'Pedido não encontrado.'], 404);
-        }
-
-        if (auth()->user()->isTeam()) {
-            $allowed = app(TeamAccessService::class)->allowedProductIdsFor(auth()->user());
-            if ($allowed !== [] && ! in_array($order->product_id, $allowed, true)) {
-                return response()->json(['success' => false, 'message' => 'Sem permissão para este produto.'], 403);
-            }
-        }
-
-        $validated = $request->validate([
-            'net_amount' => ['nullable', 'numeric', 'min:0', 'max:100000000'],
-        ]);
-
-        $metadata = is_array($order->metadata) ? $order->metadata : [];
-        $manualNetAmount = $validated['net_amount'] ?? null;
-        if ($manualNetAmount === null) {
-            unset($metadata['manual_net_amount']);
-        } else {
-            $metadata['manual_net_amount'] = round((float) $manualNetAmount, 2);
-        }
-
-        $order->update(['metadata' => $metadata]);
-        $order = $order->fresh();
-        ReportingPeriod::bustDashboardCache($tenantId);
-
-        return response()->json([
-            'success' => true,
-            'net_amount' => $orderNetProfitCalculator->forOrder($order),
-            'manual_net_amount' => $metadata['manual_net_amount'] ?? null,
-        ]);
     }
 
     public function approveManually(Order $order): JsonResponse
