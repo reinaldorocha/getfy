@@ -12,7 +12,7 @@ use Illuminate\Console\Command;
 class ReconcilePendingPaymentsCommand extends Command
 {
     protected $signature = 'payments:reconcile-pending
-                            {--limit=200 : Máximo de pedidos para checar por execução}
+                            {--limit=50 : Máximo de pedidos para consultar no gateway por execução}
                             {--days=30 : Considerar pedidos criados nos últimos X dias}';
 
     protected $description = 'Reconfirma pagamentos pendentes no gateway e aprova automaticamente quando liquidado.';
@@ -21,6 +21,8 @@ class ReconcilePendingPaymentsCommand extends Command
     {
         $limit = max(1, (int) $this->option('limit'));
         $days = max(1, (int) $this->option('days'));
+        // Varre mais candidatos para não gastar o limit só com pedidos já esgotados (5/10/15).
+        $scanLimit = min(2000, max($limit * 10, $limit));
 
         $orders = Order::query()
             ->where('status', 'pending')
@@ -30,7 +32,7 @@ class ReconcilePendingPaymentsCommand extends Command
             ->where('gateway_id', '!=', '')
             ->where('created_at', '>=', now()->subDays($days))
             ->orderByDesc('updated_at')
-            ->limit($limit)
+            ->limit($scanLimit)
             ->get();
 
         $checked = 0;
@@ -39,6 +41,10 @@ class ReconcilePendingPaymentsCommand extends Command
         $expired = 0;
 
         foreach ($orders as $order) {
+            if ($checked >= $limit) {
+                break;
+            }
+
             if (PendingPaymentReconcileSchedule::shouldExpirePix($order)) {
                 $this->expirePixOrder($order);
                 $expired++;
@@ -80,6 +86,26 @@ class ReconcilePendingPaymentsCommand extends Command
 
             try {
                 $apiStatus = $driver->getTransactionStatus($transactionId, $credentials);
+                // CajuPay: se gateway_id for payment_id e a API pública da sessão tiver o paid,
+                // tenta também o token/session id do metadata.
+                if ($apiStatus !== 'paid' && $gatewaySlug === 'cajupay') {
+                    $meta = is_array($order->metadata) ? $order->metadata : [];
+                    foreach (['cajupay_session_token', 'cajupay_checkout_session_id', 'cajupay_payment_id'] as $metaKey) {
+                        $alt = isset($meta[$metaKey]) && is_string($meta[$metaKey]) ? trim($meta[$metaKey]) : '';
+                        if ($alt === '' || $alt === $transactionId) {
+                            continue;
+                        }
+                        try {
+                            $altStatus = $driver->getTransactionStatus($alt, $credentials);
+                        } catch (\Throwable) {
+                            $altStatus = null;
+                        }
+                        if ($altStatus === 'paid') {
+                            $apiStatus = 'paid';
+                            break;
+                        }
+                    }
+                }
             } catch (\Throwable) {
                 $apiStatus = null;
             }
@@ -87,9 +113,19 @@ class ReconcilePendingPaymentsCommand extends Command
             PendingPaymentReconcileSchedule::markChecked($order);
 
             if ($apiStatus === 'paid') {
-                ProcessPaymentWebhook::dispatchSync($gatewaySlug, $transactionId, 'order.paid', 'paid', [
+                $payload = [
                     'source' => 'reconcile_pending',
-                ]);
+                ];
+                // CajuPay: poll/reconcile já validou paid — ProcessPaymentWebhook não deve
+                // abortar se a 2ª consulta à API oscilar.
+                if ($gatewaySlug === 'cajupay') {
+                    $payload['getfy_order_id'] = $order->id;
+                    $meta = is_array($order->metadata) ? $order->metadata : [];
+                    if (! empty($meta['cajupay_checkout_session_id'])) {
+                        $payload['cajupay_checkout_session_id'] = $meta['cajupay_checkout_session_id'];
+                    }
+                }
+                ProcessPaymentWebhook::dispatchSync($gatewaySlug, $transactionId, 'order.paid', 'paid', $payload);
                 $paid++;
 
                 continue;

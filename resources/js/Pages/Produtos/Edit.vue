@@ -383,6 +383,7 @@ watch(currentTab, () => {
 const pg = props.produto.checkout_config?.payment_gateways ?? {};
 const et = props.produto.checkout_config?.email_template ?? {};
 const ci = props.produto.checkout_config?.card_installments ?? { enabled: false, max: 1 };
+const cajuCard = props.produto.checkout_config?.cajupay_card ?? { require_threeds: false };
 const ppRaw = props.produto.checkout_config?.pix_parcelado ?? {};
 const pixParceladoInitial = {
     max_installments: ppRaw.max_installments ?? null,
@@ -557,6 +558,9 @@ const form = useForm({
     card_installments: {
         enabled: Boolean(ci.enabled),
         max: Math.min(12, Math.max(1, parseInt(ci.max, 10) || 1)),
+    },
+    cajupay_card: {
+        require_threeds: Boolean(cajuCard.require_threeds),
     },
     stripe_link_enabled: stripeLinkEnabled !== false && stripeLinkEnabled !== '0',
     email_template: {
@@ -1474,7 +1478,7 @@ function isBrBillingGateway(slug) {
     return BR_BILLING_GATEWAY_SLUGS.includes(String(slug || '').toLowerCase());
 }
 
-const CARD_INSTALLMENT_GATEWAY_SLUGS = ['efi', 'asaas', 'pagarme'];
+const CARD_INSTALLMENT_GATEWAY_SLUGS = ['efi', 'asaas', 'pagarme', 'cajupay'];
 function supportsCardInstallments(slug) {
     return CARD_INSTALLMENT_GATEWAY_SLUGS.includes(String(slug || '').toLowerCase());
 }
@@ -1483,6 +1487,7 @@ function cardInstallmentsGatewayLabel(slug) {
     if (s === 'efi') return 'Efí';
     if (s === 'asaas') return 'Asaas';
     if (s === 'pagarme') return 'Pagar.me';
+    if (s === 'cajupay') return 'CajuPay';
     return 'cartão';
 }
 
@@ -1611,6 +1616,9 @@ function submit() {
         if (form.card_installments) {
             fd.append('card_installments[enabled]', form.card_installments.enabled ? '1' : '0');
             fd.append('card_installments[max]', String(Math.min(12, Math.max(1, form.card_installments.max || 1))));
+        }
+        if (form.cajupay_card) {
+            fd.append('cajupay_card[require_threeds]', form.cajupay_card.require_threeds ? '1' : '0');
         }
         if (form.payment_gateways.pix_parcelado === 'cajupay' && form.pix_parcelado) {
             const pp = form.pix_parcelado;
@@ -1860,7 +1868,10 @@ function submit() {
                 </section>
 
                 <!-- Preço e cobrança -->
-                <section class="panel-table xl:min-h-0">
+                <section
+                    class="panel-table xl:min-h-0"
+                    :class="comboDropdownContext ? '!overflow-visible' : ''"
+                >
                     <div class="border-b border-zinc-200/80 bg-zinc-50/80 px-6 py-4 dark:border-zinc-700/80 dark:bg-zinc-800/50">
                         <h2 class="text-base font-semibold text-zinc-900 dark:text-white">Preço e cobrança</h2>
                         <p class="mt-0.5 text-sm text-zinc-500 dark:text-zinc-400">Defina como o produto será cobrado e o valor base.</p>
@@ -1923,7 +1934,7 @@ function submit() {
                                         </button>
                                         <div
                                             v-show="comboDropdownContext === 'main'"
-                                            class="absolute left-0 right-0 z-50 mt-1 max-h-56 space-y-1 overflow-y-auto rounded-xl border border-zinc-200 bg-white p-2 shadow-lg dark:border-zinc-600 dark:bg-zinc-900"
+                                            class="absolute left-0 right-0 z-[60] mt-1 max-h-56 space-y-1 overflow-y-auto rounded-xl border border-zinc-200 bg-white p-2 shadow-lg dark:border-zinc-600 dark:bg-zinc-900"
                                             role="listbox"
                                             @click.stop
                                         >
@@ -2134,7 +2145,7 @@ function submit() {
                                             </button>
                                             <div
                                                 v-show="comboDropdownContext === 'offer'"
-                                                class="absolute left-0 right-0 z-50 mt-1 max-h-52 space-y-1 overflow-y-auto rounded-xl border border-zinc-200 bg-white p-2 shadow-lg dark:border-zinc-600 dark:bg-zinc-900"
+                                                class="absolute left-0 right-0 z-[60] mt-1 max-h-52 space-y-1 overflow-y-auto rounded-xl border border-zinc-200 bg-white p-2 shadow-lg dark:border-zinc-600 dark:bg-zinc-900"
                                                 role="listbox"
                                                 @click.stop
                                             >
@@ -2244,7 +2255,7 @@ function submit() {
                                                 </button>
                                                 <div
                                                     v-show="comboDropdownContext === 'plan'"
-                                                    class="absolute left-0 right-0 z-50 mt-1 max-h-52 space-y-1 overflow-y-auto rounded-xl border border-zinc-200 bg-white p-2 shadow-lg dark:border-zinc-600 dark:bg-zinc-900"
+                                                    class="absolute left-0 right-0 z-[60] mt-1 max-h-52 space-y-1 overflow-y-auto rounded-xl border border-zinc-200 bg-white p-2 shadow-lg dark:border-zinc-600 dark:bg-zinc-900"
                                                     role="listbox"
                                                     @click.stop
                                                 >
@@ -2504,7 +2515,10 @@ function submit() {
                                             <div class="flex items-center justify-between rounded-xl border border-zinc-100 bg-white px-4 py-3 dark:border-zinc-700 dark:bg-zinc-800/50">
                                                 <div class="min-w-0">
                                                     <p class="text-sm font-medium text-zinc-700 dark:text-zinc-300">Permitir parcelamento</p>
-                                                    <p class="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">Cliente poderá parcelar no cartão de crédito ({{ cardInstallmentsGatewayLabel(form.payment_gateways.card) }})</p>
+                                                    <p class="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">
+                                                        Opcional. Se desligado, o cartão cobra só à vista (1x). Com {{ cardInstallmentsGatewayLabel(form.payment_gateways.card) }}, o seletor de parcelas aparece no checkout
+                                                        <template v-if="form.payment_gateways.card === 'cajupay'"> (dentro do SDK)</template>.
+                                                    </p>
                                                 </div>
                                                 <Toggle v-model="form.card_installments.enabled" class="shrink-0" />
                                             </div>
@@ -2518,6 +2532,19 @@ function submit() {
                                                     <option v-for="n in maxAllowedInstallments" :key="n" :value="n">{{ n }}x</option>
                                                 </select>
                                                 <p class="mt-1.5 text-xs text-zinc-500 dark:text-zinc-400">Com o preço de R$ {{ priceNum.toFixed(2) }}, até {{ maxAllowedInstallments }}x (mín. R$ {{ minParcelaBrl.toFixed(2) }} por parcela).</p>
+                                            </div>
+                                        </div>
+                                    </template>
+                                    <template v-if="form.payment_gateways.card === 'cajupay'">
+                                        <div class="mt-3 space-y-3 border-t border-zinc-200/80 pt-3 dark:border-zinc-600/80">
+                                            <div class="flex items-center justify-between rounded-xl border border-zinc-100 bg-white px-4 py-3 dark:border-zinc-700 dark:bg-zinc-800/50">
+                                                <div class="min-w-0">
+                                                    <p class="text-sm font-medium text-zinc-700 dark:text-zinc-300">Exigir 3DS (Cartão Brasil)</p>
+                                                    <p class="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">
+                                                        Só surte efeito se a conta CajuPay estiver em modo 3DS opcional. O comprador não vê essa opção — o SDK autentica sozinho quando exigido.
+                                                    </p>
+                                                </div>
+                                                <Toggle v-model="form.cajupay_card.require_threeds" class="shrink-0" />
                                             </div>
                                         </div>
                                     </template>

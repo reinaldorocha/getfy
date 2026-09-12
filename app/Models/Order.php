@@ -204,6 +204,14 @@ class Order extends Model
         return round((float) $this->orderItems->sum(fn ($it) => (float) ($it->amount ?? 0)), 2);
     }
 
+    /**
+     * @return array{gross: float, fee: float, net: float, fee_source: string}
+     */
+    public function financialBreakdown(): array
+    {
+        return app(\App\Services\NetAmountCalculator::class)->forOrder($this);
+    }
+
     public function getCheckoutSlug(): string
     {
         if ($this->productOffer && $this->productOffer->checkout_slug) {
@@ -245,7 +253,7 @@ class Order extends Model
             return 'Outro';
         }
         $g = strtolower($gateway);
-        if (in_array($g, ['spacepag'], true) || str_contains($g, 'pix')) {
+        if (str_contains($g, 'pix')) {
             return 'PIX';
         }
         if ($g === 'card' || str_contains($g, 'cartao') || str_contains($g, 'cartão') || str_contains($g, 'credito')) {

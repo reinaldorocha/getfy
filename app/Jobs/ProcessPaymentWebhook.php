@@ -57,9 +57,24 @@ class ProcessPaymentWebhook implements ShouldQueue
         }
 
         if ($this->isConfirmedPaidWebhook()) {
-            $lockKey = 'webhook_processing.' . $this->gatewaySlug . '.' . $this->transactionId;
+            // Lock por pedido (não por transaction id): payment_id e session_id
+            // não devem competir e “engolir” a aprovação.
+            $lockKey = 'webhook_processing.order.'.$order->id;
             if (! Cache::add($lockKey, true, now()->addMinutes(5))) {
-                Log::info('ProcessPaymentWebhook: paid branch skipped (concurrent lock)', [
+                $order->refresh();
+                if ($order->status === 'completed') {
+                    $order->loadMissing('orderItems.product', 'product');
+                    $order->grantPurchasedProductAccessToBuyer();
+
+                    return;
+                }
+                // Outro worker pode estar no meio — espera e reavalia.
+                usleep(300000);
+                $order->refresh();
+                if ($order->status === 'completed') {
+                    return;
+                }
+                Log::info('ProcessPaymentWebhook: paid branch skipped (concurrent lock, still pending)', [
                     'order_id' => $order->id,
                     'gateway' => $this->gatewaySlug,
                     'transaction_id' => $this->transactionId,
@@ -70,6 +85,9 @@ class ProcessPaymentWebhook implements ShouldQueue
             }
             if ($order->status === 'completed') {
                 $order->loadMissing('orderItems.product', 'product');
+                $this->applyCajuPayPaidAmountFromWebhook($order);
+                $order->refresh();
+                $this->syncProducerGatewayFeeFromOrderMetadata($order);
                 $order->grantPurchasedProductAccessToBuyer();
                 Log::info('ProcessPaymentWebhook: paid branch skipped (order already completed, access re-synced)', [
                     'order_id' => $order->id,
@@ -81,10 +99,9 @@ class ProcessPaymentWebhook implements ShouldQueue
                 return;
             }
             $apiStatus = $this->fetchGatewayTransactionStatus($order);
-            $trustedCajuPayHmac = $this->gatewaySlug === 'cajupay'
-                && in_array($this->payload['webhook_source'] ?? '', ['cajupay_hmac_verified', 'cajupay_subscription_verified'], true);
+            $trustedPaidSource = $this->isTrustedCajuPayPaidSource();
             if ($apiStatus !== 'paid') {
-                if (! $trustedCajuPayHmac) {
+                if (! $trustedPaidSource) {
                     Log::warning('ProcessPaymentWebhook: paid branch aborted (gateway reconfirm not paid)', [
                         'order_id' => $order->id,
                         'gateway' => $this->gatewaySlug,
@@ -95,15 +112,17 @@ class ProcessPaymentWebhook implements ShouldQueue
 
                     return;
                 }
-                Log::info('ProcessPaymentWebhook: CajuPay paid applied on HMAC-verified webhook (reconfirm not paid yet)', [
+                Log::info('ProcessPaymentWebhook: CajuPay paid applied on trusted source (reconfirm not paid yet)', [
                     'order_id' => $order->id,
                     'transaction_id' => $this->transactionId,
                     'api_status' => $apiStatus,
+                    'source' => $this->payload['source'] ?? ($this->payload['webhook_source'] ?? null),
                 ]);
             }
             $this->applyCajuPayPaidAmountFromWebhook($order);
             $order->update(['status' => 'completed']);
             $order->refresh();
+            $this->syncProducerGatewayFeeFromOrderMetadata($order);
             $order->syncUtmMetadataFromCheckoutSession();
             $order->grantPurchasedProductAccessToBuyer();
             if ($order->subscription_plan_id) {
@@ -200,17 +219,58 @@ class ProcessPaymentWebhook implements ShouldQueue
                 ->first();
         }
 
+        $orderId = (int) ($this->payload['getfy_order_id'] ?? 0);
+        if ($orderId > 0) {
+            $byId = Order::query()->where('id', $orderId)->where('gateway', 'cajupay')->first();
+            if ($byId) {
+                return $byId;
+            }
+        }
+
         $tid = $this->transactionId;
+        $sessionFromPayload = trim((string) ($this->payload['cajupay_checkout_session_id'] ?? ''));
+        $paymentFromPayload = trim((string) ($this->payload['cajupay_payment_id'] ?? ''));
 
         return Order::where('gateway', 'cajupay')
-            ->where(function ($q) use ($tid) {
+            ->where(function ($q) use ($tid, $sessionFromPayload, $paymentFromPayload) {
                 $q->where('gateway_id', $tid)
                     ->orWhere('metadata->cajupay_checkout_session_id', $tid)
                     ->orWhere('metadata->cajupay_session_token', $tid)
                     ->orWhere('metadata->cajupay_payment_id', $tid)
                     ->orWhere('metadata->cajupay_subscription_id', $tid);
+                if ($sessionFromPayload !== '' && $sessionFromPayload !== $tid) {
+                    $q->orWhere('gateway_id', $sessionFromPayload)
+                        ->orWhere('metadata->cajupay_checkout_session_id', $sessionFromPayload);
+                }
+                if ($paymentFromPayload !== '' && $paymentFromPayload !== $tid) {
+                    $q->orWhere('gateway_id', $paymentFromPayload)
+                        ->orWhere('metadata->cajupay_payment_id', $paymentFromPayload);
+                }
             })
+            ->orderByDesc('id')
             ->first();
+    }
+
+    private function isTrustedCajuPayPaidSource(): bool
+    {
+        if ($this->gatewaySlug !== 'cajupay') {
+            return false;
+        }
+
+        $webhookSource = (string) ($this->payload['webhook_source'] ?? '');
+        if (in_array($webhookSource, ['cajupay_hmac_verified', 'cajupay_subscription_verified'], true)) {
+            return true;
+        }
+
+        // Poll/reconcile já confirmaram paid na API antes do dispatch — não abortar
+        // se a 2ª consulta oscilar para pending/null.
+        $source = (string) ($this->payload['source'] ?? '');
+
+        return in_array($source, [
+            'reconcile_pending',
+            'order_status_poll',
+            'cajupay_paid_buffer',
+        ], true);
     }
 
     /**
@@ -412,10 +472,66 @@ class ProcessPaymentWebhook implements ShouldQueue
             $meta['fx_rate'] = is_string($fxRate) ? $fxRate : (string) $fxRate;
         }
 
+        $installments = $object['installments'] ?? ($object['installment_count'] ?? null);
+        if (is_numeric($installments) && (int) $installments >= 1) {
+            $meta['installments'] = (int) $installments;
+        }
+        $threedsMode = $object['threeds_mode'] ?? null;
+        if (is_string($threedsMode) && in_array($threedsMode, ['off', 'required'], true)) {
+            $meta['threeds_mode'] = $threedsMode;
+        }
+
+        $feeCents = $object['fee_cents'] ?? null;
+        if (is_numeric($feeCents) && (int) $feeCents >= 0) {
+            $meta['gateway_fee_cents'] = (int) $feeCents;
+            $meta['gateway_fee_source'] = 'cajupay_webhook';
+        }
+        $netCents = $object['net_cents'] ?? null;
+        if (is_numeric($netCents) && (int) $netCents >= 0) {
+            $meta['gateway_net_cents'] = (int) $netCents;
+        }
+
         if ($updates !== [] || $meta !== ($order->metadata ?? [])) {
             $updates['metadata'] = $meta;
             $order->update($updates);
         }
+    }
+
+    private function syncProducerGatewayFeeFromOrderMetadata(Order $order): void
+    {
+        if ($this->gatewaySlug !== 'cajupay') {
+            return;
+        }
+
+        $meta = is_array($order->metadata) ? $order->metadata : [];
+        if (! isset($meta['gateway_fee_cents']) || ! is_numeric($meta['gateway_fee_cents'])) {
+            return;
+        }
+
+        $currency = $order->getCurrencyOrDefault();
+        $fee = MoneyMinorUnits::fromMinorUnits((int) $meta['gateway_fee_cents'], $currency);
+        $gross = round($order->lineItemsTotalAmount(), 2);
+        $net = isset($meta['gateway_net_cents']) && is_numeric($meta['gateway_net_cents'])
+            ? MoneyMinorUnits::fromMinorUnits((int) $meta['gateway_net_cents'], $currency)
+            : max(0, round($gross - $fee, 2));
+
+        $producerEntry = $order->commissionEntries()
+            ->where('role', \App\Models\CommissionEntry::ROLE_PRODUTOR)
+            ->first();
+
+        if (! $producerEntry) {
+            return;
+        }
+
+        $currentFee = round((float) $producerEntry->gateway_fee_amount, 2);
+        if (abs($currentFee - $fee) < 0.01) {
+            return;
+        }
+
+        $producerEntry->update([
+            'gateway_fee_amount' => round($fee, 2),
+            'net_amount' => round($net, 2),
+        ]);
     }
 
     /**

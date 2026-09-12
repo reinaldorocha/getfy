@@ -146,14 +146,6 @@ class GatewaysController extends Controller
             'webhook_rotate_url' => $slug === 'cajupay' && Route::has('gateways.cajupay.rotate-webhook')
                 ? route('gateways.cajupay.rotate-webhook')
                 : null,
-            'spacepag_keys_configured' => $slug === 'spacepag' && (
-                trim((string) ($decrypted['secret_key'] ?? '')) !== ''
-                || trim((string) ($decrypted['public_key'] ?? '')) !== ''
-            ),
-            'spacepag_secret_key_set' => $slug === 'spacepag'
-                && ! empty(trim((string) ($decrypted['secret_key'] ?? ''))),
-            'webhook_secret_set' => $slug === 'spacepag'
-                && ! empty(trim((string) ($decrypted['webhook_secret'] ?? ''))),
             'uses_oauth' => $usesOauth,
             'oauth_client_configured' => $oauthClientConfigured,
             'oauth_start_url' => $oauthStartUrl,
@@ -262,19 +254,21 @@ class GatewaysController extends Controller
             $credentials[$key] = $trimmed;
         }
 
-        if ($slug === 'spacepag') {
-            foreach (['public_key', 'secret_key', 'webhook_secret'] as $preserveField) {
+        if ($slug === 'cajupay') {
+            foreach (['public_key', 'secret_key', 'webhook_signing_secret'] as $preserveField) {
                 if (trim((string) ($credentials[$preserveField] ?? '')) === '' && ! empty($existingCredentials[$preserveField])) {
                     $credentials[$preserveField] = $existingCredentials[$preserveField];
                 }
             }
-            unset($credentials['base_url'], $credentials['api_key']);
-            if (trim((string) ($credentials['public_key'] ?? '')) === '' && trim((string) ($credentials['secret_key'] ?? '')) === '') {
+            $mismatch = $this->validateCajuPaySandboxKeys($credentials);
+            if ($mismatch !== null) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Informe ao menos a chave pública (pk_) ou a chave privada (sk_) da Spacepag.',
+                    'message' => $mismatch,
                 ], 422);
             }
+            // Alinha o flag ao prefixo real das chaves (fonte da verdade na CajuPay).
+            $credentials['sandbox'] = $this->cajupayKeysAreSandbox($credentials);
         }
 
         // Preserve existing certificate_path when nenhum novo arquivo foi enviado
@@ -314,15 +308,7 @@ class GatewaysController extends Controller
         $isConnected = false;
         if ($driver && ! empty($credentials)) {
             try {
-                if ($slug === 'spacepag' && $driver instanceof \App\Gateways\Spacepag\SpacepagDriver) {
-                    $authMode = $driver->detectAuthMode($credentials);
-                    if ($authMode !== null) {
-                        $credentials['auth_mode'] = $authMode;
-                        $isConnected = true;
-                    }
-                } else {
-                    $isConnected = $driver->testConnection($credentials);
-                }
+                $isConnected = $driver->testConnection($credentials);
             } catch (\Throwable) {
                 $isConnected = false;
             }
@@ -383,7 +369,7 @@ class GatewaysController extends Controller
                 $rules[$key] = ['nullable', 'boolean'];
                 continue;
             }
-            if (in_array($slug, ['spacepag', 'cajupay'], true) && in_array($key, ['public_key', 'secret_key'], true)) {
+            if ($slug === 'cajupay' && in_array($key, ['public_key', 'secret_key'], true)) {
                 $rules[$key] = ['nullable', 'string', 'max:2000'];
 
                 continue;
@@ -418,20 +404,6 @@ class GatewaysController extends Controller
             }
         }
 
-        if ($slug === 'spacepag') {
-            foreach (['public_key', 'secret_key', 'webhook_secret', 'auth_mode'] as $preserveField) {
-                if (trim((string) ($credentials[$preserveField] ?? '')) === '' && ! empty($existingCredentials[$preserveField])) {
-                    $credentials[$preserveField] = $existingCredentials[$preserveField];
-                }
-            }
-            if (trim((string) ($credentials['public_key'] ?? '')) === '' && trim((string) ($credentials['secret_key'] ?? '')) === '') {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Informe ao menos a chave pública (pk_) ou a chave privada (sk_) da Spacepag.',
-                ], 422);
-            }
-        }
-
         if ($slug === 'cajupay') {
             foreach (['public_key', 'secret_key'] as $preserveField) {
                 if (trim((string) ($credentials[$preserveField] ?? '')) === '' && ! empty($existingCredentials[$preserveField])) {
@@ -459,21 +431,7 @@ class GatewaysController extends Controller
         }
 
         try {
-            $ok = false;
-            if ($slug === 'spacepag' && $driver instanceof \App\Gateways\Spacepag\SpacepagDriver) {
-                $authMode = $driver->detectAuthMode($credentials);
-                if ($authMode !== null) {
-                    $credentials['auth_mode'] = $authMode;
-                    $ok = true;
-                    if ($credential) {
-                        $credential->setEncryptedCredentials($credentials);
-                        $credential->is_connected = true;
-                        $credential->save();
-                    }
-                }
-            } else {
-                $ok = $driver->testConnection($credentials);
-            }
+            $ok = $driver->testConnection($credentials);
 
             $webhookWarning = null;
             if ($ok && $slug === 'cajupay' && $driver instanceof CajuPayDriver) {
@@ -484,9 +442,7 @@ class GatewaysController extends Controller
                 }
             }
 
-            $failMessage = $slug === 'spacepag'
-                ? 'Falha na autenticação. Confira pk_ e sk_ no painel Spacepag (copie sem espaços) e salve de novo.'
-                : 'Falha na autenticação. Verifique as credenciais.';
+            $failMessage = 'Falha na autenticação. Verifique as credenciais.';
 
             $cajupayMeta = ($ok && $slug === 'cajupay')
                 ? $this->buildCajuPayWebhookMeta(
@@ -586,6 +542,45 @@ class GatewaysController extends Controller
                 'message' => $e->getMessage() ?: 'Não foi possível aceitar o contrato PIX Parcelado.',
             ], 422);
         }
+    }
+
+    /**
+     * Chaves CajuPay de teste usam prefixo gpk_test_ / gsk_test_ (docs módulo 06).
+     *
+     * @param  array<string, mixed>  $credentials
+     */
+    private function cajupayKeysAreSandbox(array $credentials): bool
+    {
+        $public = strtolower(trim((string) ($credentials['public_key'] ?? '')));
+        $secret = strtolower(trim((string) ($credentials['secret_key'] ?? '')));
+
+        return str_starts_with($public, 'gpk_test_')
+            || str_starts_with($secret, 'gsk_test_');
+    }
+
+    /**
+     * Garante que o toggle sandbox bate com o prefixo das chaves.
+     * Chaves de teste (gpk_test_/gsk_test_) sempre implicam sandbox; chaves live
+     * não podem forçar sandbox (docs CajuPay módulo 06).
+     *
+     * @param  array<string, mixed>  $credentials
+     */
+    private function validateCajuPaySandboxKeys(array $credentials): ?string
+    {
+        $public = trim((string) ($credentials['public_key'] ?? ''));
+        $secret = trim((string) ($credentials['secret_key'] ?? ''));
+        if ($public === '' && $secret === '') {
+            return null;
+        }
+
+        $wantSandbox = filter_var($credentials['sandbox'] ?? false, FILTER_VALIDATE_BOOLEAN);
+        $keysAreTest = $this->cajupayKeysAreSandbox($credentials);
+
+        if ($wantSandbox && ! $keysAreTest) {
+            return 'Sandbox ativado: use chaves de teste do painel CajuPay (gpk_test_ / gsk_test_). Chaves live não podem forçar sandbox.';
+        }
+
+        return null;
     }
 
     /**

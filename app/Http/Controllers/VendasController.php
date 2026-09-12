@@ -22,6 +22,7 @@ use App\Services\TeamAccessService;
 use App\Support\MoneyMinorUnits;
 use App\Support\OrderCurrencyTotals;
 use App\Support\ReportingPeriod;
+use App\Support\OrderFinancialTotals;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -148,8 +149,7 @@ class VendasController extends Controller
             $m = strtolower($method);
             if ($m === 'pix') {
                 $query->where(function ($q) {
-                    $q->whereIn('gateway', ['spacepag'])
-                        ->orWhereRaw("LOWER(gateway) LIKE '%pix%'")
+                    $q->whereRaw("LOWER(gateway) LIKE '%pix%'")
                         ->orWhere(function ($q2) {
                             $q2->where('metadata->checkout_payment_method', 'pix')
                                 ->orWhere('metadata->checkout_payment_method', 'pix_auto');
@@ -263,7 +263,7 @@ class VendasController extends Controller
                 'orderItems.productOffer:id,name',
                 'orderItems.subscriptionPlan:id,name',
                 'checkoutSession:id,order_id,utm_source,utm_medium,utm_campaign,tracking_metadata',
-                'commissionEntries:id,order_id,role,commission_amount',
+                'commissionEntries:id,order_id,role,commission_amount,gateway_fee_amount,net_amount',
             ])
             ->orderByDesc('created_at')
             ->paginate(20)
@@ -284,19 +284,26 @@ class VendasController extends Controller
                 $arr['amount_total'] = $o->lineItemsTotalAmount();
                 $arr['billed_amount'] = $arr['amount_total'];
                 $producerAmount = $producerSaleAmount->forOrder($o);
+                $financial = $o->financialBreakdown();
                 if ($o->status === 'completed') {
                     $netProfitAmount = $orderNetProfitCalculator->forOrder($o);
                     $arr['net_profit_amount'] = round($netProfitAmount, 2);
                     $arr['net_profit_amount_is_estimated'] = $netAmountCalculator->manualNetAmountForOrder($o) === null
-                        && ($producerAmount['is_estimated'] || ! $producerAmount['is_producer_share']);
+                        && ($producerAmount['is_estimated']
+                            || (! $producerAmount['is_producer_share'] && $financial['fee_source'] === NetAmountCalculator::FEE_SOURCE_ESTIMATED));
                 } else {
                     $arr['net_profit_amount'] = null;
                     $arr['net_profit_amount_is_estimated'] = false;
                 }
-                $arr['display_amount'] = $arr['billed_amount'];
+                $arr['display_amount'] = $producerAmount['amount'];
                 $arr['display_amount_is_producer_share'] = $producerAmount['is_producer_share'];
                 $arr['display_amount_is_estimated'] = $producerAmount['is_estimated'];
                 $arr['sale_gross_total'] = $producerAmount['gross_total'];
+                $arr['has_partner_split'] = $producerAmount['has_partner_split'];
+                $arr['gross_amount'] = $financial['gross'];
+                $arr['gateway_fee'] = $financial['fee'];
+                $arr['net_amount'] = $financial['net'];
+                $arr['fee_source'] = $financial['fee_source'];
                 $arr['sale_channel'] = $o->saleChannel();
                 $arr['is_affiliate_sale'] = $o->saleChannel() === 'affiliate';
                 $affiliateKey = $o->product_id.':'.($o->affiliateCode() ?? '');
@@ -328,6 +335,9 @@ class VendasController extends Controller
 
         try {
             $valorPorMoeda = OrderCurrencyTotals::valorPorMoedaFromQuery($statsQuery);
+            $financeiroPorMoeda = OrderFinancialTotals::porMoedaFromQuery(
+                (clone $statsQuery)->where('orders.status', 'completed')
+            );
         } catch (\Throwable $e) {
             Log::error('VendasController::index valorPorMoeda', [
                 'message' => $e->getMessage(),
@@ -337,13 +347,15 @@ class VendasController extends Controller
             $valorPorMoeda = $fallbackTotal > 0
                 ? [['currency' => 'BRL', 'total' => round($fallbackTotal, 2)]]
                 : [];
+            $financeiroPorMoeda = $fallbackTotal > 0
+                ? [['currency' => 'BRL', 'gross' => round($fallbackTotal, 2), 'fees' => 0.0, 'net' => round($fallbackTotal, 2)]]
+                : [];
         }
         $lucroLiquidoPorMoeda = $this->lucroLiquidoPorMoedaFromQuery($statsQuery, $orderNetProfitCalculator);
 
         $vendasPix = (clone $statsQuery)
             ->where(function ($q) {
-                $q->whereIn('gateway', ['spacepag'])
-                    ->orWhereRaw("LOWER(gateway) LIKE '%pix%'")
+                $q->whereRaw("LOWER(gateway) LIKE '%pix%'")
                     ->orWhere(function ($q2) {
                         $q2->where('metadata->checkout_payment_method', 'pix')
                             ->orWhere('metadata->checkout_payment_method', 'pix_auto');
@@ -376,7 +388,19 @@ class VendasController extends Controller
             'lucro_liquido_por_moeda' => $lucroLiquidoPorMoeda,
             'valor_faturado' => ($brl = collect($valorPorMoeda)->firstWhere('currency', 'BRL')) ? (float) $brl['total'] : 0.0,
             'lucro_liquido' => ($brl = collect($lucroLiquidoPorMoeda)->firstWhere('currency', 'BRL')) ? (float) $brl['total'] : 0.0,
-            'valor_liquido' => ($brl = collect($valorPorMoeda)->firstWhere('currency', 'BRL')) ? (float) $brl['total'] : 0.0,
+            'valor_bruto_por_moeda' => collect($financeiroPorMoeda)->map(fn ($r) => [
+                'currency' => $r['currency'],
+                'total' => $r['gross'],
+            ])->values()->all(),
+            'taxas_gateway_por_moeda' => collect($financeiroPorMoeda)->map(fn ($r) => [
+                'currency' => $r['currency'],
+                'total' => $r['fees'],
+            ])->values()->all(),
+            'valor_liquido_por_moeda' => collect($financeiroPorMoeda)->map(fn ($r) => [
+                'currency' => $r['currency'],
+                'total' => $r['net'],
+            ])->values()->all(),
+            'valor_liquido' => ($brl = collect($financeiroPorMoeda)->firstWhere('currency', 'BRL')) ? (float) $brl['net'] : 0.0,
             'vendas_pix' => $vendasPix,
             'vendas_cartao' => $vendasCartao,
             'vendas_boleto' => $vendasBoleto,
@@ -444,7 +468,7 @@ class VendasController extends Controller
             ->where('orders.status', 'completed')
             ->with([
                 'orderItems:id,order_id,amount',
-                'commissionEntries:id,order_id,role,commission_amount',
+                'commissionEntries:id,order_id,role,commission_amount,gateway_fee_amount,net_amount',
             ])
             ->get(['orders.id', 'orders.tenant_id', 'orders.amount', 'orders.gateway', 'orders.metadata', 'orders.currency', 'orders.product_id']);
 
@@ -486,7 +510,7 @@ class VendasController extends Controller
                 'product:id,name',
                 'user:id,name,email',
                 'orderItems:id,order_id,amount',
-                'commissionEntries:id,order_id,role,commission_amount',
+                'commissionEntries:id,order_id,role,commission_amount,gateway_fee_amount,net_amount',
             ])
             ->orderByDesc('created_at')
             ->get();

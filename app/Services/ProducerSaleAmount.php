@@ -14,26 +14,24 @@ class ProducerSaleAmount
     ) {}
 
     /**
-     * @return array{amount: float, is_producer_share: bool, is_estimated: bool, gross_total: float}
+     * @return array{
+     *     amount: float,
+     *     is_producer_share: bool,
+     *     is_estimated: bool,
+     *     gross_total: float,
+     *     has_partner_split: bool
+     * }
      */
     public function forOrder(Order $order): array
     {
         $isPagarmeCard = strtolower((string) $order->gateway) === 'pagarme'
             && $order->checkoutPaymentMethod() === 'card';
         $grossTotal = $isPagarmeCard ? round((float) $order->amount, 2) : $order->lineItemsTotalAmount();
+        $order->loadMissing('product', 'commissionEntries');
 
-        if ($order->saleChannel() !== 'affiliate' && ! $this->hasActiveCoproducerOnProducerSale($order)) {
-            return [
-                'amount' => $grossTotal,
-                'is_producer_share' => false,
-                'is_estimated' => false,
-                'gross_total' => $grossTotal,
-            ];
-        }
-
-        $order->loadMissing('commissionEntries');
-
-        if ($isPagarmeCard) {
+        // Preserve the Pagar.me calculation for allocated splits; pending sales
+        // still estimate partner commissions through the beneficiary resolver.
+        if ($isPagarmeCard && $order->commissionEntries->isNotEmpty()) {
             $partnerCommissions = (float) $order->commissionEntries
                 ->whereIn('role', [CommissionEntry::ROLE_AFILIADO, CommissionEntry::ROLE_COPRODUTOR])
                 ->sum('commission_amount');
@@ -44,6 +42,7 @@ class ProducerSaleAmount
                 'is_producer_share' => true,
                 'is_estimated' => false,
                 'gross_total' => $grossTotal,
+                'has_partner_split' => true,
             ];
         }
 
@@ -56,53 +55,68 @@ class ProducerSaleAmount
                 'is_producer_share' => true,
                 'is_estimated' => false,
                 'gross_total' => $grossTotal,
+                'has_partner_split' => true,
             ];
         }
 
+        $beneficiaries = $this->resolveBeneficiaries($order);
+        if ($beneficiaries === []) {
+            return [
+                'amount' => $grossTotal,
+                'is_producer_share' => false,
+                'is_estimated' => false,
+                'gross_total' => $grossTotal,
+                'has_partner_split' => false,
+            ];
+        }
+
+        $estimatedShare = $this->estimateProducerShare($order, $beneficiaries);
+
         return [
-            'amount' => $this->estimateProducerShare($order),
+            'amount' => $estimatedShare,
             'is_producer_share' => true,
             'is_estimated' => true,
             'gross_total' => $grossTotal,
+            'has_partner_split' => true,
         ];
     }
 
-    private function hasActiveCoproducerOnProducerSale(Order $order): bool
-    {
-        if ($order->saleChannel() === 'affiliate') {
-            return true;
-        }
-
-        $order->loadMissing('product');
-        if (! $order->product) {
-            return false;
-        }
-
-        $program = ProductAffiliateProgram::firstOrCreate(
-            ['product_id' => $order->product->id],
-            ['enabled' => false, 'default_commission_percent' => 0, 'manual_approval' => true]
-        );
-
-        return $this->beneficiaryResolver->resolve($order, $order->product, $program) !== [];
-    }
-
-    private function estimateProducerShare(Order $order): float
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private function resolveBeneficiaries(Order $order): array
     {
         $order->loadMissing('product');
         $product = $order->product;
         if (! $product) {
-            return 0.0;
+            return [];
         }
 
-        $net = $this->netCalculator->forOrder($order)['net'];
         $program = ProductAffiliateProgram::firstOrCreate(
             ['product_id' => $product->id],
             ['enabled' => false, 'default_commission_percent' => 0, 'manual_approval' => true]
         );
 
-        $beneficiaries = $this->beneficiaryResolver->resolve($order, $product, $program);
-        $allocated = $this->beneficiaryResolver->allocateAmounts($net, $beneficiaries);
+        return $this->beneficiaryResolver->resolve($order, $product, $program);
+    }
 
-        return $this->beneficiaryResolver->producerShare($net, $allocated);
+    /**
+     * @param  list<array<string, mixed>>  $beneficiaries
+     */
+    private function estimateProducerShare(Order $order, array $beneficiaries): float
+    {
+        if ($beneficiaries === []) {
+            return round($order->lineItemsTotalAmount(), 2);
+        }
+
+        $net = $this->netCalculator->forOrder($order)['net'];
+        // Only partner percentages are present here; the remainder belongs to
+        // the producer, not to the last partner in the list.
+        $partnerTotal = array_sum(array_map(
+            fn (array $beneficiary) => round($net * (float) $beneficiary['percent'] / 100, 2),
+            $beneficiaries,
+        ));
+
+        return max(0, round($net - $partnerTotal, 2));
     }
 }

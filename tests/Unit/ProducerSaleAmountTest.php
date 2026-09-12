@@ -33,6 +33,7 @@ class ProducerSaleAmountTest extends TestCase
 
     public function test_affiliate_sale_estimates_producer_share(): void
     {
+        config(['commissions.default_gateway_fees.pix' => ['percent' => 0, 'fixed_cents' => 0]]);
         $product = $this->createTestProduct();
         ProductAffiliateProgram::create([
             'product_id' => $product->id,
@@ -68,5 +69,31 @@ class ProducerSaleAmountTest extends TestCase
         $this->assertTrue($result['is_estimated']);
         $this->assertSame(80.0, $result['amount']);
         $this->assertSame(100.0, $result['gross_total']);
+        $this->assertTrue($result['has_partner_split']);
+    }
+
+    public function test_affiliate_channel_without_valid_partner_uses_gross_total(): void
+    {
+        $product = $this->createTestProduct();
+        $order = Order::create([
+            'tenant_id' => $product->tenant_id,
+            'user_id' => User::factory()->create()->id,
+            'product_id' => $product->id,
+            'status' => 'pending',
+            'amount' => 10,
+            'currency' => 'BRL',
+            'email' => 'c@test.com',
+            'metadata' => [
+                'sale_channel' => 'affiliate',
+                'affiliate_code' => 'invalid999',
+                'checkout_payment_method' => 'pix',
+            ],
+        ]);
+
+        $result = app(ProducerSaleAmount::class)->forOrder($order);
+
+        $this->assertSame(10.0, $result['amount']);
+        $this->assertFalse($result['is_producer_share']);
+        $this->assertFalse($result['has_partner_split']);
     }
 }

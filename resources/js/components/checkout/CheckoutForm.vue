@@ -4,7 +4,7 @@ import { useForm, router, usePage } from '@inertiajs/vue3';
 import { usePluginComponentResolver } from '@/composables/usePluginComponentResolver';
 import axios from 'axios';
 import { logTrackingApiError } from '@/lib/checkoutTrackingDebug';
-import { User, UserRound, Mail, ShoppingBag, Loader2, CreditCard, Tag, Check, Pencil, ScanQrCode, Shield, X, AlertCircle, FileText, MapPin } from 'lucide-vue-next';
+import { User, UserRound, Mail, ShoppingBag, Loader2, CreditCard, Tag, Check, Pencil, ScanQrCode, Shield, X, AlertCircle, FileText, MapPin, ChevronDown } from 'lucide-vue-next';
 import CheckoutDropdown from './CheckoutDropdown.vue';
 import CheckoutOrderBumps from './CheckoutOrderBumps.vue';
 import CheckoutCurrencyPicker from './CheckoutCurrencyPicker.vue';
@@ -13,7 +13,7 @@ import CheckoutPixInfo from './CheckoutPixInfo.vue';
 import AsaasCard from './gateways/asaas/Card.vue';
 import CajuPaySdkMount from './CajuPaySdkMount.vue';
 import CajuPayParceladoMount from './CajuPayParceladoMount.vue';
-import { buildCajuPayConsumer } from '@/composables/useCajuPaySdk';
+import { buildCajuPayConsumer, prefetchCajuPaySdk } from '@/composables/useCajuPaySdk';
 import {
     CHECKOUT_PAGARME_TOKENIZE_FORM_ID,
     PAGARME_TOKENIZE_FORM_ACTION,
@@ -311,9 +311,14 @@ const props = defineProps({
     productName: { type: String, default: '' },
     cajupayPayAccountId: { type: String, default: '' },
     parceladoSdkOptions: { type: Object, default: () => ({}) },
+    /** false enquanto bootstrap async do PIX Parcelado carrega. */
+    pixParceladoReady: { type: Boolean, default: true },
+    uiVariant: { type: String, default: 'default' },
 });
 
 const emit = defineEmits(['coupon-applied', 'coupon-cleared', 'update:orderBumpIds', 'payment-approved', 'set-currency', 'plugin-shipping-change']);
+
+const isTicto = computed(() => props.uiVariant === 'ticto');
 
 const page = usePage();
 const pluginPagesGlob = import.meta.glob('@/PluginPages/**/*.vue');
@@ -343,13 +348,64 @@ function appendPluginCheckoutData(payload) {
     return payload;
 }
 
+function checkoutCurrencyCode(value) {
+    let c = value;
+    if (c && typeof c === 'object' && 'value' in c) {
+        c = c.value;
+    }
+    if (c && typeof c === 'object') {
+        return String(c.code || c.currency || 'BRL').toUpperCase();
+    }
+    return String(c || 'BRL').toUpperCase();
+}
+
 const customerFields = computed(() => props.config?.customer_fields ?? { name: true, cpf: true, phone: true, coupon: false });
 const showName = computed(() => customerFields.value.name !== false);
-const showCpf = computed(() => customerFields.value.cpf === true && props.displayCurrency === 'BRL');
+const showCpf = computed(() => customerFields.value.cpf === true && checkoutCurrencyCode(props.displayCurrency) === 'BRL');
 const showPhone = computed(() => customerFields.value.phone === true);
 const showCouponByConfig = computed(() => customerFields.value.coupon === true);
 const showCouponField = computed(() => showCouponByConfig.value || Boolean(props.prefillCoupon));
 const orderBumpColor = computed(() => props.config?.appearance?.order_bump_color || '#F59E0B');
+const orderBumpInnerColor = computed(() => props.config?.appearance?.order_bump_inner_color || '#86EFAC');
+const buyButtonColor = computed(() => {
+    const custom = String(props.config?.appearance?.buy_button_color ?? '').trim();
+    return custom || props.primaryColor || '#0ea5e9';
+});
+const buyButtonText = computed(() => String(props.config?.appearance?.buy_button_text ?? '').trim());
+const defaultSubmitLabel = computed(() => {
+    if (buyButtonText.value) {
+        return buyButtonText.value;
+    }
+    if (isTicto.value) {
+        return 'COMPRAR AGORA';
+    }
+    if (form.payment_method === 'pix') {
+        return props.t('checkout.gerar_pix');
+    }
+    if (form.payment_method === 'pix_auto') {
+        return props.t('checkout.gerar_pix_auto') || 'Gerar PIX (renovação automática)';
+    }
+    if (form.payment_method === 'paypal') {
+        return paypalMethodMeta.value?.display_as === 'card'
+            ? (props.t('checkout.pagar_cartao') || 'Pagar com cartão')
+            : (props.t('checkout.pagar_paypal') || 'Pagar com PayPal');
+    }
+    if (form.payment_method === 'card') {
+        return isCardGatewayAsaas.value && asaasCardStep.value === 1
+            ? 'Continuar'
+            : (props.t('checkout.pagar_cartao') || 'Pagar com cartão');
+    }
+    if (form.payment_method === 'boleto') {
+        return props.t('checkout.gerar_boleto') || 'Gerar boleto';
+    }
+    if (form.payment_method === 'apple_pay') {
+        return props.t('checkout.pagar_apple_pay') || 'Pagar com Apple Pay';
+    }
+    if (form.payment_method === 'google_pay') {
+        return props.t('checkout.pagar_google_pay') || 'Pagar com Google Pay';
+    }
+    return props.t('checkout.submit_button');
+});
 const footerConfig = computed(() => props.config?.footer ?? {});
 const footerEnabled = computed(() => footerConfig.value?.enabled === true);
 const footerLogoUrl = computed(() => String(footerConfig.value?.logo_url ?? '').trim());
@@ -681,11 +737,27 @@ watch(
     checkoutPaymentMethods,
     (list) => {
         const methods = Array.isArray(list) ? list : [];
-        if (methods.length > 0 && (!form.payment_method || !methods.some((m) => m.id === form.payment_method))) {
-            form.payment_method = methods[0].id;
+        const disabled = !props.pixParceladoReady ? new Set(['pix_parcelado']) : new Set();
+        const selectable = methods.filter((m) => !disabled.has(m.id));
+        if (selectable.length > 0 && (!form.payment_method || !selectable.some((m) => m.id === form.payment_method))) {
+            form.payment_method = selectable[0].id;
         }
     },
     { immediate: true }
+);
+
+watch(
+    () => props.pixParceladoReady,
+    (ready) => {
+        if (!ready && form.payment_method === 'pix_parcelado') {
+            const other = checkoutPaymentMethods.value.find((m) => m.id !== 'pix_parcelado');
+            if (other) form.payment_method = other.id;
+        }
+    }
+);
+
+const disabledPaymentMethodIds = computed(() =>
+    props.pixParceladoReady ? [] : ['pix_parcelado']
 );
 
 function applyPagarmeCompanyAddressPrefill() {
@@ -888,13 +960,12 @@ onMounted(() => {
     // Não forçar showEditForm = true aqui: o watch em form.payment_method já abre o form quando o usuário escolhe PIX/Boleto.
     // Se forçássemos aqui, ao carregar com draft salvo + primeiro método = boleto/pix, os dados "fixos" e o botão Editar dados nunca apareceriam.
 
-    // Se o checkout já carrega com um método CajuPay SDK pré-selecionado (ex.: cartão
-    // como primeiro método disponível), o watch em form.payment_method NÃO dispara
-    // (watcher só reage a MUDANÇAS, não ao valor inicial). Sem isso a sessão CajuPay
-    // nunca era criada automaticamente — o cliente tinha que trocar de método e voltar
-    // pra ver o input do cartão / botão de wallet aparecer. Forçamos a criação inicial.
-    if (isCajuPaySdkFlow.value) {
-        scheduleEnsureCajuPaySession();
+    // Warmup CajuPay só após idle (não compete com a interatividade inicial).
+    if (hasAnyCajuPaySdkMethod.value || hasCajuPayCardMethod.value) {
+        setTimeout(() => {
+            if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+            warmupCajuPaySdk();
+        }, 2500);
     }
     persistCheckoutCountry();
 });
@@ -1058,6 +1129,46 @@ watch(
 const couponValidationError = ref('');
 const couponValidating = ref(false);
 let couponValidateTimeout = null;
+
+async function validateCouponCode(code) {
+    const trimmed = (code || '').trim();
+    couponValidationError.value = '';
+    if (!trimmed) {
+        emit('coupon-cleared');
+        return;
+    }
+    couponValidating.value = true;
+    try {
+        const body = {
+            product_id: props.productId,
+            coupon_code: trimmed,
+        };
+        if (props.productOfferId) body.product_offer_id = props.productOfferId;
+        if (props.subscriptionPlanId) body.subscription_plan_id = props.subscriptionPlanId;
+        const { data } = await axios.post('/checkout/validate-coupon', body);
+        if (data.valid) {
+            emit('coupon-applied', {
+                discount_amount: data.discount_amount,
+                final_price: data.final_price,
+            });
+        } else {
+            couponValidationError.value = data.message || 'Cupom inválido.';
+            emit('coupon-cleared');
+        }
+    } catch (err) {
+        const msg = err.response?.data?.message ?? err.response?.data?.errors?.coupon_code?.[0] ?? 'Não foi possível validar o cupom.';
+        couponValidationError.value = msg;
+        emit('coupon-cleared');
+    } finally {
+        couponValidating.value = false;
+    }
+}
+
+function applyCouponNow() {
+    if (couponValidateTimeout) clearTimeout(couponValidateTimeout);
+    validateCouponCode(form.coupon_code);
+}
+
 watch(
     () => (form.coupon_code || '').trim(),
     (code) => {
@@ -1067,32 +1178,12 @@ watch(
             emit('coupon-cleared');
             return;
         }
-        couponValidateTimeout = setTimeout(async () => {
-            couponValidating.value = true;
-            try {
-                const body = {
-                    product_id: props.productId,
-                    coupon_code: code,
-                };
-                if (props.productOfferId) body.product_offer_id = props.productOfferId;
-                if (props.subscriptionPlanId) body.subscription_plan_id = props.subscriptionPlanId;
-                const { data } = await axios.post('/checkout/validate-coupon', body);
-                if (data.valid) {
-                    emit('coupon-applied', {
-                        discount_amount: data.discount_amount,
-                        final_price: data.final_price,
-                    });
-                } else {
-                    couponValidationError.value = data.message || 'Cupom inválido.';
-                    emit('coupon-cleared');
-                }
-            } catch (err) {
-                const msg = err.response?.data?.message ?? err.response?.data?.errors?.coupon_code?.[0] ?? 'Não foi possível validar o cupom.';
-                couponValidationError.value = msg;
-                emit('coupon-cleared');
-            } finally {
-                couponValidating.value = false;
-            }
+        // No skin Ticto o cupom só valida ao clicar em "Aplicar".
+        if (isTicto.value) {
+            return;
+        }
+        couponValidateTimeout = setTimeout(() => {
+            validateCouponCode(code);
         }, 400);
     }
 );
@@ -1160,24 +1251,74 @@ async function fetchAddressByCep() {
     }
 }
 
-const inputClass =
+const inputClassDefault =
     'block w-full rounded-xl border-2 border-gray-100 bg-gray-50/80 px-4 py-3.5 pl-12 text-base font-medium text-gray-900 placeholder-gray-400 transition focus:border-gray-200 focus:bg-white focus:outline-none focus:ring-2 focus:ring-offset-0';
-const inputClassWithIcon = inputClass;
+const inputClassTicto =
+    'block w-full rounded-lg border border-[#d0d5dd] bg-white px-3.5 py-[13px] text-[15px] font-normal text-[#344054] placeholder-[#98a2b3] shadow-none transition focus:border-[#98a2b3] focus:outline-none focus:ring-0';
+const inputClass = computed(() => (isTicto.value ? inputClassTicto : inputClassDefault));
+const inputClassWithIcon = computed(() =>
+    isTicto.value
+        ? inputClassTicto
+        : inputClassDefault,
+);
 
 // Desktop: nome e email só → email full. Telefone ativo → email | telefone. CPF ativo (sem telefone) → email | cpf. Telefone e CPF ativos → email full, depois telefone | cpf.
 const emailColSpan = computed(() => {
+    if (isTicto.value) return 'sm:col-span-2';
     if (showPhone.value && showCpf.value) return 'sm:col-span-2';
     if (showPhone.value || showCpf.value) return 'sm:col-span-1';
     return 'sm:col-span-2';
 });
 
-const phoneInputClass =
-    'w-full min-w-0 rounded-xl border-0 bg-transparent py-3.5 pr-4 pl-2 text-base font-medium text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-0';
-const phoneWrapperClass =
-    'flex items-stretch overflow-hidden rounded-xl border-2 border-gray-100 bg-gray-50/80 transition focus-within:border-gray-200 focus-within:bg-white focus-within:ring-2 focus-within:ring-offset-0';
+const phoneInputClass = computed(() =>
+    isTicto.value
+        ? 'w-full min-w-0 rounded-lg border border-[#d0d5dd] bg-white py-[13px] px-3.5 text-[15px] font-normal text-[#344054] placeholder-[#98a2b3] focus:border-[#98a2b3] focus:outline-none focus:ring-0'
+        : 'w-full min-w-0 rounded-xl border-0 bg-transparent py-3.5 pr-4 pl-2 text-base font-medium text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-0',
+);
+const phoneWrapperClass = computed(() =>
+    isTicto.value
+        ? 'flex items-stretch gap-2 bg-transparent'
+        : 'flex items-stretch overflow-hidden rounded-xl border-2 border-gray-100 bg-gray-50/80 transition focus-within:border-gray-200 focus-within:bg-white focus-within:ring-2 focus-within:ring-offset-0',
+);
+const phoneCountryBoxClass = computed(() =>
+    isTicto.value
+        ? 'flex h-auto w-[7.25rem] shrink-0 items-center rounded-lg border border-[#d0d5dd] bg-white'
+        : 'flex h-full w-[4.5rem] shrink-0 items-center',
+);
 const phoneSelectClass =
     'absolute left-0 top-0 h-full w-12 cursor-pointer border-0 bg-transparent py-0 pl-0 opacity-0 focus:outline-none focus:ring-0';
 const phoneFlagWrapClass = 'relative flex h-10 w-12 shrink-0 items-center justify-center self-center';
+
+const tictoNamePlaceholder = computed(() => 'Seu Nome *');
+const tictoEmailPlaceholder = computed(() => 'E-mail que receberá a compra *');
+const tictoPhonePlaceholder = computed(() => 'Seu Celular *');
+const tictoCpfPlaceholder = computed(() => 'Seu CPF/CNPJ *');
+const tictoNameFilled = computed(() => String(form.name || '').trim() !== '');
+const tictoEmailFilled = computed(() => String(form.email || '').trim() !== '');
+const tictoPhoneFilled = computed(() => String(phoneDisplay.value || '').trim() !== '');
+const tictoCpfFilled = computed(() => String(cpfDisplay.value || '').replace(/\D/g, '') !== '');
+const tictoFloatingBadgeClass =
+    'pointer-events-none absolute -top-2 left-3 z-10 inline-flex items-center gap-0.5 rounded bg-[#eef1f5] px-1.5 py-[1px] text-[11px] font-medium leading-none text-[#667085]';
+const tictoTotalDisplay = computed(() => {
+    const total = Number(props.checkoutTotalInCurrency ?? props.checkoutTotalBrl ?? 0);
+    return props.formatPrice(total, checkoutCurrencyCode(props.displayCurrency));
+});
+const tictoServiceFeeBrl = computed(() => {
+    const fee = Number(props.config?.summary?.service_fee ?? 0);
+    return Number.isFinite(fee) && fee > 0 ? fee : 0;
+});
+const tictoServiceFeeDisplay = computed(() => {
+    if (tictoServiceFeeBrl.value <= 0) return '';
+    const converted = typeof props.priceInCurrency === 'function'
+        ? props.priceInCurrency(tictoServiceFeeBrl.value)
+        : tictoServiceFeeBrl.value;
+    return props.formatPrice(converted, checkoutCurrencyCode(props.displayCurrency));
+});
+const formFieldsGridClass = computed(() =>
+    isTicto.value
+        ? 'grid grid-cols-1 gap-3'
+        : 'grid grid-cols-1 gap-5 sm:grid-cols-2 sm:gap-4',
+);
 
 // Bandeiras de cartão: prefixos BIN para detecção (ordem: prefixos mais longos primeiro)
 const CARD_BRANDS = [
@@ -1288,6 +1429,30 @@ const isCajuPayParceladoFlow = computed(() => {
         && props.displayCurrency === 'BRL';
 });
 
+/** Há algum método CajuPay SDK disponível neste checkout (pra prefetch). */
+const hasAnyCajuPaySdkMethod = computed(() => {
+    return checkoutPaymentMethods.value.some(
+        (m) => ['card', 'apple_pay', 'google_pay'].includes(m.id)
+            && String(m.gateway_slug || '').toLowerCase() === 'cajupay'
+    );
+});
+
+const hasCajuPayCardMethod = computed(() => {
+    return checkoutPaymentMethods.value.some(
+        (m) => m.id === 'card' && String(m.gateway_slug || '').toLowerCase() === 'cajupay'
+    );
+});
+
+function gatewaySlugForMethod(methodId) {
+    const m = checkoutPaymentMethods.value.find((x) => x.id === methodId);
+    return (m?.gateway_slug || '').toLowerCase();
+}
+
+function isCajuPaySdkMethodId(methodId) {
+    return ['card', 'apple_pay', 'google_pay'].includes(methodId)
+        && gatewaySlugForMethod(methodId) === 'cajupay';
+}
+
 /** Apple/Google Pay no CajuPay: o pagamento costuma concluir no botão nativo do SDK (sem o submit do formulário). */
 const isCajuPayWalletSdk = computed(() => {
     return isCajuPaySdkFlow.value
@@ -1311,6 +1476,28 @@ const cajupayPayerReadyForPrime = computed(() => {
     }
     return true;
 });
+
+/**
+ * Pré-preenchimento do widget no mount. No cartão NÃO enviamos `name` — o SDK
+ * copia isso para o campo "nome do titular", e o nome do comprador (ex.: rascunho
+ * "teste") não deve aparecer no cartão.
+ */
+const cajupayMountInitialPayer = computed(() => {
+    const email = (form.email || '').trim();
+    const document = (form.cpf || '').replace(/\D/g, '');
+    const method = cajupayActiveSdkMethod.value || form.payment_method;
+    if (method === 'card') {
+        return { email, document };
+    }
+    return { name: (form.name || '').trim(), email, document };
+});
+
+/** Dados reais do pagador para setPayer (priming / confirm) — inclui nome. */
+const cajupaySyncPayer = computed(() => ({
+    name: (form.name || '').trim(),
+    email: (form.email || '').trim(),
+    document: (form.cpf || '').replace(/\D/g, ''),
+}));
 
 const checkoutChargeCurrency = computed(() => {
     const c = props.displayCurrency;
@@ -1343,6 +1530,18 @@ const cajupayApprovedRedirectUrl = ref('');
 const cajupayMethodsAvailable = ref([]);
 /** True após POST /checkout/cajupay/confirm-order com sucesso (wallets materializam antes do 1º confirm do SDK). */
 const cajupayOrderMaterialized = ref(false);
+/**
+ * Mantém o painel/mount do SDK no DOM (v-show) ao trocar pra PIX etc. — evita remontar
+ * do zero ao voltar pro cartão. Método “preso” no mount enquanto o painel está oculto.
+ */
+const cajupayPanelKeepAlive = ref(false);
+const cajupayActiveSdkMethod = ref('');
+/** Cache de sessão por método (card|apple_pay|google_pay) + fingerprint do carrinho. */
+const cajupaySessionCache = ref({});
+let cajupayCacheFingerprint = '';
+let cajupayWarmupStarted = false;
+/** Promessas em voo por método — evita “return null” enquanto o warmup ainda cria a sessão. */
+const cajupaySessionInflight = {};
 
 const parceladoPayAccountId = ref('');
 const parceladoPaymentLinkToken = ref('');
@@ -1537,10 +1736,10 @@ function checkoutCurrencyUserSelected() {
     }
 }
 
-function buildCajuPaySessionPayload() {
+function buildCajuPaySessionPayload(methodOverride = null) {
     const payload = {
         product_id: form.product_id,
-        payment_method: form.payment_method,
+        payment_method: methodOverride || form.payment_method,
         coupon_code: (form.coupon_code || '').trim() || null,
         currency_user_selected: checkoutCurrencyUserSelected(),
     };
@@ -1559,6 +1758,70 @@ function buildCajuPaySessionPayload() {
     appendCheckoutSecurity(payload);
     appendPluginCheckoutData(payload);
     return payload;
+}
+
+function cajupaySessionFingerprint() {
+    const bumps = Array.isArray(props.orderBumpIds) ? props.orderBumpIds.join(',') : '';
+    return [
+        String(props.checkoutTotalBrl ?? ''),
+        String((form.coupon_code || '').trim()),
+        bumps,
+        String(props.productOfferId ?? ''),
+        String(props.subscriptionPlanId ?? ''),
+        String(props.displayCurrency ?? ''),
+        String(props.checkoutLocale ?? ''),
+    ].join('|');
+}
+
+function clearCajuPaySessionCache() {
+    cajupaySessionCache.value = {};
+    cajupayCacheFingerprint = '';
+}
+
+function stashCajuPaySession(methodId) {
+    if (!methodId || !cajupaySessionToken.value) return;
+    const fp = cajupaySessionFingerprint();
+    cajupayCacheFingerprint = fp;
+    cajupaySessionCache.value = {
+        ...cajupaySessionCache.value,
+        [methodId]: {
+            fingerprint: fp,
+            token: cajupaySessionToken.value,
+            polling_token: cajupayPollingToken.value,
+            methods_available: Array.isArray(cajupayMethodsAvailable.value)
+                ? [...cajupayMethodsAvailable.value]
+                : [],
+            order_materialized: cajupayOrderMaterialized.value,
+        },
+    };
+}
+
+function restoreCajuPaySession(methodId) {
+    const entry = cajupaySessionCache.value[methodId];
+    if (!entry?.token) return false;
+    if (entry.fingerprint !== cajupaySessionFingerprint()) {
+        const next = { ...cajupaySessionCache.value };
+        delete next[methodId];
+        cajupaySessionCache.value = next;
+        return false;
+    }
+    cajupaySessionToken.value = entry.token;
+    cajupayPollingToken.value = entry.polling_token || '';
+    cajupayMethodsAvailable.value = Array.isArray(entry.methods_available)
+        ? [...entry.methods_available]
+        : [];
+    cajupayOrderMaterialized.value = !!entry.order_materialized;
+    cajupayActiveSdkMethod.value = methodId;
+    cajupayPanelKeepAlive.value = true;
+    return true;
+}
+
+function clearCurrentCajuPaySessionRefs() {
+    cajupaySessionToken.value = '';
+    cajupayPollingToken.value = '';
+    cajupayMethodsAvailable.value = [];
+    cajupayOrderMaterialized.value = false;
+    stopCajuPayPolling();
 }
 
 /**
@@ -1601,57 +1864,121 @@ function validateCajuPayCustomerFields() {
     return true;
 }
 
-async function ensureCajuPaySession({ silent = false } = {}) {
-    if (!isCajuPaySdkFlow.value) return null;
-    if (cajupaySessionToken.value) return cajupaySessionToken.value;
-    if (cajupaySessionLoading.value) return null;
+async function ensureCajuPaySession({ silent = false, methodOverride = null } = {}) {
+    const method = methodOverride || form.payment_method;
+    const forCurrentUi = !methodOverride || methodOverride === form.payment_method;
+
+    if (!methodOverride && !isCajuPaySdkFlow.value) return null;
+    if (!isCajuPaySdkMethodId(method)) return null;
+
+    if (restoreCajuPaySession(method)) {
+        return cajupaySessionToken.value;
+    }
+
+    // Já temos token do método ativo (ex.: keep-alive) — não recria.
+    if (cajupaySessionToken.value && cajupayActiveSdkMethod.value === method) {
+        return cajupaySessionToken.value;
+    }
+
+    if (cajupaySessionInflight[method]) {
+        return cajupaySessionInflight[method];
+    }
     if (!cajupayMinimumFieldsReady()) return null;
 
     cajupaySessionLoading.value = true;
-    if (!silent) cajupayError.value = '';
-    try {
-        const res = await axios.post('/checkout/cajupay/session', buildCajuPaySessionPayload(), {
-            headers: {
-                'Accept': 'application/json',
-                'X-Requested-With': 'XMLHttpRequest',
-                'X-XSRF-TOKEN': getCsrfToken(),
-            },
-            withCredentials: true,
-        });
-        const data = res?.data || {};
-        if (!data.success || !data.token) {
-            cajupayError.value = data?.message || 'Não foi possível iniciar o pagamento na CajuPay.';
+    if (!silent && forCurrentUi) cajupayError.value = '';
+
+    const request = (async () => {
+        try {
+            const res = await axios.post('/checkout/cajupay/session', buildCajuPaySessionPayload(method), {
+                headers: {
+                    'Accept': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'X-XSRF-TOKEN': getCsrfToken(),
+                },
+                withCredentials: true,
+            });
+            const data = res?.data || {};
+            if (!data.success || !data.token) {
+                if (forCurrentUi) {
+                    cajupayError.value = data?.message || 'Não foi possível iniciar o pagamento na CajuPay.';
+                }
+                return null;
+            }
+
+            const fp = cajupaySessionFingerprint();
+            cajupayCacheFingerprint = fp;
+            cajupaySessionCache.value = {
+                ...cajupaySessionCache.value,
+                [method]: {
+                    fingerprint: fp,
+                    token: data.token,
+                    polling_token: data.polling_token || '',
+                    methods_available: Array.isArray(data.methods_available) ? data.methods_available : [],
+                    order_materialized: false,
+                },
+            };
+
+            // Warmup de cartão (mesmo com PIX na UI): ativa token + keep-alive pra montar
+            // o widget em background (painel invisível, sem display:none).
+            const shouldActivate = forCurrentUi
+                || (method === 'card' && (!cajupaySessionToken.value || cajupayActiveSdkMethod.value === 'card' || !cajupayActiveSdkMethod.value));
+            if (shouldActivate) {
+                cajupaySessionToken.value = data.token;
+                cajupayPollingToken.value = data.polling_token || '';
+                cajupayMethodsAvailable.value = Array.isArray(data.methods_available) ? data.methods_available : [];
+                cajupayOrderMaterialized.value = false;
+                cajupayActiveSdkMethod.value = method;
+                cajupayPanelKeepAlive.value = true;
+
+                if (
+                    forCurrentUi
+                    && cajupayMethodsAvailable.value.length > 0
+                    && data.method_supported === false
+                ) {
+                    cajupayError.value = cajupayMethodUnavailableMessage(method);
+                }
+            }
+
+            return data.token;
+        } catch (e) {
+            if (forCurrentUi) {
+                const msg = e?.response?.data?.message || e?.message || 'Falha ao iniciar pagamento.';
+                cajupayError.value = msg;
+            }
             return null;
+        } finally {
+            cajupaySessionLoading.value = false;
+            delete cajupaySessionInflight[method];
         }
-        cajupaySessionToken.value = data.token;
-        cajupayPollingToken.value = data.polling_token || '';
-        cajupayMethodsAvailable.value = Array.isArray(data.methods_available) ? data.methods_available : [];
+    })();
 
-        // Se a CajuPay listou methods_available e o método pedido NÃO está nela, o SDK
-        // vai falhar com method_not_available no confirm. Mostra mensagem amigável aqui
-        // pra o cliente trocar de método sem ver o erro críptico.
-        if (
-            cajupayMethodsAvailable.value.length > 0 &&
-            data.method_supported === false
-        ) {
-            cajupayError.value = cajupayMethodUnavailableMessage(form.payment_method);
-        }
-
-        return data.token;
-    } catch (e) {
-        const msg = e?.response?.data?.message || e?.message || 'Falha ao iniciar pagamento.';
-        cajupayError.value = msg;
-        return null;
-    } finally {
-        cajupaySessionLoading.value = false;
-    }
+    cajupaySessionInflight[method] = request;
+    return request;
 }
 
 function scheduleEnsureCajuPaySession() {
     if (cajupaySessionDebounce) clearTimeout(cajupaySessionDebounce);
     cajupaySessionDebounce = setTimeout(() => {
         ensureCajuPaySession({ silent: true });
-    }, 500);
+    }, 120);
+}
+
+/** Pré-carrega script + sessão + mount do cartão em background (mesmo com PIX selecionado). */
+function warmupCajuPaySdk() {
+    if (!hasAnyCajuPaySdkMethod.value) return;
+    // Script em paralelo com a criação da sessão (não espera um pelo outro).
+    prefetchCajuPaySdk().catch(() => {});
+    if (cajupayWarmupStarted) return;
+    cajupayWarmupStarted = true;
+    if (isCajuPaySdkFlow.value) {
+        ensureCajuPaySession({ silent: true });
+        return;
+    }
+    if (hasCajuPayCardMethod.value) {
+        // Sem delay: monta sessão de cartão já na entrada da página.
+        ensureCajuPaySession({ silent: true, methodOverride: 'card' });
+    }
 }
 
 async function pollCajuPayOrderStatus() {
@@ -1711,21 +2038,36 @@ function startCajuPayPolling(token) {
 
 onBeforeUnmount(() => stopCajuPayPolling());
 
-watch(() => form.payment_method, () => {
+watch(() => form.payment_method, (method, prev) => {
     cajupayError.value = '';
     parceladoError.value = '';
-    if (cajupaySessionToken.value) {
-        cajupaySessionToken.value = '';
-        cajupayPollingToken.value = '';
-        cajupayMethodsAvailable.value = [];
-        cajupayOrderMaterialized.value = false;
-        stopCajuPayPolling();
+
+    const prevWasSdk = isCajuPaySdkMethodId(prev);
+    const nextIsSdk = isCajuPaySdkFlow.value;
+
+    if (prevWasSdk && cajupaySessionToken.value && cajupayActiveSdkMethod.value === prev) {
+        stashCajuPaySession(prev);
     }
-    if (isCajuPaySdkFlow.value) {
-        scheduleEnsureCajuPaySession();
-    } else {
+
+    if (nextIsSdk) {
+        cajupayPanelKeepAlive.value = true;
+        if (!restoreCajuPaySession(method)) {
+            if (cajupayActiveSdkMethod.value && cajupayActiveSdkMethod.value !== method) {
+                clearCurrentCajuPaySessionRefs();
+            }
+            cajupayActiveSdkMethod.value = method;
+            if (!cajupaySessionToken.value) {
+                scheduleEnsureCajuPaySession();
+            }
+        }
+    } else if (prevWasSdk) {
+        // Saiu pro PIX/boleto: mantém mount oculto com a sessão anterior (não zera).
+        if (cajupaySessionCache.value[prev]) {
+            restoreCajuPaySession(prev);
+        }
         cajupayMissingFieldsHint.value = '';
     }
+
     if (isCajuPayParceladoFlow.value) {
         parceladoPaymentLinkToken.value = '';
         scheduleParceladoSessionRefresh();
@@ -1744,15 +2086,14 @@ watch(
             parceladoPaymentLinkToken.value = '';
             scheduleParceladoSessionRefresh();
         }
-        if (!isCajuPaySdkFlow.value) return;
-        if (cajupaySessionToken.value) {
-            cajupaySessionToken.value = '';
-            cajupayPollingToken.value = '';
-            cajupayMethodsAvailable.value = [];
-            cajupayOrderMaterialized.value = false;
-            stopCajuPayPolling();
+        clearCajuPaySessionCache();
+        clearCurrentCajuPaySessionRefs();
+        cajupayWarmupStarted = false;
+        if (isCajuPaySdkFlow.value) {
+            scheduleEnsureCajuPaySession();
+        } else if (hasCajuPayCardMethod.value) {
+            warmupCajuPaySdk();
         }
-        scheduleEnsureCajuPaySession();
     },
     { deep: true }
 );
@@ -1760,15 +2101,28 @@ watch(
 watch(
     () => props.checkoutLocale,
     () => {
-        if (!isCajuPaySdkFlow.value) return;
-        if (cajupaySessionToken.value) {
-            cajupaySessionToken.value = '';
-            cajupayPollingToken.value = '';
-            cajupayMethodsAvailable.value = [];
-            cajupayOrderMaterialized.value = false;
-            stopCajuPayPolling();
+        clearCajuPaySessionCache();
+        clearCurrentCajuPaySessionRefs();
+        cajupayWarmupStarted = false;
+        if (isCajuPaySdkFlow.value) {
+            scheduleEnsureCajuPaySession();
+        } else if (hasCajuPayCardMethod.value) {
+            warmupCajuPaySdk();
         }
-        scheduleEnsureCajuPaySession();
+    }
+);
+
+watch(
+    () => props.displayCurrency,
+    () => {
+        clearCajuPaySessionCache();
+        clearCurrentCajuPaySessionRefs();
+        cajupayWarmupStarted = false;
+        if (isCajuPaySdkFlow.value) {
+            scheduleEnsureCajuPaySession();
+        } else if (hasCajuPayCardMethod.value) {
+            warmupCajuPaySdk();
+        }
     }
 );
 
@@ -3528,14 +3882,57 @@ function submit() {
             </div>
         </Teleport>
 
-        <div class="mb-6 flex items-center gap-3" data-checkout="form-section-dados-header">
+        <div
+            v-if="!isTicto"
+            class="mb-6 flex items-center gap-3"
+            data-checkout="form-section-dados-header"
+        >
             <span class="flex h-10 w-10 items-center justify-center rounded-xl bg-gray-100 text-gray-600" aria-hidden="true">
                 <UserRound class="h-5 w-5" />
             </span>
             <h2 class="text-lg font-semibold tracking-tight text-gray-900">{{ t('checkout.seus_dados') }}</h2>
         </div>
-        <form class="space-y-5" data-checkout="checkout-form-element" @submit.prevent="submit">
+        <form
+            :class="isTicto ? 'space-y-4' : 'space-y-5'"
+            data-checkout="checkout-form-element"
+            @submit.prevent="submit"
+        >
             <input v-model="form.product_id" type="hidden" />
+
+            <!-- Ticto: cupom primeiro -->
+            <div v-if="isTicto && showCouponField" data-checkout="field-coupon">
+                <div class="relative">
+                    <input
+                        id="checkout-coupon-ticto"
+                        v-model="form.coupon_code"
+                        type="text"
+                        class="block w-full rounded-lg border border-[#d0d5dd] bg-white py-[13px] pl-3.5 pr-24 text-[15px] text-[#344054] placeholder-[#98a2b3] focus:border-[#98a2b3] focus:outline-none focus:ring-0"
+                        placeholder="Possui um cupom?"
+                        autocomplete="off"
+                        @keydown.enter.prevent="applyCouponNow"
+                    />
+                    <button
+                        type="button"
+                        class="absolute right-2 top-1/2 -translate-y-1/2 px-2 py-1 text-sm font-bold text-[#344054] hover:opacity-80"
+                        :disabled="couponValidating"
+                        @click="applyCouponNow"
+                    >
+                        Aplicar
+                    </button>
+                </div>
+                <p v-if="couponValidationError || form.errors.coupon_code" class="mt-1.5 text-sm font-medium text-red-600">
+                    {{ couponValidationError || form.errors.coupon_code }}
+                </p>
+                <p v-if="couponValidating" class="mt-1.5 text-sm text-gray-500">{{ t('checkout.validating_coupon') }}</p>
+            </div>
+
+            <slot name="after-coupon" />
+
+            <div v-if="isTicto" class="pt-1" data-checkout="form-section-dados-header">
+                <h2 class="text-[1.05rem] font-bold tracking-tight text-[#101828]">Dados Pessoais</h2>
+                <p class="mt-1 text-sm text-[#667085]">Preencha seus dados para ter acesso ao produto.</p>
+            </div>
+
             <div
                 v-if="Object.keys(form.errors).length > 0"
                 class="rounded-xl border border-red-200 bg-red-50/90 px-4 py-3 text-sm font-medium text-red-800"
@@ -3544,11 +3941,24 @@ function submit() {
             >
                 {{ t('checkout.corrija_erros') || 'Corrija os erros abaixo antes de continuar.' }}
             </div>
-            <div v-if="showEditForm" class="grid grid-cols-1 gap-5 sm:grid-cols-2 sm:gap-4" data-checkout="form-fields">
+            <div v-if="showEditForm" :class="formFieldsGridClass" data-checkout="form-fields">
                 <div v-if="showName" class="relative sm:col-span-2" data-checkout="field-name">
-                    <label for="checkout-name" class="mb-2 block text-sm font-medium text-gray-700">{{ t('checkout.name') }}</label>
+                    <label
+                        v-if="!isTicto"
+                        for="checkout-name"
+                        class="mb-2 block text-sm font-medium text-gray-700"
+                    >{{ t('checkout.name') }}</label>
                     <div class="relative">
-                        <span class="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-gray-400">
+                        <span
+                            v-if="isTicto && tictoNameFilled"
+                            :class="tictoFloatingBadgeClass"
+                        >
+                            Seu Nome <span class="text-red-500">*</span>
+                        </span>
+                        <span
+                            v-if="!isTicto"
+                            class="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"
+                        >
                             <UserRound class="h-5 w-5" aria-hidden="true" />
                         </span>
                         <input
@@ -3557,15 +3967,28 @@ function submit() {
                             type="text"
                             :required="showName"
                             :class="inputClassWithIcon"
-                            :placeholder="t('checkout.name_placeholder')"
+                            :placeholder="isTicto ? (tictoNameFilled ? '' : tictoNamePlaceholder) : t('checkout.name_placeholder')"
                         />
                     </div>
                     <p v-if="form.errors.name" class="mt-1.5 text-sm font-medium text-red-600">{{ form.errors.name }}</p>
                 </div>
                 <div class="relative" :class="emailColSpan" data-checkout="field-email">
-                    <label for="checkout-email" class="mb-2 block text-sm font-medium text-gray-700">{{ t('checkout.email') }}</label>
+                    <label
+                        v-if="!isTicto"
+                        for="checkout-email"
+                        class="mb-2 block text-sm font-medium text-gray-700"
+                    >{{ t('checkout.email') }}</label>
                     <div class="relative">
-                        <span class="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-gray-400">
+                        <span
+                            v-if="isTicto && tictoEmailFilled"
+                            :class="tictoFloatingBadgeClass"
+                        >
+                            E-mail que receberá a compra <span class="text-red-500">*</span>
+                        </span>
+                        <span
+                            v-if="!isTicto"
+                            class="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"
+                        >
                             <Mail class="h-5 w-5" aria-hidden="true" />
                         </span>
                         <input
@@ -3575,7 +3998,7 @@ function submit() {
                             autocomplete="email"
                             required
                             :class="inputClassWithIcon"
-                            :placeholder="t('checkout.email_placeholder')"
+                            :placeholder="isTicto ? (tictoEmailFilled ? '' : tictoEmailPlaceholder) : t('checkout.email_placeholder')"
                             @focus="openEmailDropdown()"
                             @input="openEmailDropdown()"
                             @blur="scheduleCloseEmailDropdown()"
@@ -3598,10 +4021,19 @@ function submit() {
                     </div>
                     <p v-if="form.errors.email" class="mt-1.5 text-sm font-medium text-red-600">{{ form.errors.email }}</p>
                 </div>
-                <div v-if="showPhone && !showCpf" class="relative sm:col-span-1" data-checkout="field-phone">
-                    <label for="checkout-phone" class="mb-2 block text-sm font-medium text-gray-700">{{ t('checkout.phone') }}</label>
+                <div
+                    v-if="showPhone && !showCpf"
+                    class="relative"
+                    :class="isTicto ? 'sm:col-span-2' : 'sm:col-span-1'"
+                    data-checkout="field-phone"
+                >
+                    <label
+                        v-if="!isTicto"
+                        for="checkout-phone"
+                        class="mb-2 block text-sm font-medium text-gray-700"
+                    >{{ t('checkout.phone') }}</label>
                     <div :class="phoneWrapperClass">
-                        <div class="flex h-full w-[4.5rem] shrink-0 items-center">
+                        <div :class="phoneCountryBoxClass">
                             <CheckoutDropdown
                                 v-model:open="phoneCountryOpen"
                                 :aria-label="t('checkout.country_code_label')"
@@ -3611,7 +4043,8 @@ function submit() {
                             >
                                 <template #trigger>
                                     <div
-                                        class="flex min-w-0 items-center gap-2 self-stretch rounded-l-xl border-0 bg-transparent py-3.5 pl-3 pr-2 text-sm font-medium text-gray-700"
+                                        class="flex min-w-0 items-center gap-2 self-stretch border-0 bg-transparent py-3.5 pl-3 pr-2 text-sm font-medium text-gray-700"
+                                        :class="isTicto ? 'rounded-lg' : 'rounded-l-xl'"
                                     >
                                     <img
                                         :src="flagImgUrl(currentCountry)"
@@ -3621,6 +4054,7 @@ function submit() {
                                         height="18"
                                     />
                                     <span class="shrink-0">+{{ form.country_code }}</span>
+                                    <ChevronDown v-if="isTicto" class="ml-auto h-3.5 w-3.5 text-gray-400" />
                                 </div>
                             </template>
                             <button
@@ -3645,22 +4079,48 @@ function submit() {
                             </button>
                             </CheckoutDropdown>
                         </div>
-                        <input
-                            id="checkout-phone"
-                            :value="phoneDisplay"
-                            type="text"
-                            inputmode="tel"
-                            :class="phoneInputClass"
-                            :placeholder="form.country_code === '55' ? t('checkout.phone_placeholder_br') : t('checkout.phone_placeholder_other')"
-                            @input="onPhoneInput"
-                        />
+                        <div class="relative min-w-0 flex-1">
+                            <span
+                                v-if="isTicto && tictoPhoneFilled"
+                                :class="tictoFloatingBadgeClass"
+                            >
+                                Seu Celular <span class="text-red-500">*</span>
+                            </span>
+                            <input
+                                id="checkout-phone"
+                                :value="phoneDisplay"
+                                type="text"
+                                inputmode="tel"
+                                :class="phoneInputClass"
+                                :placeholder="isTicto ? (tictoPhoneFilled ? '' : tictoPhonePlaceholder) : (form.country_code === '55' ? t('checkout.phone_placeholder_br') : t('checkout.phone_placeholder_other'))"
+                                @input="onPhoneInput"
+                            />
+                        </div>
                     </div>
                     <p v-if="form.errors.phone" class="mt-1.5 text-sm font-medium text-red-600">{{ form.errors.phone }}</p>
                 </div>
-                <div v-if="showCpf && !showPhone" class="relative sm:col-span-1" data-checkout="field-cpf">
-                    <label for="checkout-cpf" class="mb-2 block text-sm font-medium text-gray-700">{{ t('checkout.cpf') }}</label>
+                <div
+                    v-if="showCpf && !showPhone"
+                    class="relative"
+                    :class="isTicto ? 'sm:col-span-2' : 'sm:col-span-1'"
+                    data-checkout="field-cpf"
+                >
+                    <label
+                        v-if="!isTicto"
+                        for="checkout-cpf"
+                        class="mb-2 block text-sm font-medium text-gray-700"
+                    >{{ t('checkout.cpf') }}</label>
                     <div class="relative">
-                        <span class="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-gray-400">
+                        <span
+                            v-if="isTicto && tictoCpfFilled"
+                            :class="tictoFloatingBadgeClass"
+                        >
+                            Seu CPF/CNPJ <span class="text-red-500">*</span>
+                        </span>
+                        <span
+                            v-if="!isTicto"
+                            class="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"
+                        >
                             <CreditCard class="h-5 w-5" aria-hidden="true" />
                         </span>
                         <input
@@ -3671,18 +4131,26 @@ function submit() {
                             autocomplete="off"
                             :required="showCpf"
                             :class="inputClassWithIcon"
-                            :placeholder="t('checkout.cpf_placeholder')"
-                            maxlength="14"
+                            :placeholder="isTicto ? (tictoCpfFilled ? '' : tictoCpfPlaceholder) : t('checkout.cpf_placeholder')"
+                            maxlength="18"
                             @input="onCpfInput"
                         />
                     </div>
                     <p v-if="form.errors.cpf" class="mt-1.5 text-sm font-medium text-red-600">{{ form.errors.cpf }}</p>
                 </div>
                 <template v-if="showPhone && showCpf">
-                    <div class="relative sm:col-span-1" data-checkout="field-phone">
-                        <label for="checkout-phone-both" class="mb-2 block text-sm font-medium text-gray-700">{{ t('checkout.phone') }}</label>
+                    <div
+                        class="relative"
+                        :class="isTicto ? 'sm:col-span-2' : 'sm:col-span-1'"
+                        data-checkout="field-phone"
+                    >
+                        <label
+                            v-if="!isTicto"
+                            for="checkout-phone-both"
+                            class="mb-2 block text-sm font-medium text-gray-700"
+                        >{{ t('checkout.phone') }}</label>
                         <div :class="phoneWrapperClass">
-                            <div class="flex h-full w-[4.5rem] shrink-0 items-center">
+                            <div :class="phoneCountryBoxClass">
                                 <CheckoutDropdown
                                     v-model:open="phoneCountryOpen"
                                     :aria-label="t('checkout.country_code_label')"
@@ -3692,7 +4160,8 @@ function submit() {
                                 >
                                     <template #trigger>
                                         <div
-                                            class="flex min-w-0 items-center gap-2 self-stretch rounded-l-xl border-0 bg-transparent py-3.5 pl-3 pr-2 text-sm font-medium text-gray-700"
+                                            class="flex min-w-0 items-center gap-2 self-stretch border-0 bg-transparent py-3.5 pl-3 pr-2 text-sm font-medium text-gray-700"
+                                            :class="isTicto ? 'rounded-lg' : 'rounded-l-xl'"
                                         >
                                             <img
                                                 :src="flagImgUrl(currentCountry)"
@@ -3702,6 +4171,7 @@ function submit() {
                                                 height="18"
                                             />
                                             <span class="shrink-0">+{{ form.country_code }}</span>
+                                            <ChevronDown v-if="isTicto" class="ml-auto h-3.5 w-3.5 text-gray-400" />
                                         </div>
                                     </template>
                                     <button
@@ -3726,22 +4196,47 @@ function submit() {
                                     </button>
                                 </CheckoutDropdown>
                             </div>
-                            <input
-                                id="checkout-phone-both"
-                                :value="phoneDisplay"
-                                type="text"
-                                inputmode="tel"
-                                :class="phoneInputClass"
-                                :placeholder="form.country_code === '55' ? t('checkout.phone_placeholder_br') : t('checkout.phone_placeholder_other')"
-                                @input="onPhoneInput"
-                            />
+                            <div class="relative min-w-0 flex-1">
+                                <span
+                                    v-if="isTicto && tictoPhoneFilled"
+                                    :class="tictoFloatingBadgeClass"
+                                >
+                                    Seu Celular <span class="text-red-500">*</span>
+                                </span>
+                                <input
+                                    id="checkout-phone-both"
+                                    :value="phoneDisplay"
+                                    type="text"
+                                    inputmode="tel"
+                                    :class="phoneInputClass"
+                                    :placeholder="isTicto ? (tictoPhoneFilled ? '' : tictoPhonePlaceholder) : (form.country_code === '55' ? t('checkout.phone_placeholder_br') : t('checkout.phone_placeholder_other'))"
+                                    @input="onPhoneInput"
+                                />
+                            </div>
                         </div>
                         <p v-if="form.errors.phone" class="mt-1.5 text-sm font-medium text-red-600">{{ form.errors.phone }}</p>
                     </div>
-                    <div class="relative sm:col-span-1" data-checkout="field-cpf">
-                        <label for="checkout-cpf-both" class="mb-2 block text-sm font-medium text-gray-700">{{ t('checkout.cpf') }}</label>
+                    <div
+                        class="relative"
+                        :class="isTicto ? 'sm:col-span-2' : 'sm:col-span-1'"
+                        data-checkout="field-cpf"
+                    >
+                        <label
+                            v-if="!isTicto"
+                            for="checkout-cpf-both"
+                            class="mb-2 block text-sm font-medium text-gray-700"
+                        >{{ t('checkout.cpf') }}</label>
                         <div class="relative">
-                            <span class="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-gray-400">
+                            <span
+                                v-if="isTicto && tictoCpfFilled"
+                                :class="tictoFloatingBadgeClass"
+                            >
+                                Seu CPF/CNPJ <span class="text-red-500">*</span>
+                            </span>
+                            <span
+                                v-if="!isTicto"
+                                class="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"
+                            >
                                 <CreditCard class="h-5 w-5" aria-hidden="true" />
                             </span>
                             <input
@@ -3752,8 +4247,8 @@ function submit() {
                                 autocomplete="off"
                                 :required="showCpf"
                                 :class="inputClassWithIcon"
-                                :placeholder="t('checkout.cpf_placeholder')"
-                                maxlength="14"
+                                :placeholder="isTicto ? (tictoCpfFilled ? '' : tictoCpfPlaceholder) : t('checkout.cpf_placeholder')"
+                                maxlength="18"
                                 @input="onCpfInput"
                             />
                         </div>
@@ -3790,7 +4285,7 @@ function submit() {
                     {{ t('checkout.editar_dados') }}
                 </button>
             </div>
-            <div v-if="showCouponField" data-checkout="field-coupon">
+            <div v-if="showCouponField && !isTicto" data-checkout="field-coupon">
                 <label for="checkout-coupon" class="mb-2 block text-sm font-medium text-gray-700">{{ t('checkout.coupon_label') }}</label>
                 <div class="relative">
                     <span class="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-gray-400">
@@ -3811,13 +4306,14 @@ function submit() {
                 <p v-if="couponValidating" class="mt-1.5 text-sm text-gray-500">{{ t('checkout.validating_coupon') }}</p>
             </div>
 
-            <!-- Você pode gostar (order bumps): abaixo dos dados, antes da forma de pagamento -->
+            <!-- Você pode gostar (order bumps): no layout original, antes do pagamento -->
             <CheckoutOrderBumps
-                v-if="orderBumps && orderBumps.length"
+                v-if="!isTicto && orderBumps && orderBumps.length"
                 :order-bumps="orderBumps"
                 :selected-ids="orderBumpIds"
                 :primary-color="primaryColor"
                 :order-bump-color="orderBumpColor"
+                :order-bump-inner-color="orderBumpInnerColor"
                 :t="t"
                 :format-price="formatPrice"
                 :display-currency="displayCurrency"
@@ -3847,8 +4343,10 @@ function submit() {
             <CheckoutPaymentMethods
                 v-model="form.payment_method"
                 :available-payment-methods="localizedPaymentMethods"
+                :disabled-method-ids="disabledPaymentMethodIds"
                 :primary-color="primaryColor"
                 :t="t"
+                :ui-variant="uiVariant"
             >
                 <template #after-header>
                     <CheckoutCurrencyPicker
@@ -3869,72 +4367,69 @@ function submit() {
                 v-if="isPixLike"
                 :primary-color="primaryColor"
                 :t="t"
+                :ui-variant="uiVariant"
             />
 
             <!-- CajuPay SDK (Cartão / Apple Pay / Google Pay) -->
-            <!-- Mesmo padrão visual do painel do Stripe: outer com border-2/bg-gray-50/50, header
-                 com ícone + título e o widget do SDK dentro de um box branco arredondado. -->
+            <!-- Background mount: NÃO usar display:none (v-show). O SDK/iframe não
+                 termina o priming escondido assim — ao voltar pro cartão parecia “lento”.
+                 Mantemos o painel no fluxo visual só quando ativo; senão fica absoluto
+                 invisível com largura real pra montar/primar em background. -->
             <div
-                v-if="isCajuPaySdkFlow"
-                class="space-y-4 rounded-xl border-2 border-gray-100 bg-gray-50/50 p-4"
+                v-if="cajupayPanelKeepAlive || isCajuPaySdkFlow"
+                class="space-y-3 rounded-xl border border-gray-200 bg-white p-3 sm:space-y-4 sm:border-2 sm:border-gray-100 sm:bg-gray-50/50 sm:p-4"
+                :class="isCajuPaySdkFlow
+                    ? 'relative'
+                    : 'pointer-events-none fixed left-0 top-0 z-[-1] w-[min(100vw,26rem)] -translate-x-[110%] opacity-0'"
+                :aria-hidden="isCajuPaySdkFlow ? undefined : 'true'"
                 data-checkout="form-cajupay-panel"
             >
                 <div class="flex items-center gap-2 text-gray-700">
-                    <span class="flex h-8 w-8 shrink-0 items-center justify-center">
-                        <CreditCard v-if="form.payment_method === 'card'" class="h-5 w-5 text-gray-500" />
-                        <Shield v-else class="h-5 w-5 text-gray-500" />
-                    </span>
+                    <CreditCard v-if="(cajupayActiveSdkMethod || form.payment_method) === 'card'" class="h-5 w-5 shrink-0 text-gray-500" />
+                    <Shield v-else class="h-5 w-5 shrink-0 text-gray-500" />
                     <span class="text-sm font-medium">
                         {{
-                            form.payment_method === 'card'
+                            (cajupayActiveSdkMethod || form.payment_method) === 'card'
                                 ? (t('checkout.dados_cartao') || 'Dados do cartão')
-                                : form.payment_method === 'apple_pay'
+                                : (cajupayActiveSdkMethod || form.payment_method) === 'apple_pay'
                                     ? labelForPaymentMethodId('apple_pay')
                                     : labelForPaymentMethodId('google_pay')
                         }}
                     </span>
                 </div>
-                <p v-if="cajupayError" class="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700" role="alert">
+                <p v-if="cajupayError && isCajuPaySdkFlow" class="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700" role="alert">
                     {{ cajupayError }}
                 </p>
-                <div class="rounded-xl border-2 border-gray-100 bg-white px-4 py-3">
-                    <!--
-                        initial-payer aqui é só o pré-preenchimento do widget no MOUNT.
-                        Os dados que vão pro /confirm da CajuPay vêm do controller.setPayer()
-                        chamado em submitCajuPaySdkFlow() — assim o cliente pode preencher
-                        nome/email/CPF DEPOIS de o widget estar montado e tudo funciona.
-                        Não mandamos `phone` porque o SDK ignora (não vai no /confirm).
-                    -->
+                <div class="-mx-1 min-w-0 sm:mx-0">
                     <CajuPaySdkMount
                         ref="cajupayMountRef"
-                        :payment-method="form.payment_method"
+                        :payment-method="cajupayActiveSdkMethod || form.payment_method"
                         :session-token="cajupaySessionToken"
-                        :initial-payer="{ name: form.name, email: form.email, document: (form.cpf || '').replace(/\D/g, '') }"
+                        :initial-payer="cajupayMountInitialPayer"
+                        :sync-payer="cajupaySyncPayer"
                         :before-wallet-prime="beforeCajuPayWalletPrime"
                         :payer-ready-for-prime="cajupayPayerReadyForPrime"
                         container-id="cajupay-method"
                         @wallet-payment-completed="onCajuPayWalletPaymentCompleted"
                     />
                     <div
-                        v-if="!cajupaySessionToken && (cajupaySessionLoading || cajupayMissingFieldsHint)"
-                        class="flex items-center gap-2 text-sm text-gray-600"
+                        v-if="isCajuPaySdkFlow && !cajupaySessionToken && cajupayMissingFieldsHint && !cajupaySessionLoading"
+                        class="mt-2 flex items-start gap-2 text-sm text-gray-600"
                     >
-                        <Loader2 v-if="cajupaySessionLoading" class="h-4 w-4 shrink-0 animate-spin text-gray-500" />
-                        <AlertCircle v-else class="h-4 w-4 shrink-0 text-gray-500" />
-                        <span>
-                            {{
-                                cajupaySessionLoading
-                                    ? 'Inicializando pagamento seguro…'
-                                    : cajupayMissingFieldsHint
-                            }}
-                        </span>
+                        <AlertCircle class="mt-0.5 h-4 w-4 shrink-0 text-gray-500" />
+                        <span>{{ cajupayMissingFieldsHint }}</span>
                     </div>
+                    <div
+                        v-else-if="isCajuPaySdkFlow && !cajupaySessionToken && cajupaySessionLoading"
+                        class="mt-1 h-32 animate-pulse rounded-lg bg-gray-100/80 sm:h-36"
+                        aria-hidden="true"
+                    />
                 </div>
-                <p v-if="cajupayPolling" class="text-xs text-gray-500">Aguardando confirmação do pagamento…</p>
+                <p v-if="cajupayPolling && isCajuPaySdkFlow" class="text-xs text-gray-500">Aguardando confirmação do pagamento…</p>
                 <button
                     v-if="isCajuPayWalletSdk"
                     type="button"
-                    class="mt-2 w-full text-center text-xs font-medium text-gray-500 underline decoration-gray-400 hover:text-gray-700"
+                    class="mt-1 w-full text-center text-xs font-medium text-gray-500 underline decoration-gray-400 hover:text-gray-700"
                     @click="submitCajuPaySdkFlow(form.payment_method)"
                 >
                     Pagamento não concluiu? Tentar novamente
@@ -4351,9 +4846,9 @@ function submit() {
                         </div>
                     </div>
                 </div>
-                <!-- Parcelas (Efí, Asaas e Pagar.me; Stripe, MP Brick e Asaas Card têm seu próprio) -->
+                <!-- Parcelas (Efí, Asaas e Pagar.me; CajuPay/Stripe/MP/PayPal têm seletor no próprio widget/SDK) -->
                 <div
-                    v-if="form.payment_method === 'card' && cardInstallmentsEnabled && !isCardGatewayStripe && !isCardGatewayMercadopago && !isCardGatewayAsaas && !isCardGatewayPaypal"
+                    v-if="form.payment_method === 'card' && cardInstallmentsEnabled && !isCajuPaySdkFlow && !isCardGatewayStripe && !isCardGatewayMercadopago && !isCardGatewayAsaas && !isCardGatewayPaypal"
                     class="mt-4"
                     data-checkout="form-installments"
                 >
@@ -4495,49 +4990,90 @@ function submit() {
                 class="pointer-events-none absolute -left-[9999px] h-0 w-0 overflow-hidden opacity-0"
                 data-checkout="honeypot"
             />
+
+            <!-- Ticto: order bumps depois do pagamento -->
+            <CheckoutOrderBumps
+                v-if="isTicto && orderBumps && orderBumps.length"
+                :order-bumps="orderBumps"
+                :selected-ids="orderBumpIds"
+                :primary-color="primaryColor"
+                :order-bump-color="orderBumpColor"
+                :order-bump-inner-color="orderBumpInnerColor"
+                :t="t"
+                :format-price="formatPrice"
+                :display-currency="displayCurrency"
+                ui-variant="ticto"
+                class="mt-2"
+                @update:selected-ids="emit('update:orderBumpIds', $event)"
+            />
+
+            <div
+                v-if="isTicto"
+                class="space-y-1.5 border-t border-dashed border-[#d0d5dd] pt-4"
+                data-checkout="ticto-totals"
+            >
+                <p class="text-right text-sm text-[#101828]">
+                    Valor total:
+                    <strong class="font-bold" :style="{ color: primaryColor }">{{ tictoTotalDisplay }}</strong>
+                </p>
+                <div
+                    v-if="tictoServiceFeeDisplay"
+                    class="flex items-center justify-between gap-3 text-xs text-[#98a2b3]"
+                >
+                    <span>Taxa de serviço</span>
+                    <span>{{ tictoServiceFeeDisplay }}</span>
+                </div>
+                <div class="flex items-baseline justify-between gap-3 text-sm text-[#101828]">
+                    <span>Total nesta cobrança:</span>
+                    <span class="text-right font-bold leading-snug">
+                        <span :style="{ color: primaryColor }">{{ tictoTotalDisplay }}</span>
+                        <span class="text-[#101828]"> à vista</span>
+                    </span>
+                </div>
+            </div>
+
             <button
                 v-if="(!['card', 'paypal'].includes(form.payment_method) || (!isCardGatewayMercadopago && !isPaypalButtonsMode)) && !isCajuPayWalletSdk"
                 type="submit"
                 data-checkout="form-submit"
-                class="flex w-full items-center justify-center gap-2 rounded-xl px-6 py-4 text-base font-semibold text-white shadow-lg shadow-black/10 transition hover:opacity-95 focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-70"
-                :style="{ backgroundColor: primaryColor }"
+                class="flex w-full items-center justify-center gap-2 px-6 py-4 text-base font-semibold text-white transition hover:opacity-95 focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-70"
+                :class="isTicto
+                    ? 'rounded-lg py-[1.05rem] text-[0.95rem] font-extrabold uppercase tracking-wide shadow-none'
+                    : 'rounded-xl shadow-lg shadow-black/10'"
+                :style="{ backgroundColor: buyButtonColor }"
                 :disabled="form.processing || cardTokenizing || cardApproved"
             >
                 <Loader2 v-if="form.processing || cardTokenizing" class="h-5 w-5 animate-spin" />
                 <Check v-else-if="cardApproved" class="h-5 w-5" />
-                <ScanQrCode v-else-if="form.payment_method === 'pix' || form.payment_method === 'pix_auto'" class="h-5 w-5" />
-                <CreditCard v-else-if="form.payment_method === 'card' || form.payment_method === 'paypal'" class="h-5 w-5" />
-                <FileText v-else-if="form.payment_method === 'boleto'" class="h-5 w-5" />
-                <Shield v-else-if="form.payment_method === 'apple_pay' || form.payment_method === 'google_pay'" class="h-5 w-5" />
-                <ShoppingBag v-else class="h-5 w-5" />
+                <template v-else-if="isTicto">
+                    {{ defaultSubmitLabel }}
+                    <ChevronDown class="h-4 w-4 opacity-90" />
+                </template>
+                <template v-else-if="!buyButtonText">
+                    <ScanQrCode v-if="form.payment_method === 'pix' || form.payment_method === 'pix_auto'" class="h-5 w-5" />
+                    <CreditCard v-else-if="form.payment_method === 'card' || form.payment_method === 'paypal'" class="h-5 w-5" />
+                    <FileText v-else-if="form.payment_method === 'boleto'" class="h-5 w-5" />
+                    <Shield v-else-if="form.payment_method === 'apple_pay' || form.payment_method === 'google_pay'" class="h-5 w-5" />
+                    <ShoppingBag v-else class="h-5 w-5" />
+                </template>
                 <template v-if="cardApproved">
                     Aprovado!
                 </template>
                 <template v-else-if="form.processing || cardTokenizing">
                     {{ t('checkout.processing') }}
                 </template>
-                <template v-else>
-                    {{
-                        form.payment_method === 'pix'
-                            ? t('checkout.gerar_pix')
-                            : form.payment_method === 'pix_auto'
-                              ? (t('checkout.gerar_pix_auto') || 'Gerar PIX (renovação automática)')
-                              : form.payment_method === 'paypal'
-                                ? (paypalMethodMeta?.display_as === 'card'
-                                    ? (t('checkout.pagar_cartao') || 'Pagar com cartão')
-                                    : (t('checkout.pagar_paypal') || 'Pagar com PayPal'))
-                              : form.payment_method === 'card'
-                                ? (isCardGatewayAsaas && asaasCardStep === 1 ? 'Continuar' : (t('checkout.pagar_cartao') || 'Pagar com cartão'))
-                                : form.payment_method === 'boleto'
-                                  ? (t('checkout.gerar_boleto') || 'Gerar boleto')
-                                  : form.payment_method === 'apple_pay'
-                                    ? (t('checkout.pagar_apple_pay') || 'Pagar com Apple Pay')
-                                    : form.payment_method === 'google_pay'
-                                      ? (t('checkout.pagar_google_pay') || 'Pagar com Google Pay')
-                                      : t('checkout.submit_button')
-                    }}
+                <template v-else-if="!isTicto">
+                    {{ defaultSubmitLabel }}
                 </template>
             </button>
+
+            <p
+                v-if="isTicto"
+                class="pt-1 text-center text-[11px] leading-relaxed text-[#98a2b3]"
+                data-checkout="ticto-legal"
+            >
+                Ao concluir a compra, você concorda com os termos de uso e a política de privacidade.
+            </p>
         </form>
         <!-- Form vazio: tokenizecard.js; campos cartão Pagar.me associam-se via atributo HTML form="" -->
         <form
@@ -4553,7 +5089,11 @@ function submit() {
             <input type="hidden" name="_token" :value="getCsrfToken()" />
             <span data-pagarmecheckout-element="brand" class="hidden" aria-hidden="true" />
         </form>
-        <footer class="mt-8 hidden border-t border-gray-100 pt-6 sm:block" data-checkout="form-footer-desktop">
+        <footer
+            v-if="!isTicto"
+            class="mt-8 hidden border-t border-gray-100 pt-6 sm:block"
+            data-checkout="form-footer-desktop"
+        >
             <div v-if="showFooterCustom" class="mb-6 text-center">
                 <img
                     v-if="footerLogoUrl"

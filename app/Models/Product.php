@@ -98,7 +98,10 @@ class Product extends Model
             'appearance' => [
                 'background_color' => '#E3E3E3',
                 'primary_color' => '#0ea5e9',
+                'buy_button_color' => '',
+                'buy_button_text' => '',
                 'order_bump_color' => '#F59E0B',
+                'order_bump_inner_color' => '#86EFAC',
                 'banners' => [],
                 'side_banners' => [],
                 'content_blocks' => [],
@@ -177,6 +180,9 @@ class Product extends Model
                 'minimum_installment_amount' => 5,
                 'sale_fee_amount' => 0,
                 'rates' => array_fill_keys(range(1, 12), 0),
+            ],
+            'cajupay_card' => [
+                'require_threeds' => false,
             ],
             'pagarme_billing' => [
                 'mode' => 'customer',

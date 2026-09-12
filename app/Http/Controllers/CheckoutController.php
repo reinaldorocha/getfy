@@ -11,6 +11,7 @@ use App\Events\PixGenerated;
 use App\Events\SubscriptionCreated;
 use App\Gateways\GatewayRegistry;
 use App\Plugins\PluginCheckoutExtensionRegistry;
+use App\Plugins\PluginExtensionRegistry;
 use App\Plugins\PluginHookBus;
 use App\Jobs\ProcessPaymentWebhook;
 use App\Models\Coupon;
@@ -251,7 +252,8 @@ class CheckoutController extends Controller
         }
 
         $geo = new GeoIp;
-        $suggestions = $geo->getSuggestionsForRequest($request);
+        // Sem HTTP externo no TTFB: só headers CDN; GeoIP por IP fica no ensure-visit async.
+        $suggestions = $geo->getSuggestionsFromHeadersOrDefault($request);
         $payload['suggested_locale'] = $suggestions['suggested_locale'];
         $payload['suggested_currency'] = $suggestions['suggested_currency'];
         $payload['suggested_country_code'] = $suggestions['country_code'] ?? null;
@@ -296,8 +298,14 @@ class CheckoutController extends Controller
         $paymentMethodsPlan = ($product->billing_type ?? Product::BILLING_ONE_TIME) === Product::BILLING_SUBSCRIPTION
             ? ($resolved['plan'] ?? null)
             : null;
+        $credentialBySlug = CheckoutPaymentMethodsBuilder::connectedCredentialsBySlug($product->tenant_id);
         $payload['available_payment_methods'] = CheckoutPaymentMethodOrder::applyForCountry(
-            CheckoutPaymentMethodsBuilder::build($product->tenant_id, $config['payment_gateways'] ?? [], $paymentMethodsPlan),
+            CheckoutPaymentMethodsBuilder::build(
+                $product->tenant_id,
+                $config['payment_gateways'] ?? [],
+                $paymentMethodsPlan,
+                $credentialBySlug
+            ),
             $paymentOrderCountry
         );
         $payload['product']['custom_display_prices_by_currency'] = $this->customDisplayPricesMap($product);
@@ -325,7 +333,7 @@ class CheckoutController extends Controller
         $payload['card_paypal_checkout_mode'] = 'auto';
         foreach ($payload['available_payment_methods'] as $m) {
             if (($m['id'] ?? '') === 'card' && ($m['gateway_slug'] ?? '') === 'efi') {
-                $cred = GatewayCredential::forTenant($product->tenant_id)->where('gateway_slug', 'efi')->first();
+                $cred = $credentialBySlug->get('efi');
                 if ($cred) {
                     $creds = $cred->getDecryptedCredentials();
                     $payload['card_payee_code'] = (string) ($creds['payee_code'] ?? '');
@@ -336,7 +344,7 @@ class CheckoutController extends Controller
         }
         foreach ($payload['available_payment_methods'] as $m) {
             if (($m['id'] ?? '') === 'card' && ($m['gateway_slug'] ?? '') === 'stripe') {
-                $cred = GatewayCredential::forTenant($product->tenant_id)->where('gateway_slug', 'stripe')->first();
+                $cred = $credentialBySlug->get('stripe');
                 if ($cred) {
                     $creds = $cred->getDecryptedCredentials();
                     $payload['card_stripe_publishable_key'] = (string) ($creds['publishable_key'] ?? '');
@@ -350,7 +358,7 @@ class CheckoutController extends Controller
         }
         foreach ($payload['available_payment_methods'] as $m) {
             if (($m['id'] ?? '') === 'card' && ($m['gateway_slug'] ?? '') === 'mercadopago') {
-                $cred = GatewayCredential::forTenant($product->tenant_id)->where('gateway_slug', 'mercadopago')->first();
+                $cred = $credentialBySlug->get('mercadopago');
                 if ($cred) {
                     $creds = $cred->getDecryptedCredentials();
                     $payload['card_mercadopago_public_key'] = (string) ($creds['public_key'] ?? '');
@@ -368,7 +376,7 @@ class CheckoutController extends Controller
             if ($methodId !== 'card' && $methodId !== 'paypal') {
                 continue;
             }
-            $cred = GatewayCredential::forTenant($product->tenant_id)->where('gateway_slug', 'paypal')->first();
+            $cred = $credentialBySlug->get('paypal');
             if ($cred) {
                 $creds = $cred->getDecryptedCredentials();
                 $payload['card_paypal_client_id'] = (string) ($creds['client_id'] ?? '');
@@ -394,7 +402,7 @@ class CheckoutController extends Controller
             if (! is_array($keys) || $keys === []) {
                 continue;
             }
-            $cred = GatewayCredential::forTenant($product->tenant_id)->where('gateway_slug', $slug)->where('is_connected', true)->first();
+            $cred = $credentialBySlug->get($slug);
             if (! $cred) {
                 continue;
             }
@@ -420,6 +428,7 @@ class CheckoutController extends Controller
         $payload['cajupay_public_key'] = '';
         $payload['pix_parcelado_rules'] = null;
         $payload['parcelado_sdk_options'] = [];
+        $payload['pix_parcelado_bootstrap'] = false;
         $hasPixParcelado = false;
         foreach ($payload['available_payment_methods'] as $m) {
             if (($m['id'] ?? '') === 'pix_parcelado') {
@@ -427,27 +436,30 @@ class CheckoutController extends Controller
                 break;
             }
         }
+        // Sem HTTP CajuPay no show: só dados locais; rules via bootstrap async.
         if ($hasPixParcelado && ($product->billing_type ?? Product::BILLING_ONE_TIME) === Product::BILLING_ONE_TIME) {
             $parceladoService = app(CajuPayPixParceladoService::class);
-            $creds = $parceladoService->credentialsForTenant($product->tenant_id);
-            if ($creds) {
+            $cajupayCred = $credentialBySlug->get('cajupay');
+            $creds = $cajupayCred ? $cajupayCred->getDecryptedCredentials() : null;
+            if (is_array($creds) && $creds !== []) {
                 $payload['cajupay_public_key'] = (string) ($creds['public_key'] ?? '');
-                $payAccountId = $parceladoService->resolvePayAccountIdForTenant($product->tenant_id);
-                $payload['cajupay_pay_account_id'] = $payAccountId;
-                $productRules = $parceladoService->productRulesFromConfig($config);
-                $priceBrl = (float) $product->price;
-                if ($resolved['offer'] ?? null) {
-                    $priceBrl = (float) $resolved['offer']->price;
-                }
-                $platformRules = $parceladoService->platformRules($creds);
-                $totalCents = MoneyMinorUnits::toMinorUnits($priceBrl, 'BRL');
-                $merged = $parceladoService->mergeProductRulesWithPlatform($totalCents, $productRules, $platformRules);
-                $payload['pix_parcelado_rules'] = $merged;
-                $payload['parcelado_sdk_options'] = $parceladoService->sdkOptionsFromRules($merged);
+                $payload['cajupay_pay_account_id'] = $parceladoService->localPayAccountId($creds);
+                $payload['pix_parcelado_bootstrap'] = true;
             }
         }
 
+        $comboProductIds = $this->comboProductIdSetForCheckout(
+            $product,
+            $resolved['offer'] ?? null,
+            $resolved['plan'] ?? null
+        );
+        $comboLookup = array_fill_keys($comboProductIds, true);
         $orderBumps = $product->orderBumps()->with(['targetProduct', 'targetProductOffer', 'targetSubscriptionPlan'])->get();
+        if ($comboLookup !== []) {
+            $orderBumps = $orderBumps
+                ->reject(fn (ProductOrderBump $b) => isset($comboLookup[(string) $b->target_product_id]))
+                ->values();
+        }
         $payload['order_bumps'] = $orderBumps->map(function (ProductOrderBump $b) use ($product) {
             $target = $b->targetProduct;
             $imageUrl = $target && $target->image
@@ -506,28 +518,19 @@ class CheckoutController extends Controller
         $affiliateRef = \App\Support\AffiliateAttribution::refFromRequest($request);
         $trackingMeta = \App\Support\AffiliateAttribution::mergeIntoTrackingMetadata($trackingMeta, $affiliateRef);
 
-        $geoSuggestions = app(\App\Services\GeoIp::class)->getSuggestionsForRequest($request);
-        $sessionCountryCode = $geoSuggestions['country_code'] ?? null;
-
-        CheckoutSession::create([
-            'tenant_id' => $product->tenant_id,
+        // CheckoutSession é criada no ensure-visit async (não bloqueia TTFB).
+        $payload['checkout_session_token'] = $sessionToken;
+        $payload['affiliate_ref'] = $affiliateRef;
+        $payload['checkout_visit'] = [
             'product_id' => $product->id,
             'product_offer_id' => $resolved['offer']?->id,
             'subscription_plan_id' => $resolved['plan']?->id,
             'checkout_slug' => $resolved['checkout_slug'],
-            'session_token' => $sessionToken,
-            'step' => CheckoutSession::STEP_VISIT,
-            'customer_ip' => $request->ip(),
-            'country_code' => is_string($sessionCountryCode) && strlen($sessionCountryCode) === 2
-                ? strtoupper($sessionCountryCode)
-                : null,
             'utm_source' => $utmSource,
             'utm_medium' => $utmMedium,
             'utm_campaign' => $utmCampaign,
             'tracking_metadata' => $trackingMeta === [] ? null : $trackingMeta,
-        ]);
-        $payload['checkout_session_token'] = $sessionToken;
-        $payload['affiliate_ref'] = $affiliateRef;
+        ];
 
         /** Preview ao vivo no Builder (iframe): o front confia neste flag, não só na query (Inertia pode alterar URL). */
         $payload['checkout_builder_preview'] = $request->query('preview') === '1';
@@ -559,10 +562,90 @@ class CheckoutController extends Controller
 
         $payload['plugin_checkout_extensions'] = PluginCheckoutExtensionRegistry::activeForProduct($product, 'standard');
 
+        $templateId = is_array($config) ? ($config['template'] ?? 'original') : 'original';
+        $payload['active_checkout_template'] = PluginExtensionRegistry::resolveActiveCheckoutTemplate(
+            is_string($templateId) ? $templateId : 'original'
+        );
+        $payload['plugin_checkout_templates'] = PluginExtensionRegistry::getCheckoutBuilderTemplates();
+
         return Inertia::render('Checkout/Show', $payload)
             ->withViewData([
                 'openGraph' => \App\Support\CheckoutOpenGraph::forProduct($product, $config, $request),
             ]);
+    }
+
+    /**
+     * Bootstrap async do PIX Parcelado (rules + pay_account_id) — fora do TTFB do show.
+     */
+    public function pixParceladoBootstrap(Request $request, string $slug): JsonResponse
+    {
+        $resolved = $this->resolveCheckoutBySlug($slug);
+        $product = $resolved['product'];
+
+        if (($product->billing_type ?? Product::BILLING_ONE_TIME) !== Product::BILLING_ONE_TIME) {
+            return response()->json(['message' => 'PIX Parcelado disponível apenas para pagamento único.'], 422);
+        }
+
+        if ($resolved['offer'] === null && $resolved['plan'] === null && $product->checkout_slug === $slug) {
+            $offer = CheckoutQueryResolver::resolveOffer($product, $request);
+            $plan = CheckoutQueryResolver::resolvePlan($product, $request);
+            if ($offer) {
+                $resolved['offer'] = $offer;
+            } elseif ($plan) {
+                $resolved['plan'] = $plan;
+            }
+        }
+
+        $defaults = Product::defaultCheckoutConfig();
+        $productConfig = $product->checkout_config ?? [];
+        $config = array_replace_recursive($defaults, $productConfig);
+        $config['pix_parcelado'] = array_replace_recursive(
+            $defaults['pix_parcelado'] ?? [],
+            is_array($productConfig['pix_parcelado'] ?? null) ? $productConfig['pix_parcelado'] : []
+        );
+        $config['payment_gateways'] = array_replace_recursive(
+            $defaults['payment_gateways'] ?? [],
+            is_array($productConfig['payment_gateways'] ?? null) ? $productConfig['payment_gateways'] : []
+        );
+
+        $methods = CheckoutPaymentMethodsBuilder::build(
+            $product->tenant_id,
+            $config['payment_gateways'] ?? [],
+            null
+        );
+        $hasPixParcelado = false;
+        foreach ($methods as $m) {
+            if (($m['id'] ?? '') === 'pix_parcelado') {
+                $hasPixParcelado = true;
+                break;
+            }
+        }
+        if (! $hasPixParcelado) {
+            return response()->json(['message' => 'PIX Parcelado não disponível neste checkout.'], 404);
+        }
+
+        $parceladoService = app(CajuPayPixParceladoService::class);
+        $creds = $parceladoService->credentialsForTenant($product->tenant_id);
+        if (! $creds) {
+            return response()->json(['message' => 'Credenciais CajuPay indisponíveis.'], 422);
+        }
+
+        $payAccountId = $parceladoService->resolvePayAccountIdForTenant($product->tenant_id);
+        $productRules = $parceladoService->productRulesFromConfig($config);
+        $priceBrl = (float) $product->price;
+        if ($resolved['offer'] ?? null) {
+            $priceBrl = (float) $resolved['offer']->price;
+        }
+        $platformRules = $parceladoService->platformRules($creds, $product->tenant_id);
+        $totalCents = MoneyMinorUnits::toMinorUnits($priceBrl, 'BRL');
+        $merged = $parceladoService->mergeProductRulesWithPlatform($totalCents, $productRules, $platformRules);
+
+        return response()->json([
+            'cajupay_public_key' => (string) ($creds['public_key'] ?? ''),
+            'cajupay_pay_account_id' => $payAccountId,
+            'pix_parcelado_rules' => $merged,
+            'parcelado_sdk_options' => $parceladoService->sdkOptionsFromRules($merged),
+        ]);
     }
 
     public function validateCoupon(Request $request): JsonResponse
@@ -794,7 +877,12 @@ class CheckoutController extends Controller
             $this->tenantCurrenciesListFor($product->tenant_id)
         );
 
-        $orderBumpIds = array_values(array_filter(array_map('intval', $validated['order_bump_ids'] ?? [])));
+        $orderBumpIds = $this->filterOrderBumpIdsExcludedByCombo(
+            $product,
+            $offer,
+            $plan,
+            array_values(array_filter(array_map('intval', $validated['order_bump_ids'] ?? [])))
+        );
         $selectedBumps = collect();
         if ($orderBumpIds) {
             $selectedBumps = ProductOrderBump::where('product_id', $product->id)->whereIn('id', $orderBumpIds)->get();
@@ -1904,6 +1992,10 @@ class CheckoutController extends Controller
         $allowedMethods = array_values(array_unique($allowedMethods));
 
         $externalRef = (string) Str::uuid();
+        $cardOptions = \App\Support\CajuPayCardSessionOptions::fromCheckoutConfig(
+            is_array($product->checkout_config) ? $product->checkout_config : [],
+            $method
+        );
 
         try {
             $driver = GatewayRegistry::driver('cajupay');
@@ -1925,7 +2017,8 @@ class CheckoutController extends Controller
                     $product,
                     $context['offer'] ?? null,
                     $context['plan'] ?? null
-                )
+                ),
+                $cardOptions
             );
         } catch (\Throwable $e) {
             Log::warning('CajuPaySession: falha ao criar sessão SDK', [
@@ -1967,6 +2060,7 @@ class CheckoutController extends Controller
             'tenant_id' => $product->tenant_id,
             'external_id' => $externalRef,
             'methods_available' => $availableMethods,
+            'cajupay_card' => \App\Support\CajuPayCardSessionOptions::draftSnapshot($cardOptions),
             'created_at' => time(),
         ], now()->addMinutes(30));
 
@@ -2066,6 +2160,17 @@ class CheckoutController extends Controller
         ]));
 
         event(new OrderPending($order->fresh()));
+
+        // Webhook paid pode ter chegado antes desta materialização — aplica agora.
+        try {
+            \App\Support\CajuPayPaidSessionBuffer::applyToOrderIfBuffered($order->fresh());
+            $order->refresh();
+        } catch (\Throwable $e) {
+            Log::warning('CajuPayConfirmOrder: falha ao aplicar paid bufferizado', [
+                'order_id' => $order->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
 
         $redirectUrl = $product->checkout_config['redirect_after_purchase'] ?? null;
         $redirectUrl = ! empty($redirectUrl) && is_string($redirectUrl) ? $redirectUrl : null;
@@ -2599,7 +2704,12 @@ class CheckoutController extends Controller
             );
         }
 
-        $orderBumpIds = array_values(array_filter(array_map('intval', $validated['order_bump_ids'] ?? [])));
+        $orderBumpIds = $this->filterOrderBumpIdsExcludedByCombo(
+            $product,
+            $offer,
+            $plan,
+            array_values(array_filter(array_map('intval', $validated['order_bump_ids'] ?? [])))
+        );
         $selectedBumps = collect();
         if ($orderBumpIds) {
             $selectedBumps = ProductOrderBump::where('product_id', $product->id)->whereIn('id', $orderBumpIds)->get();
@@ -2680,7 +2790,12 @@ class CheckoutController extends Controller
         }
         $chargeAmount = (float) ($context['charge_amount'] ?? $order->amount);
         $baseAmount = (float) ($context['base_amount'] ?? $chargeAmount);
-        $bumpIds = array_values(array_filter(array_map('intval', $context['order_bump_ids'] ?? [])));
+        $bumpIds = $this->filterOrderBumpIdsExcludedByCombo(
+            $product,
+            $offer instanceof ProductOffer ? $offer : null,
+            $plan instanceof SubscriptionPlan ? $plan : null,
+            array_values(array_filter(array_map('intval', $context['order_bump_ids'] ?? [])))
+        );
         $tenantId = $product->tenant_id;
         $tenantCurrencies = $this->tenantCurrenciesListFor($tenantId);
 
@@ -2821,6 +2936,9 @@ class CheckoutController extends Controller
             'cajupay_session_token' => $draft['cajupay_token'] ?? null,
             'cajupay_checkout_session_id' => $draft['checkout_session_id'] ?? null,
         ];
+        if (is_array($draft['cajupay_card'] ?? null)) {
+            $orderMetadata['cajupay_card'] = $draft['cajupay_card'];
+        }
         if ($chargeCurrency !== 'BRL') {
             $amountBrl = OrderReportingAmounts::estimateAmountBrl($totalAmount, $chargeCurrency, $tenantId);
             if ($amountBrl !== null && $amountBrl > 0) {
@@ -2875,7 +2993,12 @@ class CheckoutController extends Controller
             'amount' => $baseAmount,
             'position' => 0,
         ]);
-        $bumpIds = is_array($draft['order_bump_ids'] ?? null) ? $draft['order_bump_ids'] : [];
+        $bumpIds = $this->filterOrderBumpIdsExcludedByCombo(
+            $product,
+            $offer,
+            $plan,
+            is_array($draft['order_bump_ids'] ?? null) ? $draft['order_bump_ids'] : []
+        );
         if ($bumpIds) {
             $bumps = ProductOrderBump::where('product_id', $product->id)->whereIn('id', $bumpIds)->get();
             $pos = 1;
@@ -2963,7 +3086,12 @@ class CheckoutController extends Controller
             $this->tenantCurrenciesListFor($product->tenant_id)
         );
 
-        $orderBumpIds = array_values(array_filter(array_map('intval', $validated['order_bump_ids'] ?? [])));
+        $orderBumpIds = $this->filterOrderBumpIdsExcludedByCombo(
+            $product,
+            $offer,
+            $plan,
+            array_values(array_filter(array_map('intval', $validated['order_bump_ids'] ?? [])))
+        );
         $selectedBumps = collect();
         if ($orderBumpIds) {
             $selectedBumps = ProductOrderBump::where('product_id', $product->id)->whereIn('id', $orderBumpIds)->get();
@@ -3308,7 +3436,13 @@ class CheckoutController extends Controller
                                 (string) $order->gateway_id,
                                 'order.paid',
                                 'paid',
-                                ['source' => 'order_status_poll']
+                                [
+                                    'source' => 'order_status_poll',
+                                    'getfy_order_id' => $order->id,
+                                    'cajupay_checkout_session_id' => is_array($orderMeta)
+                                        ? ($orderMeta['cajupay_checkout_session_id'] ?? null)
+                                        : null,
+                                ]
                             );
                             $order->refresh();
                         }
@@ -3391,6 +3525,68 @@ class CheckoutController extends Controller
             $config['payment_gateways'] ?? [],
             $plan
         );
+    }
+
+    /**
+     * Resolve combo_product_ids for the active checkout context (plan → offer → product).
+     * Same priority as Order::grantPurchasedProductAccessToBuyer().
+     *
+     * @return array<int, string>
+     */
+    private function comboProductIdSetForCheckout(Product $product, ?ProductOffer $offer, ?SubscriptionPlan $plan): array
+    {
+        $ids = [];
+        if ($plan) {
+            $ids = $plan->combo_product_ids ?? [];
+        } elseif ($offer) {
+            $ids = $offer->combo_product_ids ?? [];
+        } else {
+            $ids = $product->combo_product_ids ?? [];
+        }
+
+        if (! is_array($ids)) {
+            return [];
+        }
+
+        return array_values(array_unique(array_filter(array_map(
+            static fn ($id) => trim((string) $id),
+            $ids
+        ), static fn (string $id) => $id !== '')));
+    }
+
+    /**
+     * Drop order bump IDs whose target product is already included in the active combo.
+     *
+     * @param  array<int, mixed>  $orderBumpIds
+     * @return array<int, int>
+     */
+    private function filterOrderBumpIdsExcludedByCombo(
+        Product $product,
+        ?ProductOffer $offer,
+        ?SubscriptionPlan $plan,
+        array $orderBumpIds
+    ): array {
+        $orderBumpIds = array_values(array_filter(array_map('intval', $orderBumpIds)));
+        if ($orderBumpIds === []) {
+            return [];
+        }
+
+        $comboIds = $this->comboProductIdSetForCheckout($product, $offer, $plan);
+        if ($comboIds === []) {
+            return $orderBumpIds;
+        }
+
+        $comboLookup = array_fill_keys($comboIds, true);
+
+        return ProductOrderBump::query()
+            ->where('product_id', $product->id)
+            ->whereIn('id', $orderBumpIds)
+            ->get(['id', 'target_product_id'])
+            ->filter(fn (ProductOrderBump $b) => ! isset($comboLookup[(string) $b->target_product_id]))
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id)
+            ->values()
+            ->all();
     }
 
     /**
@@ -3847,7 +4043,7 @@ class CheckoutController extends Controller
         }
 
         $productRules = $parceladoService->productRulesFromConfig($product->checkout_config ?? []);
-        $platformRules = $parceladoService->platformRules($creds);
+        $platformRules = $parceladoService->platformRules($creds, $product->tenant_id);
         $merged = $parceladoService->mergeProductRulesWithPlatform($amountCents, $productRules, $platformRules);
         $sdkOptions = $parceladoService->sdkOptionsFromRules($merged);
 

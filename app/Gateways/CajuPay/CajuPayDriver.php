@@ -329,13 +329,15 @@ class CajuPayDriver implements GatewayDriver
 
     /**
      * Extrai o estado de pagamento do JSON de GET /api/sdk/public/checkout/sessions/{token}.
-     * O contrato pode evoluir (campos no topo vs dentro de payment / latest_charge).
+     * O contrato CajuPay separa ciclo de vida da sessão (`status`: active/…) de
+     * liquidação (`payment_status`: pending|paid|…). Preferir payment_status — se
+     * lermos `status` primeiro, sessões pagas ficam eternamente como "active".
      *
      * @param  array<string, mixed>  $data
      */
     private function extractPublicSessionStatus(array $data): mixed
     {
-        foreach (['status', 'state', 'checkout_status', 'session_status', 'payment_status'] as $key) {
+        foreach (['payment_status', 'checkout_status', 'session_status'] as $key) {
             if (! array_key_exists($key, $data)) {
                 continue;
             }
@@ -350,18 +352,35 @@ class CajuPayDriver implements GatewayDriver
             if (! is_array($obj)) {
                 continue;
             }
-            foreach (['status', 'state'] as $key) {
+            foreach (['payment_status', 'status', 'state'] as $key) {
                 if (! array_key_exists($key, $obj)) {
                     continue;
                 }
                 $v = $obj[$key];
-                if (is_string($v) && trim($v) !== '') {
+                if (is_string($v) && trim($v) !== '' && ! $this->isSessionLifecycleOnlyStatus($v)) {
                     return $v;
                 }
             }
         }
 
+        // Último recurso: status/state da sessão (ignorar "active" = sessão aberta).
+        foreach (['status', 'state'] as $key) {
+            if (! array_key_exists($key, $data)) {
+                continue;
+            }
+            $v = $data[$key];
+            if (is_string($v) && trim($v) !== '' && ! $this->isSessionLifecycleOnlyStatus($v)) {
+                return $v;
+            }
+        }
+
         return null;
+    }
+
+    private function isSessionLifecycleOnlyStatus(string $status): bool
+    {
+        // "active"/"created" = sessão aberta na CajuPay, não resultado do pagamento.
+        return in_array(strtolower(trim($status)), ['active', 'created'], true);
     }
 
     /**
@@ -427,6 +446,11 @@ class CajuPayDriver implements GatewayDriver
      * @param  array<string, mixed>  $credentials
      * @param  array<string, mixed>  $consumer  Optional initial payer info.
      * @param  array<int, string>  $allowedMethods  Subset of ['card','apple_pay','google_pay','pix'].
+     * @param  array{
+     *     allow_card_installments?: bool,
+     *     card_max_installments?: int,
+     *     require_card_threeds?: bool
+     * }  $cardOptions  Cartão Brasil: parcelamento / 3DS (só aplicados com allow_card).
      * @return array{token: string, checkout_session_id: string, raw: array<string, mixed>}
      */
     public function createSdkCheckoutSession(
@@ -440,6 +464,7 @@ class CajuPayDriver implements GatewayDriver
         string $defaultMethod,
         ?string $locale = null,
         ?string $partnerCheckoutUrl = null,
+        array $cardOptions = [],
     ): array {
         if (! $this->hasApiKeys($credentials)) {
             throw new \RuntimeException('CajuPay: configure a chave pública e a chave secreta da API (painel CajuPay → API / Chaves).');
@@ -454,11 +479,13 @@ class CajuPayDriver implements GatewayDriver
             throw new \RuntimeException('CajuPay: PIX só pode ser cobrado em BRL.');
         }
 
+        $allowCard = in_array('card', $allowedMethods, true);
+
         $body = [
             'amount_cents' => $amountCents,
             'currency' => $currencyCode,
             'description' => $description !== '' ? $description : ('Pedido #'.$externalId),
-            'allow_card' => in_array('card', $allowedMethods, true),
+            'allow_card' => $allowCard,
             'allow_boleto' => in_array('boleto', $allowedMethods, true),
             'allow_pix' => in_array('pix', $allowedMethods, true),
             'allow_apple_pay' => in_array('apple_pay', $allowedMethods, true),
@@ -468,6 +495,22 @@ class CajuPayDriver implements GatewayDriver
                 'source' => 'getfy',
             ],
         ];
+
+        // Cartão Brasil (módulo 06): parcelamento sem juros + require_card_threeds.
+        // Só quando o caller passou flags (fluxo payment_method=card). Wallets omitem.
+        if ($allowCard && array_key_exists('allow_card_installments', $cardOptions)) {
+            $allowInstallments = ! empty($cardOptions['allow_card_installments']);
+            $maxInstallments = min(12, max(1, (int) ($cardOptions['card_max_installments'] ?? 1)));
+            if ($allowInstallments && $maxInstallments >= 2) {
+                $body['allow_card_installments'] = true;
+                $body['card_max_installments'] = $maxInstallments;
+            } else {
+                $body['allow_card_installments'] = false;
+            }
+        }
+        if ($allowCard && ! empty($cardOptions['require_card_threeds'])) {
+            $body['require_card_threeds'] = true;
+        }
 
         // initial_payer só é enviado quando temos dados REAIS do cliente. A CajuPay
         // não casa esses dados com o que vai no confirm — o /confirm lê payer_name /

@@ -9,6 +9,13 @@ use Tests\TestCase;
 
 class VendasPaginationTest extends TestCase
 {
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->withoutVite();
+        config(['commissions.gateway_default_fees.manual.pix' => ['percent' => 0, 'fixed_cents' => 0]]);
+    }
+
     public function test_vendas_pagination_returns_distinct_pages_with_valid_links(): void
     {
         $this->withoutMiddleware(EnsureInstalled::class);
@@ -29,7 +36,7 @@ class VendasPaginationTest extends TestCase
                 'amount' => $i,
                 'email' => "buyer{$i}@example.com",
                 'gateway' => 'manual',
-            ]);
+            ])->forceFill(['created_at' => now()->subSeconds(60 - $i)])->save();
         }
 
         $page1 = $this->actingAs($user)->get('/vendas');
@@ -38,8 +45,8 @@ class VendasPaginationTest extends TestCase
             ->where('vendas.current_page', 1)
             ->where('vendas.last_page', 2)
             ->has('vendas.data', 20)
-            ->where('vendas.data.0.billed_amount', 25.0)
-            ->where('vendas.data.0.net_profit_amount', 25.0)
+            ->where('vendas.data.0.billed_amount', fn ($amount) => (float) $amount === 25.0)
+            ->where('vendas.data.0.net_profit_amount', fn ($amount) => (float) $amount === 25.0)
             ->has('vendas.links'));
 
         $page2 = $this->actingAs($user)->get('/vendas?page=2');
