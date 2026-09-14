@@ -81,10 +81,12 @@
     @php
         $viteDevHot = public_path('hot');
         $vueBridgeBuilt = public_path('build/getfy-plugin-vue.mjs');
-        $vueBridgeImport = 'https://cdn.jsdelivr.net/npm/vue@3/dist/vue.esm-browser.js';
+        $vueBridgeImport = (! file_exists($viteDevHot) && file_exists($vueBridgeBuilt))
+            ? (parse_url(asset('build/getfy-plugin-vue.mjs'), PHP_URL_PATH) ?: '/build/getfy-plugin-vue.mjs')
+            : \Illuminate\Support\Facades\Vite::asset('resources/js/plugins/getfyPluginVueBridge.js');
     @endphp
     <script type="importmap">
-        {"scopes":{"/plugins/":{"vue":@json($vueBridgeImport)}}}
+        {"imports":{"vue":@json($vueBridgeImport)},"scopes":{"/plugins/":{"vue":@json($vueBridgeImport)}}}
     </script>
     @php
         $assetContext = \App\Plugins\PluginAssetQueue::contextForRequest(request());
