@@ -16,22 +16,34 @@ class NetAmountCalculator
 
     public const FEE_SOURCE_ESTIMATED = 'estimated';
 
-    /** @var array<int, array<int, float>> */
-    private array $pagarmeRatesByTenant = [];
+    public const FEE_SOURCE_MANUAL = 'manual';
+
+    /** @var array<int, array<string, mixed>> */
+    private array $pagarmeConfigByTenant = [];
 
     /**
      * @return array{gross: float, fee: float, net: float, fee_source: string}
      */
     public function forOrder(Order $order): array
     {
+        $gross = round($order->lineItemsTotalAmount(), 2);
         $method = $order->checkoutPaymentMethod();
         $gateway = strtolower((string) ($order->gateway ?? ''));
-        $gross = $gateway === 'pagarme' && $method === 'card'
-            ? round((float) $order->amount, 2)
-            : round($order->lineItemsTotalAmount(), 2);
         $currency = $order->getCurrencyOrDefault();
         $meta = is_array($order->metadata) ? $order->metadata : [];
 
+        // 1. Ajuste manual de lucro líquido recebido
+        $manualNetAmount = $this->manualNetAmountForOrder($order);
+        if ($manualNetAmount !== null) {
+            return [
+                'gross' => $gross,
+                'fee' => max(0, round($gross - $manualNetAmount, 2)),
+                'net' => $manualNetAmount,
+                'fee_source' => self::FEE_SOURCE_MANUAL,
+            ];
+        }
+
+        // 2. Taxas reais informadas via webhook
         $feeCents = $meta['gateway_fee_cents'] ?? null;
         $netCents = $meta['gateway_net_cents'] ?? null;
         if (is_numeric($feeCents) && (int) $feeCents >= 0) {
@@ -50,14 +62,58 @@ class NetAmountCalculator
             ];
         }
 
+        // 3. Cartão Pagar.me com base nos campos de repasse (1x, 2x+) e percentual assumido
+        if ($gateway === 'pagarme' && $method === 'card') {
+            $tenantId = (int) $order->tenant_id;
+            $config = $this->pagarmeConfigForTenant($tenantId);
+            $installments = min(12, max(1, (int) ($meta['card_installments'] ?? $meta['installments'] ?? 1)));
+            $rate = $this->pagarmeRateForOrder($order);
+
+            $passFeeToCustomer = $installments === 1
+                ? (array_key_exists('pagarme_fee_passed_to_customer', $meta)
+                    ? (bool) $meta['pagarme_fee_passed_to_customer']
+                    : ! empty($config['pass_1x_fee_to_customer']))
+                : (array_key_exists('pagarme_fee_passed_to_customer', $meta)
+                    ? (bool) $meta['pagarme_fee_passed_to_customer']
+                    : ! empty($config['enabled']));
+
+            $producerAssumptionPercent = array_key_exists('pagarme_fee_assumption_percent', $meta)
+                ? (float) $meta['pagarme_fee_assumption_percent']
+                : (float) ($config['producer_fee_assumption_percent'] ?? 0);
+            $producerAssumptionPercent = min(100, max(0, $producerAssumptionPercent));
+
+            $charged = (float) $order->amount;
+
+            if ($passFeeToCustomer && $charged > 0 && abs($charged - $gross) >= 0.01) {
+                $net = round($charged * (1 - ($rate / 100)), 2);
+                $fee = max(0, round($gross - $net, 2));
+            } elseif ($passFeeToCustomer) {
+                $fee = $producerAssumptionPercent > 0
+                    ? round($gross * ($producerAssumptionPercent / 100), 2)
+                    : 0.0;
+                $net = max(0, round($gross - $fee, 2));
+            } else {
+                $fee = round($gross * ($rate / 100), 2);
+                $net = max(0, round($gross - $fee, 2));
+            }
+
+            return [
+                'gross' => $gross,
+                'fee' => $fee,
+                'net' => $net,
+                'fee_source' => self::FEE_SOURCE_ESTIMATED,
+            ];
+        }
+
+        // 4. Comissões registradas
         $order->loadMissing('commissionEntries');
         $producerEntry = $order->commissionEntries
             ->firstWhere('role', CommissionEntry::ROLE_PRODUTOR);
         if ($producerEntry && (float) $producerEntry->gateway_fee_amount > 0) {
-            $fee = round((float) $producerEntry->gateway_fee_amount, 2);
             $net = $producerEntry->net_amount !== null
                 ? round((float) $producerEntry->net_amount, 2)
-                : max(0, round($gross - $fee, 2));
+                : max(0, round($gross - (float) $producerEntry->gateway_fee_amount, 2));
+            $fee = max(0, round($gross - $net, 2));
 
             return [
                 'gross' => $gross,
@@ -67,19 +123,7 @@ class NetAmountCalculator
             ];
         }
 
-        if ($gateway === 'pagarme' && $method === 'card') {
-            $gross = round((float) $order->amount, 2);
-            $fee = round($gross * $this->pagarmeRateForOrder($order) / 100, 2);
-
-            return [
-                'gross' => $gross,
-                'fee' => $fee,
-                'net' => max(0, round($gross - $fee, 2)),
-                'fee_source' => self::FEE_SOURCE_ESTIMATED,
-            ];
-        }
-
-        $gross = round($order->lineItemsTotalAmount(), 2);
+        // 5. Demais gateways estimados
         $tenantId = (int) $order->tenant_id;
         $fee = $this->estimateFee($tenantId, $gateway, $method, $gross);
         $net = max(0, round($gross - $fee, 2));
@@ -90,6 +134,29 @@ class NetAmountCalculator
             'net' => $net,
             'fee_source' => self::FEE_SOURCE_ESTIMATED,
         ];
+    }
+
+    public function manualNetAmountForOrder(Order $order): ?float
+    {
+        $metadata = is_array($order->metadata) ? $order->metadata : [];
+        $manualNetAmount = $metadata['manual_net_amount'] ?? null;
+
+        return is_numeric($manualNetAmount)
+            ? max(0, round((float) $manualNetAmount, 2))
+            : null;
+    }
+
+    private function pagarmeConfigForTenant(int $tenantId): array
+    {
+        if (! isset($this->pagarmeConfigByTenant[$tenantId])) {
+            $raw = Setting::get('pagarme_installments', null, $tenantId);
+            if (is_string($raw)) {
+                $raw = json_decode($raw, true);
+            }
+            $this->pagarmeConfigByTenant[$tenantId] = is_array($raw) ? $raw : [];
+        }
+
+        return $this->pagarmeConfigByTenant[$tenantId];
     }
 
     public function estimateFee(int $tenantId, string $gatewaySlug, string $method, float $gross): float

@@ -5,7 +5,7 @@ import VueApexCharts from 'vue3-apexcharts';
 import ConquistasWidget from '@/components/layout/ConquistasWidget.vue';
 import DashboardPeriodFilter from '@/components/dashboard/DashboardPeriodFilter.vue';
 import TrackingTabLauncher from '@/components/dashboard/tracking/TrackingTabLauncher.vue';
-import { CircleDollarSign, ShoppingCart, CreditCard, ShoppingBag, RotateCcw, Package, Eye, EyeOff } from 'lucide-vue-next';
+import { CircleDollarSign, ShoppingCart, CreditCard, ShoppingBag, RotateCcw, Package, Eye, EyeOff, TrendingUp } from 'lucide-vue-next';
 
 const page = usePage();
 const hasAchievementsProgress = computed(() => !!(page.props.achievementsProgress ?? null));
@@ -22,6 +22,9 @@ const props = defineProps({
     period: { type: String, default: 'hoje' },
     vendas_totais: { type: Number, default: 0 },
     vendas_totais_por_moeda: { type: Array, default: () => [] },
+    lucro_liquido: { type: Number, default: 0 },
+    taxas_totais: { type: Number, default: 0 },
+    financeiro_por_moeda: { type: Array, default: () => [] },
     vendas_pendentes: { type: Number, default: 0 },
     quantidade_vendas: { type: Number, default: 0 },
     ticket_medio: { type: Number, default: 0 },
@@ -177,7 +180,7 @@ const chartOptions = computed(() => {
             </div>
         </div>
 
-        <div class="grid gap-4 sm:grid-cols-2">
+        <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             <div class="panel-card-md">
                 <div class="flex items-center gap-3 text-zinc-600 dark:text-zinc-400">
                     <div class="dash-metric-icon-md" aria-hidden="true">
@@ -202,6 +205,29 @@ const chartOptions = computed(() => {
                 </p>
             </div>
             <div class="panel-card-md">
+                <div class="flex items-center gap-3 text-emerald-600 dark:text-emerald-400">
+                    <div class="dash-metric-icon-md bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400" aria-hidden="true">
+                        <TrendingUp class="h-5 w-5" />
+                    </div>
+                    <span class="text-sm font-medium">Lucro líquido</span>
+                </div>
+                <div v-if="(financeiro_por_moeda ?? []).length" class="mt-3 space-y-1">
+                    <p
+                        v-for="row in financeiro_por_moeda"
+                        :key="row.currency"
+                        class="text-xl font-bold text-emerald-600 dark:text-emerald-400 sm:text-2xl"
+                    >
+                        {{ displayMoney(row.net, row.currency) }}
+                    </p>
+                </div>
+                <p v-else class="mt-3 text-2xl font-bold text-emerald-600 dark:text-emerald-400">
+                    {{ displayMoney(lucro_liquido, 'BRL') }}
+                </p>
+                <p class="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+                    Taxas estimadas: {{ displayCurrency(taxas_totais) }}
+                </p>
+            </div>
+            <div class="panel-card-md sm:col-span-2 lg:col-span-1">
                 <div class="flex items-center gap-3 text-zinc-600 dark:text-zinc-400">
                     <div class="dash-metric-icon-md" aria-hidden="true">
                         <ShoppingCart class="h-5 w-5" />

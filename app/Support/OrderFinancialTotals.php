@@ -34,6 +34,7 @@ class OrderFinancialTotals
         $idQuery->select('orders.id');
 
         $calculator = app(NetAmountCalculator::class);
+        $grossByCurrency = [];
         $feesByCurrency = [];
         $netByCurrency = [];
 
@@ -45,10 +46,11 @@ class OrderFinancialTotals
             ])
             ->select(['id', 'amount', 'currency', 'gateway', 'metadata', 'tenant_id'])
             ->orderBy('id')
-            ->chunkById(200, function ($orders) use ($calculator, &$feesByCurrency, &$netByCurrency) {
+            ->chunkById(200, function ($orders) use ($calculator, &$grossByCurrency, &$feesByCurrency, &$netByCurrency) {
                 foreach ($orders as $order) {
                     $breakdown = $calculator->forOrder($order);
                     $currency = $order->getCurrencyOrDefault();
+                    $grossByCurrency[$currency] = ($grossByCurrency[$currency] ?? 0.0) + $breakdown['gross'];
                     $feesByCurrency[$currency] = ($feesByCurrency[$currency] ?? 0.0) + $breakdown['fee'];
                     $netByCurrency[$currency] = ($netByCurrency[$currency] ?? 0.0) + $breakdown['net'];
                 }
@@ -57,12 +59,12 @@ class OrderFinancialTotals
         $out = [];
         foreach ($grossRows as $row) {
             $currency = $row['currency'];
-            $gross = (float) $row['total'];
+            $gross = round($grossByCurrency[$currency] ?? (float) $row['total'], 2);
             $fees = round($feesByCurrency[$currency] ?? 0.0, 2);
             $net = round($netByCurrency[$currency] ?? max(0, $gross - $fees), 2);
             $out[] = [
                 'currency' => $currency,
-                'gross' => round($gross, 2),
+                'gross' => $gross,
                 'fees' => $fees,
                 'net' => $net,
             ];

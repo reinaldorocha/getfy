@@ -26,7 +26,7 @@ class ProducerSaleAmount
     {
         $isPagarmeCard = strtolower((string) $order->gateway) === 'pagarme'
             && $order->checkoutPaymentMethod() === 'card';
-        $grossTotal = $isPagarmeCard ? round((float) $order->amount, 2) : $order->lineItemsTotalAmount();
+        $grossTotal = $order->lineItemsTotalAmount();
         $order->loadMissing('product', 'commissionEntries');
 
         // Preserve the Pagar.me calculation for allocated splits; pending sales

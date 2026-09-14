@@ -8,6 +8,7 @@ use App\Models\CheckoutSession;
 use App\Models\Order;
 use App\Models\Product;
 use App\Support\OrderCurrencyTotals;
+use App\Support\OrderFinancialTotals;
 use App\Support\ReportingPeriod;
 use App\Services\TeamAccessService;
 use Illuminate\Http\Request;
@@ -72,6 +73,19 @@ class DashboardController extends Controller
         $reembolsosCount = $ordersRefunded->count();
         $reembolsosTotal = (float) (clone $ordersQuery)->where('status', 'refunded')->sum('amount');
 
+        $financeiroPorMoeda = [];
+        try {
+            $financeiroPorMoeda = OrderFinancialTotals::porMoedaFromQuery($ordersCompleted);
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::error('DashboardController financeiroPorMoeda', [
+                'message' => $e->getMessage(),
+                'tenant_id' => $tenantId,
+            ]);
+        }
+        $financialBrl = OrderFinancialTotals::brlTotals($financeiroPorMoeda);
+        $lucroLiquido = (float) ($financialBrl['net'] ?? 0.0);
+        $taxasTotais = (float) ($financialBrl['fees'] ?? 0.0);
+
         $formasPagamento = (clone $ordersQuery)
             ->where('status', 'completed')
             ->selectRaw('gateway, SUM(amount) as total, COUNT(*) as quantidade')
@@ -128,6 +142,9 @@ class DashboardController extends Controller
                 'period' => $period,
                 'vendas_totais' => round($vendasTotais, 2),
                 'vendas_totais_por_moeda' => $vendasTotaisPorMoeda,
+                'lucro_liquido' => round($lucroLiquido, 2),
+                'taxas_totais' => round($taxasTotais, 2),
+                'financeiro_por_moeda' => $financeiroPorMoeda,
                 'vendas_pendentes' => round($vendasPendentes, 2),
                 'quantidade_vendas' => $quantidadeVendas,
                 'ticket_medio' => round($ticketMedio, 2),

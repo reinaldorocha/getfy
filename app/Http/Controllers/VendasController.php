@@ -14,11 +14,13 @@ use App\Support\AffiliateAttribution;
 use App\Models\OrderItem;
 use App\Models\Subscription;
 use App\Services\AccessEmailService;
+use App\Services\NetAmountCalculator;
 use App\Services\ProducerSaleAmount;
 use App\Services\RefundService;
 use App\Services\TeamAccessService;
 use App\Support\OrderCurrencyTotals;
 use App\Support\OrderFinancialTotals;
+use App\Support\ReportingPeriod;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -284,8 +286,10 @@ class VendasController extends Controller
                 $arr['has_partner_split'] = $producerAmount['has_partner_split'];
                 $financial = $o->financialBreakdown();
                 $arr['gross_amount'] = $financial['gross'];
+                $arr['billed_amount'] = $financial['gross'];
                 $arr['gateway_fee'] = $financial['fee'];
                 $arr['net_amount'] = $financial['net'];
+                $arr['net_profit_amount'] = $financial['net'];
                 $arr['fee_source'] = $financial['fee_source'];
                 $arr['sale_channel'] = $o->saleChannel();
                 $arr['is_affiliate_sale'] = $o->saleChannel() === 'affiliate';
@@ -611,6 +615,47 @@ class VendasController extends Controller
             'success' => false,
             'message' => 'Não foi possível reenviar o e-mail. Verifique se o produto possui template de e-mail configurado.',
         ], 422);
+    }
+
+    public function updateNetAmount(Order $order, Request $request, NetAmountCalculator $netAmountCalculator): JsonResponse
+    {
+        $tenantId = auth()->user()->tenant_id;
+        if ($order->tenant_id !== $tenantId) {
+            return response()->json(['success' => false, 'message' => 'Pedido não encontrado.'], 404);
+        }
+
+        if (auth()->user()->isTeam()) {
+            $allowed = app(TeamAccessService::class)->allowedProductIdsFor(auth()->user());
+            if ($allowed !== [] && ! in_array($order->product_id, $allowed, true)) {
+                return response()->json(['success' => false, 'message' => 'Sem permissão para este produto.'], 403);
+            }
+        }
+
+        $validated = $request->validate([
+            'net_amount' => ['nullable', 'numeric', 'min:0', 'max:100000000'],
+        ]);
+
+        $metadata = is_array($order->metadata) ? $order->metadata : [];
+        $manualNetAmount = $validated['net_amount'] ?? null;
+        if ($manualNetAmount === null) {
+            unset($metadata['manual_net_amount']);
+        } else {
+            $metadata['manual_net_amount'] = round((float) $manualNetAmount, 2);
+        }
+
+        $order->update(['metadata' => $metadata]);
+        $order = $order->fresh();
+        ReportingPeriod::bustDashboardCache($tenantId);
+
+        $breakdown = $netAmountCalculator->forOrder($order);
+
+        return response()->json([
+            'success' => true,
+            'net_amount' => $breakdown['net'],
+            'fee_amount' => $breakdown['fee'],
+            'gross_amount' => $breakdown['gross'],
+            'manual_net_amount' => $metadata['manual_net_amount'] ?? null,
+        ]);
     }
 
     public function approveManually(Order $order): JsonResponse

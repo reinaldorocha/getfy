@@ -232,6 +232,25 @@ function displayNumber(value) {
     return valuesVisible.value ? String(value) : '—';
 }
 
+function feePercentageStr(fee, gross) {
+    const feeNum = Number(fee ?? 0);
+    const grossNum = Number(gross ?? 0);
+    if (grossNum <= 0 || feeNum <= 0) return null;
+    const pct = (feeNum / grossNum) * 100;
+    const rounded = Math.round(pct * 100) / 100;
+    return Number.isInteger(rounded) ? String(rounded) : rounded.toString().replace('.', ',');
+}
+
+function formatFeeWithPercent(v) {
+    if (!v || v.status !== 'completed') return '—';
+    const fee = Number(v.gateway_fee ?? 0);
+    const gross = Number(v.gross_amount ?? v.amount_total ?? 0);
+    const feeFormatted = displayMoney(fee, v.currency);
+    if (!valuesVisible.value) return feeFormatted;
+    const pctStr = feePercentageStr(fee, gross);
+    return pctStr ? `${feeFormatted} (${pctStr}%)` : feeFormatted;
+}
+
 function whatsappUrl(venda) {
     return whatsappUrlForPhone(venda?.phone);
 }
@@ -267,6 +286,32 @@ function openDetail(v) {
 function closeSidebar() {
     sidebarOpen.value = false;
     selectedVenda.value = null;
+}
+
+function handleManualNetAmountUpdated({ orderId, netAmount, feeAmount, grossAmount, manualNetAmount }) {
+    if (String(selectedVenda.value?.id) === String(orderId)) {
+        const metadata = { ...(selectedVenda.value?.metadata ?? {}) };
+        if (manualNetAmount === null) {
+            delete metadata.manual_net_amount;
+        } else {
+            metadata.manual_net_amount = manualNetAmount;
+        }
+        selectedVenda.value = {
+            ...selectedVenda.value,
+            metadata,
+            net_amount: netAmount,
+            gateway_fee: feeAmount,
+            gross_amount: grossAmount,
+            fee_source: manualNetAmount !== null ? 'manual' : selectedVenda.value?.fee_source,
+        };
+    }
+
+    showToast(manualNetAmount === null ? 'Ajuste manual removido.' : 'Valor líquido ajustado.', 'success');
+    router.reload({
+        only: ['vendas', 'stats'],
+        preserveScroll: true,
+        preserveState: true,
+    });
 }
 
 async function updateMenuPosition() {
@@ -579,7 +624,7 @@ function openProofExport() {
                 <div
                     class="panel-card-md"
                 >
-                    <div class="flex items-center gap-2 text-zinc-600 dark:text-zinc-400">
+                    <div class="flex items-center gap-2 text-emerald-600 dark:text-emerald-400">
                         <CircleDollarSign class="h-5 w-5" />
                         <span class="text-sm font-medium" title="Faturamento bruto menos taxas do gateway">Receita líquida</span>
                     </div>
@@ -587,12 +632,12 @@ function openProofExport() {
                         <p
                             v-for="row in stats.valor_liquido_por_moeda"
                             :key="'liq-' + row.currency"
-                            class="text-lg font-bold text-zinc-900 dark:text-white sm:text-2xl"
+                            class="text-lg font-bold text-emerald-600 dark:text-emerald-400 sm:text-2xl"
                         >
                             {{ displayMoney(row.total, row.currency) }}
                         </p>
                     </div>
-                    <p v-else class="mt-2 text-2xl font-bold text-zinc-900 dark:text-white">
+                    <p v-else class="mt-2 text-2xl font-bold text-emerald-600 dark:text-emerald-400">
                         {{ displayMoney(0, 'BRL') }}
                     </p>
                 </div>
@@ -1022,9 +1067,9 @@ function openProofExport() {
                             {{ v.status === 'completed' ? displayMoney(v.gross_amount ?? v.amount_total, v.currency) : '—' }}
                         </td>
                         <td class="whitespace-nowrap px-4 py-3 text-right text-sm tabular-nums text-zinc-700 dark:text-zinc-300">
-                            {{ v.status === 'completed' ? displayMoney(v.gateway_fee ?? 0, v.currency) : '—' }}
+                            {{ formatFeeWithPercent(v) }}
                         </td>
-                        <td class="whitespace-nowrap px-4 py-3 text-right text-sm font-medium tabular-nums text-zinc-900 dark:text-white">
+                        <td class="whitespace-nowrap px-4 py-3 text-right text-sm font-medium tabular-nums text-emerald-600 dark:text-emerald-400">
                             <p>{{ v.status === 'completed' ? displayMoney(v.net_amount ?? v.gross_amount, v.currency) : displayMoney(vendaDisplayAmount(v), v.currency) }}</p>
                             <p
                                 v-if="v.display_amount_is_producer_share && v.sale_gross_total != null"
@@ -1127,6 +1172,7 @@ function openProofExport() {
             :venda="selectedVenda"
             :plugin_order_detail_panels="plugin_order_detail_panels"
             @close="closeSidebar"
+            @manual-net-amount-updated="handleManualNetAmountUpdated"
         />
 
         <!-- Toast local -->

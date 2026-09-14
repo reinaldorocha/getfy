@@ -427,11 +427,11 @@ const chartOptionsFormas = computed(() => ({
                 <p class="mt-2 text-xl font-bold text-zinc-900 dark:text-white">{{ displayCurrency(taxas_gateway) }}</p>
             </div>
             <div class="panel-card-md">
-                <div class="flex items-center gap-2 text-zinc-600 dark:text-zinc-400">
+                <div class="flex items-center gap-2 text-emerald-600 dark:text-emerald-400">
                     <TrendingUp class="h-5 w-5" />
                     <span class="text-sm font-medium" title="Bruto menos taxas do gateway">Receita líquida</span>
                 </div>
-                <p class="mt-2 text-xl font-bold text-zinc-900 dark:text-white">{{ displayCurrency(receita_liquida) }}</p>
+                <p class="mt-2 text-xl font-bold text-emerald-600 dark:text-emerald-400">{{ displayCurrency(receita_liquida) }}</p>
             </div>
             <div class="panel-card-md">
                 <div class="flex items-center gap-2 text-zinc-600 dark:text-zinc-400">

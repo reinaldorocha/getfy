@@ -1,5 +1,6 @@
 <script setup>
 import { ref, computed } from 'vue';
+import axios from 'axios';
 import { X, ExternalLink } from 'lucide-vue-next';
 import PluginSlotHost from '@/components/plugins/PluginSlotHost.vue';
 import PluginRenderZone from '@/components/plugins/PluginRenderZone.vue';
@@ -11,9 +12,13 @@ const props = defineProps({
     plugin_order_detail_panels: { type: Array, default: () => [] },
 });
 
-const emit = defineEmits(['close']);
+const emit = defineEmits(['close', 'manual-net-amount-updated']);
 
 const activeTab = ref('venda');
+const editingManualNetAmount = ref(false);
+const manualNetAmount = ref('');
+const savingManualNetAmount = ref(false);
+const manualNetAmountError = ref('');
 
 function checkoutSessionFromVenda(v) {
     if (!v) return null;
@@ -70,6 +75,76 @@ function vendaDisplayAmount(v) {
 
 function vendaGrossAmount(v) {
     return v?.gross_amount ?? v?.amount_total ?? v?.amount ?? 0;
+}
+
+function manualNetAmountFromVenda(v) {
+    const value = metadataFromVenda(v)?.manual_net_amount;
+    return value !== null && value !== undefined && Number.isFinite(Number(value))
+        ? Number(value)
+        : null;
+}
+
+function hasManualNetAmount(v) {
+    return manualNetAmountFromVenda(v) !== null;
+}
+
+function feePercentageStr(fee, gross) {
+    const feeNum = Number(fee ?? 0);
+    const grossNum = Number(gross ?? 0);
+    if (grossNum <= 0 || feeNum <= 0) return null;
+    const pct = (feeNum / grossNum) * 100;
+    const rounded = Math.round(pct * 100) / 100;
+    return Number.isInteger(rounded) ? String(rounded) : rounded.toString().replace('.', ',');
+}
+
+function startManualNetAmountEdit() {
+    manualNetAmount.value = String(manualNetAmountFromVenda(props.venda) ?? props.venda?.net_amount ?? vendaDisplayAmount(props.venda));
+    manualNetAmountError.value = '';
+    editingManualNetAmount.value = true;
+}
+
+function cancelManualNetAmountEdit() {
+    editingManualNetAmount.value = false;
+    manualNetAmountError.value = '';
+}
+
+async function saveManualNetAmount(remove = false) {
+    if (!props.venda || savingManualNetAmount.value) return;
+
+    const value = remove ? null : Number(manualNetAmount.value);
+    if (!remove && (!Number.isFinite(value) || value < 0)) {
+        manualNetAmountError.value = 'Informe um valor líquido igual ou maior que zero.';
+        return;
+    }
+
+    savingManualNetAmount.value = true;
+    manualNetAmountError.value = '';
+    try {
+        const { data } = await axios.put(`/vendas/${props.venda.id}/lucro-liquido`, { net_amount: value });
+        if (!data?.success) {
+            manualNetAmountError.value = data?.message ?? 'Não foi possível salvar o ajuste.';
+            return;
+        }
+
+        editingManualNetAmount.value = false;
+        emit('manual-net-amount-updated', {
+            orderId: props.venda.id,
+            netAmount: Number(data.net_amount),
+            feeAmount: Number(data.fee_amount),
+            grossAmount: Number(data.gross_amount),
+            manualNetAmount: data.manual_net_amount === null ? null : Number(data.manual_net_amount),
+        });
+    } catch (error) {
+        manualNetAmountError.value = error.response?.data?.message ?? 'Não foi possível salvar o ajuste.';
+    } finally {
+        savingManualNetAmount.value = false;
+    }
+}
+
+function vendaInstallments(v) {
+    const meta = metadataFromVenda(v);
+    const installments = Number(meta?.card_installments ?? meta?.installments ?? 1);
+    return Number.isInteger(installments) && installments >= 1 ? installments : 1;
 }
 
 function formatDate(value) {
@@ -226,7 +301,16 @@ function itemLabel(item) {
                                         <p class="font-medium text-zinc-900 dark:text-white">
                                             {{ formatMoney(venda.gateway_fee ?? 0, venda.currency) }}
                                             <span
-                                                v-if="venda.fee_source === 'gateway_webhook' || venda.fee_source === 'cajupay_webhook'"
+                                                v-if="feePercentageStr(venda.gateway_fee, venda.gross_amount ?? vendaGrossAmount(venda))"
+                                                class="text-xs font-normal text-zinc-500"
+                                            >({{ feePercentageStr(venda.gateway_fee, venda.gross_amount ?? vendaGrossAmount(venda)) }}%)</span>
+                                            <span
+                                                v-if="venda.fee_source === 'manual' || hasManualNetAmount(venda)"
+                                                class="ml-1 rounded bg-blue-100 px-1.5 py-0.5 text-[10px] font-medium text-blue-800 dark:bg-blue-950/50 dark:text-blue-300"
+                                                title="Ajuste manual informado"
+                                            >manual</span>
+                                            <span
+                                                v-else-if="venda.fee_source === 'gateway_webhook' || venda.fee_source === 'cajupay_webhook'"
                                                 class="ml-1 rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300"
                                                 title="Taxa informada pelo gateway"
                                             >real</span>
@@ -239,7 +323,7 @@ function itemLabel(item) {
                                     </div>
                                     <div>
                                         <p class="text-[11px] text-zinc-500">Líquido</p>
-                                        <p class="font-medium text-zinc-900 dark:text-white">{{ formatMoney(venda.net_amount ?? venda.gross_amount ?? vendaGrossAmount(venda), venda.currency) }}</p>
+                                        <p class="font-medium text-emerald-600 dark:text-emerald-400">{{ formatMoney(venda.net_amount ?? venda.gross_amount ?? vendaGrossAmount(venda), venda.currency) }}</p>
                                     </div>
                                 </div>
                             </div>
@@ -259,14 +343,47 @@ function itemLabel(item) {
                                         <p class="text-[11px] text-zinc-500">Taxa</p>
                                         <p class="font-medium text-zinc-900 dark:text-white">
                                             {{ formatMoney(venda.gateway_fee ?? 0, venda.currency) }}
+                                            <span
+                                                v-if="feePercentageStr(venda.gateway_fee, vendaGrossAmount(venda))"
+                                                class="text-xs font-normal text-zinc-500"
+                                            >({{ feePercentageStr(venda.gateway_fee, vendaGrossAmount(venda)) }}%)</span>
                                             <span class="text-[10px] font-normal text-zinc-500"> (est.)</span>
                                         </p>
                                     </div>
                                     <div>
                                         <p class="text-[11px] text-zinc-500">Líquido</p>
-                                        <p class="font-medium text-zinc-900 dark:text-white">
+                                        <p class="font-medium text-emerald-600 dark:text-emerald-400">
                                             {{ formatMoney(venda.net_amount ?? Math.max(0, vendaGrossAmount(venda) - Number(venda.gateway_fee ?? 0)), venda.currency) }}
                                         </p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="rounded-xl border border-zinc-200 p-4 dark:border-zinc-700">
+                                <div class="flex items-start justify-between gap-3">
+                                    <div>
+                                        <p class="text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">Ajuste manual do líquido</p>
+                                        <p class="mt-1 text-sm text-zinc-700 dark:text-zinc-300">
+                                            <span :class="hasManualNetAmount(venda) ? 'font-medium text-emerald-600 dark:text-emerald-400' : ''">
+                                                {{ hasManualNetAmount(venda) ? formatMoney(manualNetAmountFromVenda(venda), venda.currency) : 'Cálculo automático' }}
+                                            </span>
+                                        </p>
+                                    </div>
+                                    <button v-if="!editingManualNetAmount" type="button" class="text-sm font-medium text-[var(--color-primary)] hover:underline" @click="startManualNetAmountEdit">
+                                        {{ hasManualNetAmount(venda) ? 'Editar' : 'Ajustar' }}
+                                    </button>
+                                </div>
+                                <div v-if="editingManualNetAmount" class="mt-3 space-y-2">
+                                    <div class="flex items-center rounded-lg border border-zinc-300 bg-white dark:border-zinc-600 dark:bg-zinc-800">
+                                        <span class="pl-3 text-sm text-zinc-500">R$</span>
+                                        <input v-model="manualNetAmount" type="number" min="0" step="0.01" class="w-full rounded-lg border-0 bg-transparent px-2 py-2 text-sm text-zinc-900 focus:ring-0 dark:text-zinc-100" />
+                                    </div>
+                                    <p v-if="manualNetAmountError" class="text-xs text-red-600 dark:text-red-400">{{ manualNetAmountError }}</p>
+                                    <div class="flex flex-wrap gap-2">
+                                        <button type="button" class="rounded-lg bg-[var(--color-primary)] px-3 py-1.5 text-sm font-medium text-white disabled:opacity-60" :disabled="savingManualNetAmount" @click="saveManualNetAmount()">
+                                            {{ savingManualNetAmount ? 'Salvando…' : 'Salvar' }}
+                                        </button>
+                                        <button type="button" class="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-700 dark:border-zinc-600 dark:text-zinc-200" :disabled="savingManualNetAmount" @click="cancelManualNetAmountEdit">Cancelar</button>
+                                        <button v-if="hasManualNetAmount(venda)" type="button" class="rounded-lg px-3 py-1.5 text-sm font-medium text-red-600 disabled:opacity-60 dark:text-red-400" :disabled="savingManualNetAmount" @click="saveManualNetAmount(true)">Remover ajuste</button>
                                     </div>
                                 </div>
                             </div>
@@ -306,7 +423,7 @@ function itemLabel(item) {
                             </div>
                             <div class="space-y-1">
                                 <p class="text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">Parcelas</p>
-                                <p class="text-sm text-zinc-900 dark:text-white">1</p>
+                                <p class="text-sm text-zinc-900 dark:text-white">{{ vendaInstallments(venda) }}x</p>
                             </div>
                             <div class="space-y-1">
                                 <p class="text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">Recorrência</p>
