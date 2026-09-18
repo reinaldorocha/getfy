@@ -1,5 +1,12 @@
 # Segurança: negar dotfiles e arquivos sensíveis (hospedagem compartilhada — document root na raiz do projeto).
 # Permite .well-known (Let's Encrypt / ACME).
+<IfModule mod_mime.c>
+    # O bridge Vue dos plugins é um módulo ES publicado em public/build.
+    # Alguns Apaches de hospedagem compartilhada o enviam como octet-stream
+    # sem esse mapeamento, e o navegador então recusa o import do plugin.
+    AddType application/javascript .mjs
+</IfModule>
+
 <IfModule mod_authz_core.c>
     <FilesMatch "^\.(?!(well-known))">
         Require all denied
