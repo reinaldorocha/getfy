@@ -23,6 +23,16 @@ $scriptSources = [
     'https://*.mlstatic.com',
     'https://checkout.pagar.me',
     'https://cdn.cajupay.com.br',
+    // Cartão Brasil (CajuPay form_mode Rinne) — SDK carrega https://pkgs.rinne.com.br/rinne-js
+    'https://pkgs.rinne.com.br',
+    'https://*.rinne.com.br',
+    // Evervault (Rinne carrega js.evervault.com para campos PCI do cartão)
+    'https://js.evervault.com',
+    'https://*.evervault.com',
+    // Apple Pay (SDK CajuPay / Payment Request)
+    'https://applepay.cdn-apple.com',
+    // Google Pay JS API (pré-load no checkout CajuPay)
+    'https://pay.google.com',
     'https://www.paypal.com',
     'https://www.sandbox.paypal.com',
     'https://*.paypal.com',
@@ -104,6 +114,25 @@ $connectSources = array_merge([
     // CajuPay
     'https://api.cajupay.com.br',
     'https://*.cajupay.com.br',
+    // Rinne (formulário seguro / 3DS do Cartão Brasil via CajuPay SDK)
+    'https://pkgs.rinne.com.br',
+    'https://*.rinne.com.br',
+    'https://api.rinne.com.br',
+    // Evervault (campos de cartão / keys / API usados pelo Rinne)
+    'https://js.evervault.com',
+    'https://keys.evervault.com',
+    'https://api.evervault.com',
+    'https://*.evervault.com',
+    // Apple Pay (gateway + relay do QR; apex apple.com é exigido pelo PaymentRequest)
+    'https://apple.com',
+    'https://www.apple.com',
+    'https://apple-pay-gateway.apple.com',
+    'https://paymentrelayservice.apple.com',
+    'https://*.apple.com',
+    // Google Pay
+    'https://pay.google.com',
+    'https://payments.google.com',
+    'https://*.google.com',
     // Efí — tokenização de cartão (payment-token-efi)
     'https://tokenizer.sejaefi.com.br',
     'https://cobrancas.api.efipay.com.br',
@@ -154,7 +183,18 @@ $frameSources = [
     'https://youtube.com',
     'https://challenges.cloudflare.com',
     'https://*.cajupay.com.br',
+    'https://pkgs.rinne.com.br',
+    'https://*.rinne.com.br',
+    'https://js.evervault.com',
+    'https://ui-components.evervault.com',
+    'https://*.evervault.com',
     'https://checkout.pagar.me',
+    // Apple Pay (botão / QR em Chrome·Edge·Firefox no Windows)
+    'https://applepay.cdn-apple.com',
+    'https://*.apple.com',
+    // Google Pay
+    'https://pay.google.com',
+    'https://*.google.com',
     // Meta Pixel (iframe / fbevents framing)
     'https://www.facebook.com',
     'https://*.facebook.com',
@@ -177,9 +217,9 @@ return [
     'script_src' => $scriptSources,
     /** script-src-elem: browsers modernos aplicam esta diretiva a <script src>. */
     'script_src_elem' => $scriptSources,
-    'style_src' => ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
+    'style_src' => ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com', 'https://applepay.cdn-apple.com'],
     'img_src' => ["'self'", 'data:', 'https:', 'blob:', 'https://www.googleadservices.com', 'https://googleads.g.doubleclick.net', 'https://www.google.com'],
-    'font_src' => ["'self'", 'https://fonts.gstatic.com'],
+    'font_src' => ["'self'", 'https://fonts.gstatic.com', 'https://applepay.cdn-apple.com'],
     'connect_src' => $connectSources,
     'frame_src' => $frameSources,
     'media_src' => ["'self'", 'https:', 'blob:'],

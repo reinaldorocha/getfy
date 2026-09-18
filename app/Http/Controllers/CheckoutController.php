@@ -1992,9 +1992,11 @@ class CheckoutController extends Controller
         $allowedMethods = array_values(array_unique($allowedMethods));
 
         $externalRef = (string) Str::uuid();
+        $saveCard = $method === 'card' && ! empty($context['plan']);
         $cardOptions = \App\Support\CajuPayCardSessionOptions::fromCheckoutConfig(
             is_array($product->checkout_config) ? $product->checkout_config : [],
-            $method
+            $method,
+            $saveCard
         );
 
         try {

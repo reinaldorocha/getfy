@@ -3739,7 +3739,7 @@ function submit() {
                 >
                     <div
                         v-if="showOrderBumpModal"
-                        class="fixed inset-0 z-50 flex items-center justify-center p-4"
+                        class="fixed inset-0 z-[100000] flex items-center justify-center p-4"
                         aria-modal="true"
                         role="dialog"
                         @keydown.escape="closeOrderBumpModal"
@@ -4056,7 +4056,7 @@ function submit() {
                 >
                     <div
                         v-if="showCreateCheckoutModal"
-                        class="fixed inset-0 z-50 flex items-center justify-center p-4"
+                        class="fixed inset-0 z-[100000] flex items-center justify-center p-4"
                         aria-modal="true"
                         role="dialog"
                         @keydown.escape="showCreateCheckoutModal = false"

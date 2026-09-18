@@ -26,6 +26,20 @@ Route::get('/brand/favicon.png', fn () => BrandFavicon::serve())->name('brand.fa
 
 Route::get('/favicon.ico', fn () => BrandFavicon::serve());
 
+// Apple Pay (CajuPay): associação de domínio — só via Laravel (text/plain, abre no browser).
+// Arquivo fica em resources/well-known/ (fora de public/) para o nginx/Apache não
+// servirem como application/octet-stream e forçarem download.
+Route::get('/.well-known/apple-developer-merchantid-domain-association', function () {
+    $path = resource_path('well-known/apple-developer-merchantid-domain-association');
+    abort_unless(is_readable($path), 404);
+
+    return response((string) file_get_contents($path), 200, [
+        'Content-Type' => 'text/plain; charset=us-ascii',
+        'Cache-Control' => 'public, max-age=0, must-revalidate',
+        'X-Content-Type-Options' => 'nosniff',
+    ]);
+})->name('well-known.apple-pay');
+
 // PWA Painel: manifest e service worker
 Route::get('/manifest.json', [\App\Http\Controllers\PanelPwaController::class, 'manifest'])->name('panel.pwa.manifest');
 Route::get('/painel-sw.js', function () {

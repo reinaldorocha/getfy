@@ -8,14 +8,119 @@
 
 const SDK_URL = 'https://cdn.cajupay.com.br/sdk/v1/cajupay-sdk.min.js';
 const SDK_BASE_URL = 'https://api.cajupay.com.br';
-/** Bump ao exigir APIs novas do CDN (ex.: mountPixParcelado, Cartão Brasil parcelas/3DS). */
-const SDK_SCRIPT_VERSION = '20260825-card-br';
+/** Bump ao exigir APIs novas do CDN (layout stacked, formulário seguro/3DS, wallets). */
+const SDK_SCRIPT_VERSION = '20260916-card-layout-stacked';
+/** Apple Pay JS — obrigatório no Windows/Chrome/Edge para o fluxo QR → iPhone (iOS 18+). */
+const APPLE_PAY_JS_SDK_URL = 'https://applepay.cdn-apple.com/jsapi/1.latest/apple-pay-sdk.js';
+/** Google Pay JS API — o SDK Caju carrega sob demanda; pré-carregar acelera o botão. */
+const GOOGLE_PAY_JS_URL = 'https://pay.google.com/gp/p/js/pay.js';
+/** Formulário seguro Cartão Brasil (Rinne) — URL usada pelo SDK após mount/confirm. */
+const RINNE_JS_URL = 'https://pkgs.rinne.com.br/rinne-js';
 
 let sdkPromise = null;
+let applePayJsPromise = null;
+let googlePayJsPromise = null;
+
+/**
+ * Injeta o Apple Pay JS SDK (idempotente). Sem isso, em browsers não-Safari o Caju
+ * costuma cair em "Apple Pay não está disponível neste dispositivo".
+ *
+ * @returns {Promise<void>}
+ */
+export function ensureApplePayJsSdk() {
+    if (typeof document === 'undefined') {
+        return Promise.resolve();
+    }
+    if (typeof window !== 'undefined' && window.ApplePaySession) {
+        return Promise.resolve();
+    }
+    if (applePayJsPromise) {
+        return applePayJsPromise;
+    }
+    const existing = document.querySelector(`script[data-cajupay-apple-pay-sdk][src="${APPLE_PAY_JS_SDK_URL}"]`);
+    if (existing) {
+        applePayJsPromise = existing.dataset.loaded === '1'
+            ? Promise.resolve()
+            : new Promise((resolve) => {
+                existing.addEventListener('load', () => resolve(), { once: true });
+                existing.addEventListener('error', () => resolve(), { once: true });
+            });
+        return applePayJsPromise;
+    }
+    applePayJsPromise = new Promise((resolve) => {
+        const script = document.createElement('script');
+        script.src = APPLE_PAY_JS_SDK_URL;
+        script.async = true;
+        script.crossOrigin = 'anonymous';
+        script.setAttribute('data-cajupay-apple-pay-sdk', '1');
+        script.onload = () => {
+            script.dataset.loaded = '1';
+            resolve();
+        };
+        script.onerror = () => resolve();
+        document.head.appendChild(script);
+    });
+    return applePayJsPromise;
+}
+
+/**
+ * Injeta o Google Pay JS (idempotente). Reduz a latência do 1º mount google_pay.
+ *
+ * @returns {Promise<void>}
+ */
+export function ensureGooglePayJsSdk() {
+    if (typeof document === 'undefined') {
+        return Promise.resolve();
+    }
+    if (typeof window !== 'undefined' && window.google?.payments?.api?.PaymentsClient) {
+        return Promise.resolve();
+    }
+    if (googlePayJsPromise) {
+        return googlePayJsPromise;
+    }
+    const existing = document.querySelector(`script[data-cajupay-google-pay-sdk][src="${GOOGLE_PAY_JS_URL}"]`);
+    if (existing) {
+        googlePayJsPromise = existing.dataset.loaded === '1'
+            ? Promise.resolve()
+            : new Promise((resolve) => {
+                existing.addEventListener('load', () => resolve(), { once: true });
+                existing.addEventListener('error', () => resolve(), { once: true });
+            });
+        return googlePayJsPromise;
+    }
+    googlePayJsPromise = new Promise((resolve) => {
+        const script = document.createElement('script');
+        script.src = GOOGLE_PAY_JS_URL;
+        script.async = true;
+        script.setAttribute('data-cajupay-google-pay-sdk', '1');
+        script.onload = () => {
+            script.dataset.loaded = '1';
+            resolve();
+        };
+        script.onerror = () => resolve();
+        document.head.appendChild(script);
+    });
+    return googlePayJsPromise;
+}
+
+function ensureScriptPreload(url, key) {
+    if (typeof document === 'undefined' || !url) {
+        return;
+    }
+    if (document.querySelector(`link[data-cajupay-preload="${key}"]`)) {
+        return;
+    }
+    const link = document.createElement('link');
+    link.rel = 'preload';
+    link.as = 'script';
+    link.href = url;
+    link.setAttribute('data-cajupay-preload', key);
+    document.head.appendChild(link);
+}
 
 /**
  * Pré-carrega o script do SDK (preload + load) o quanto antes — ex.: ao abrir o checkout,
- * mesmo antes do cliente escolher cartão.
+ * mesmo antes do cliente escolher cartão. Também aquece Rinne, Apple Pay e Google Pay.
  *
  * @param {{ requireParcelado?: boolean }} [options]
  * @returns {Promise<typeof window.CajuPaySDK>}
@@ -37,16 +142,28 @@ export function prefetchCajuPaySdk(options = {}) {
         // DNS/TLS cedo: CDN do script + API das sessões/confirm.
         ensureLink('preconnect', 'https://cdn.cajupay.com.br', { crossorigin: 'anonymous' });
         ensureLink('preconnect', 'https://api.cajupay.com.br', { crossorigin: 'anonymous' });
+        // Formulário Cartão Brasil (Rinne/Evervault) carregado pelo SDK após mount/confirm.
+        ensureLink('preconnect', 'https://pkgs.rinne.com.br', { crossorigin: 'anonymous' });
+        ensureLink('preconnect', 'https://api.rinne.com.br', { crossorigin: 'anonymous' });
+        ensureLink('preconnect', 'https://js.evervault.com', { crossorigin: 'anonymous' });
+        ensureLink('preconnect', 'https://keys.evervault.com', { crossorigin: 'anonymous' });
+        ensureLink('preconnect', 'https://pay.google.com', { crossorigin: 'anonymous' });
         ensureLink('dns-prefetch', 'https://cdn.cajupay.com.br');
         ensureLink('dns-prefetch', 'https://api.cajupay.com.br');
-        if (!document.querySelector('link[data-cajupay-preload]')) {
-            const link = document.createElement('link');
-            link.rel = 'preload';
-            link.as = 'script';
-            link.href = href;
-            link.setAttribute('data-cajupay-preload', '1');
-            document.head.appendChild(link);
-        }
+        ensureLink('dns-prefetch', 'https://pkgs.rinne.com.br');
+        ensureLink('dns-prefetch', 'https://api.rinne.com.br');
+        ensureLink('dns-prefetch', 'https://js.evervault.com');
+        ensureLink('dns-prefetch', 'https://keys.evervault.com');
+        ensureLink('dns-prefetch', 'https://pay.google.com');
+        ensureLink('preconnect', 'https://applepay.cdn-apple.com', { crossorigin: 'anonymous' });
+        ensureLink('dns-prefetch', 'https://applepay.cdn-apple.com');
+        // Scripts pesados em paralelo (não esperam o clique no método).
+        ensureScriptPreload(href, 'sdk');
+        ensureScriptPreload(RINNE_JS_URL, 'rinne');
+        ensureScriptPreload(APPLE_PAY_JS_SDK_URL, 'apple-pay');
+        ensureScriptPreload(GOOGLE_PAY_JS_URL, 'google-pay');
+        ensureApplePayJsSdk();
+        ensureGooglePayJsSdk();
     }
     return loadCajuPaySdk(options);
 }
@@ -154,16 +271,91 @@ export function loadCajuPaySdk(options = {}) {
 }
 
 /**
+ * Mensagem de recusa a partir de onError / onStatus(error) / reject do confirm.
+ *
+ * @param {any} payload
+ * @returns {string}
+ */
+export function cajuPayRefusalMessage(payload) {
+    if (payload == null) {
+        return 'Pagamento recusado. Tente novamente ou use outro método.';
+    }
+    if (typeof payload === 'string' && payload.trim() !== '') {
+        return payload.trim();
+    }
+    const err = payload?.error;
+    const candidates = [
+        typeof err === 'string' ? err : null,
+        err?.message,
+        err?.error,
+        payload?.message,
+        payload?.error_message,
+        payload?.failure_message,
+    ];
+    for (const c of candidates) {
+        if (typeof c === 'string' && c.trim() !== '') {
+            return c.trim();
+        }
+    }
+    return 'Pagamento recusado. Tente novamente ou use outro método.';
+}
+
+/**
+ * 3DS / challenge em andamento — não tratar como recusa no host (doc módulo 06).
+ * Rinne: confirm pode devolver AWAITING_3DS / requires_action; o SDK abre o modal
+ * e reconfirma. Frictionless pode ir direto a aprovado sem UI.
+ *
+ * @param {any} payload
+ * @returns {boolean}
+ */
+export function isCajuPaySoftAuthError(payload) {
+    if (payload == null) {
+        return false;
+    }
+    const code = String(
+        payload?.code
+        || payload?.error?.code
+        || payload?.error_code
+        || payload?.failure_code
+        || payload?.status
+        || payload?.phase
+        || payload?.requires_action
+        || payload?.next_action?.type
+        || ''
+    ).toLowerCase();
+    const msg = cajuPayRefusalMessage(payload).toLowerCase();
+    const blob = `${code} ${msg}`;
+    return (
+        code === 'authentication_required'
+        || code === 'awaiting_3ds'
+        || code === 'requires_action'
+        || code === 'awaiting_authentication'
+        || blob.includes('authentication_required')
+        || blob.includes('awaiting_authentication')
+        || blob.includes('awaiting_3ds')
+        || blob.includes('requires_action')
+        || blob.includes('awaiting_card_details')
+        || (blob.includes('awaiting') && blob.includes('card'))
+        || (blob.includes('3ds') && (blob.includes('await') || blob.includes('challeng') || blob.includes('required')))
+    );
+}
+
+/**
  * Monta o checkout SDK em modo `embeddedOnly` no container indicado e
  * retorna o controller (com `.confirm()`, `.setPayer()`).
  *
  * @param {string} containerSelector  Seletor CSS do container (ex.: '#cajupay-method').
- * @param {{ token: string, defaultMethod?: string, initialPayer?: object, baseUrl?: string, onStatus?: (event: any) => void }} opts
+ * @param {{ token: string, defaultMethod?: string, initialPayer?: object, baseUrl?: string, saveCard?: boolean, onStatus?: (event: any) => void, onError?: (event: any) => void }} opts
  * @returns {Promise<{ confirm: () => Promise<any>, setPayer?: (p: object) => any, [k: string]: any }>}
  */
 export async function mountCajuPayCheckout(containerSelector, opts) {
     if (!opts || !opts.token) {
         throw new Error('CajuPay: token público da sessão é obrigatório.');
+    }
+    const method = opts.defaultMethod || 'card';
+    // Wallets: SDKs nativos antes do mount (Apple QR no Windows; Google Pay JS).
+    if (method === 'apple_pay' || method === 'google_pay') {
+        await Promise.all([ensureApplePayJsSdk(), ensureGooglePayJsSdk()]);
     }
     const sdk = await loadCajuPaySdk();
     if (!sdk?.init) {
@@ -175,16 +367,67 @@ export async function mountCajuPayCheckout(containerSelector, opts) {
     }
     // Omitimos `locale` no mount: o widget herda o locale da sessão criada no servidor
     // (POST /api/sdk/v1/checkout/sessions). Ver doc CajuPay módulo 05 — prioridade.
-    return await instance.mountCheckout(containerSelector, {
+    const mountOpts = {
         token: opts.token,
         defaultMethod: opts.defaultMethod || 'card',
         embeddedOnly: true,
+        // Cartão Brasil (Rinne): campos empilhados (nº → validade → CVV → titular).
+        // "inline" = nº|validade|CVV numa linha. Doc módulo 06.
+        cardElementLayout: opts.cardElementLayout || 'stacked',
         // O host controla o priming (1ª confirm) em CajuPaySdkMount — evita corrida em
         // que o SDK monta o botão Google Pay antes de confirm-order no Getfy.
         preparePaymentUIOnMount: false,
         initialPayer: opts.initialPayer || undefined,
         onStatus: typeof opts.onStatus === 'function' ? opts.onStatus : undefined,
-    });
+        onError: typeof opts.onError === 'function' ? opts.onError : undefined,
+    };
+    // Assinaturas: pede card_token (save_card) quando o SDK/sessão suportarem.
+    if (opts.saveCard === true) {
+        mountOpts.saveCard = true;
+        mountOpts.save_card = true;
+    }
+    return await instance.mountCheckout(containerSelector, mountOpts);
+}
+
+/**
+ * Verifica se Apple Pay / Google Pay está disponível neste browser (doc CajuPay módulos 07–08).
+ * Não filtra por SO — só por capacidade real da carteira.
+ *
+ * @param {'apple_pay'|'google_pay'} method
+ * @param {{
+ *   publishableKey?: string,
+ *   connectedAccount?: string,
+ *   amountCents?: number,
+ *   currency?: string,
+ *   label?: string,
+ * }} [opts]
+ * @returns {Promise<{ available: boolean, reason?: string }>}
+ */
+export async function probeCajuPayWallet(method, opts = {}) {
+    try {
+        const sdk = await loadCajuPaySdk();
+        const probe = sdk?.probeWallet;
+        if (typeof probe !== 'function') {
+            // SDK antigo sem probe: não esconde o método (botão nativo decide).
+            return { available: true, reason: 'probe_unavailable' };
+        }
+        const result = await probe.call(sdk, method, {
+            publishableKey: opts.publishableKey || undefined,
+            connectedAccount: opts.connectedAccount || undefined,
+            amountCents: opts.amountCents != null ? Number(opts.amountCents) : undefined,
+            currency: (opts.currency || 'brl').toLowerCase(),
+            label: opts.label || 'Checkout',
+        });
+        if (result && typeof result === 'object') {
+            return {
+                available: result.available !== false,
+                reason: typeof result.reason === 'string' ? result.reason : undefined,
+            };
+        }
+        return { available: !!result };
+    } catch (_) {
+        return { available: true, reason: 'probe_error' };
+    }
 }
 
 /**
@@ -202,8 +445,10 @@ export async function confirmCajuPayController(controller) {
         return await controller.confirm();
     } catch (err) {
         const msg = err?.message || err?.error || err?.toString?.() || 'Falha ao confirmar pagamento na CajuPay.';
-        const e = new Error(msg);
+        const e = new Error(typeof msg === 'string' ? msg : 'Falha ao confirmar pagamento na CajuPay.');
         e.cause = err;
+        e.code = err?.code || err?.error?.code || err?.error_code || undefined;
+        e.error = err?.error || err;
         throw e;
     }
 }
