@@ -321,18 +321,38 @@ class PluginExtensionRegistry
     }
 
     /**
-     * Checkout builder templates declarados nos plugins.
+     * Templates nativos que o Builder pode oferecer sem plugin instalado.
+     *
+     * @return array<int, array{id: string, name: string, description: ?string, plugin_slug: null, core_layout: string, ui_variant: string, features: array<int, string>}>
+     */
+    public static function nativeCheckoutBuilderTemplates(): array
+    {
+        return [
+            [
+                'id' => 'ticto',
+                'name' => 'Ticto',
+                'description' => 'Layout Ticto nativo do checkout Getfy.',
+                'plugin_slug' => null,
+                'core_layout' => 'ticto',
+                'ui_variant' => 'ticto',
+                'features' => ['order_bump_band_color', 'order_bump_inner_color'],
+            ],
+        ];
+    }
+
+    /**
+     * Checkout builder templates nativos e declarados nos plugins.
      *
      * Campos opcionais por template:
      * - core_layout: chave de layout no core (ex.: "ticto") — plugin thin, sem bundle
      * - ui_variant: skin do CheckoutForm / payment / bumps (ex.: "ticto")
      * - features: lista de flags para o Builder (ex.: order_bump_inner_color)
      *
-     * @return array<int, array{id: string, name: string, description: ?string, plugin_slug: string, core_layout: ?string, ui_variant: ?string, features: array<int, string>}>
+     * @return array<int, array{id: string, name: string, description: ?string, plugin_slug: ?string, core_layout: ?string, ui_variant: ?string, features: array<int, string>}>
      */
     public static function getCheckoutBuilderTemplates(): array
     {
-        $items = [];
+        $items = self::nativeCheckoutBuilderTemplates();
         foreach (PluginRegistry::enabled() as $plugin) {
             $templates = $plugin['checkout_builder_templates'] ?? null;
             if (! is_array($templates)) {
@@ -397,13 +417,29 @@ class PluginExtensionRegistry
      * 1) frontend.exports.checkout_template + entry (plugin full)
      * 2) core_layout no manifesto (plugin thin — layout no core)
      *
-     * @return array{id: string, plugin_slug: string, export: ?string, entry: ?string, core_layout: ?string, ui_variant: ?string, features: array<int, string>}|null
+     * @return array{id: string, plugin_slug: ?string, export: ?string, entry: ?string, core_layout: ?string, ui_variant: ?string, features: array<int, string>}|null
      */
     public static function resolveActiveCheckoutTemplate(?string $templateId): ?array
     {
         $id = trim((string) $templateId);
         if ($id === '' || $id === 'original') {
             return null;
+        }
+
+        foreach (self::nativeCheckoutBuilderTemplates() as $template) {
+            if ($template['id'] !== $id) {
+                continue;
+            }
+
+            return [
+                'id' => $template['id'],
+                'plugin_slug' => null,
+                'export' => null,
+                'entry' => null,
+                'core_layout' => $template['core_layout'],
+                'ui_variant' => $template['ui_variant'],
+                'features' => $template['features'],
+            ];
         }
 
         foreach (PluginRegistry::enabled() as $plugin) {

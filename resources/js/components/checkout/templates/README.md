@@ -1,6 +1,6 @@
 # Checkout templates (core)
 
-Registro de layouts renderizados pelo Getfy (plugins **thin**).
+Registro de layouts renderizados pelo Getfy. O Ticto Ã© nativo: nÃ£o exige plugin habilitado.
 
 - Mapa JS: [`coreLayouts.js`](./coreLayouts.js)
 - Layout Ticto: [`TictoCheckoutLayout.vue`](./TictoCheckoutLayout.vue)
@@ -11,7 +11,11 @@ Registro de layouts renderizados pelo Getfy (plugins **thin**).
 
 1. Criar o componente Vue nesta pasta.
 2. Registrar em `CHECKOUT_CORE_LAYOUTS` (`coreLayouts.js`).
-3. Plugin thin declara `"core_layout": "<chave>"` (+ opcional `ui_variant` / `features`).
+3. Registrar os metadados em `PluginExtensionRegistry::nativeCheckoutBuilderTemplates()`.
+
+## Plugin thin (layout no core)
+
+Um plugin tambÃ©m pode declarar `"core_layout": "<chave>"` (+ opcional `ui_variant` / `features`) quando a instalaÃ§Ã£o do plugin for parte do produto. Para layouts que pertencem ao Getfy, prefira o catÃ¡logo nativo.
 
 ## Plugin full (sem core)
 
