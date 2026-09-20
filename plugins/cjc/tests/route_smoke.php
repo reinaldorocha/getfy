@@ -20,6 +20,7 @@ $checked = 0;
 foreach ([
     $root.'/plugins/cjc/routes.php',
     $root.'/plugins/cjc/routes-student.php',
+    $root.'/plugins/cjc/routes-course.php',
 ] as $routesFile) {
     if (! is_file($routesFile)) {
         $errors[] = "Arquivo de rotas ausente: {$routesFile}";

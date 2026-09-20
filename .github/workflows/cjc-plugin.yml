@@ -6,10 +6,12 @@ on:
       - feature/cjc-plugin
     paths:
       - 'plugins/cjc/**'
+      - 'resources/js/Pages/MemberAreaApp/Lesson.vue'
       - '.github/workflows/cjc-plugin.yml'
   pull_request:
     paths:
       - 'plugins/cjc/**'
+      - 'resources/js/Pages/MemberAreaApp/Lesson.vue'
       - '.github/workflows/cjc-plugin.yml'
 
 jobs:
@@ -41,6 +43,14 @@ jobs:
           for file in plugins/cjc/dist/*.js; do
             node --check "$file"
           done
+
+      - name: Validate member lesson render zone
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q "PluginRenderZone" resources/js/Pages/MemberAreaApp/Lesson.vue
+          grep -q "member.lesson.after_content" resources/js/Pages/MemberAreaApp/Lesson.vue
+          grep -q '"member.lesson.after_content"' plugins/cjc/plugin.json
 
       - name: Validate JSON manifests
         shell: bash
