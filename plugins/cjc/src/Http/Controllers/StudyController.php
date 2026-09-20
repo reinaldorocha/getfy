@@ -1327,7 +1327,7 @@ class StudyController extends Controller
     {
         try {
             return $callback();
-        } catch (\\RuntimeException $e) {
+        } catch (\RuntimeException $e) {
             abort(422, $e->getMessage());
         }
     }
