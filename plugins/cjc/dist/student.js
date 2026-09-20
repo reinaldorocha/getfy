@@ -1054,19 +1054,49 @@ export const CjcStudent = {
             const m=modalState.value;
             if(!m)return null;
 
+            if(m.type==='video'){
+                return modal(m.title||'Vídeo',h('div',{class:'aspect-video overflow-hidden rounded-xl bg-black'},[
+                    h('iframe',{src:m.url,class:'h-full w-full',allow:'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture',allowfullscreen:true}),
+                ]),closeModal,null,'max-w-5xl');
+            }
+
+            if(m.type==='scheduleDay'){
+                return modal('Atividades · '+fmtDate(m.date),h('div',{class:'space-y-2'},(m.items||[]).map(item=>h('div',{class:'flex flex-wrap items-center justify-between gap-2 rounded-lg bg-zinc-50 p-3 text-sm dark:bg-zinc-800'},[
+                    h('div',[h('strong',itemLabel(item)),h('div',{class:'text-xs text-zinc-500'},(item.duration_minutes||0)+' min · '+item.status)]),
+                    h('div',{class:'flex gap-1'},[
+                        btn('⏱ Timer',()=>{closeModal();openTimer({subject_id:item.subject_id||'',topic_id:item.topic_id||'',subtopic_id:item.subtopic_id||'',mode:'estudo'});},'ghost'),
+                        btn(item.status==='concluido'?'Reabrir':'Concluir',async()=>{await toggleScheduleItem(item);closeModal();},item.status==='concluido'?'ghost':'success'),
+                    ]),
+                ]))),closeModal);
+            }
+
+            if(m.type==='report'){
+                const f=m.form;
+                return modal('Relatório de desempenho',h('div',{class:'space-y-4'},[
+                    h('pre',{class:'whitespace-pre-wrap rounded-xl bg-zinc-50 p-4 text-sm font-sans dark:bg-zinc-800'},metricReportText(f.note)),
+                    field('Parecer / observações (opcional)',textarea(f,'note',{rows:5,placeholder:'Orientações, próximos passos ou observações…'})),
+                ]),closeModal,[
+                    btn('📱 Copiar p/ WhatsApp',async()=>{await navigator.clipboard.writeText(metricReportText(f.note));success.value='Relatório formatado copiado.';},'ghost'),
+                    btn('Imprimir / PDF',()=>printMetricsReport(f.note),'primary'),
+                ],'max-w-4xl');
+            }
+
             if(m.type==='timer'){
                 const f=timer.value.form;
                 const topicOptions=activeTopics.value.filter(t=>!f.subject_id||t.subject_id===f.subject_id);
                 const subOptions=activeSubtopics.value.filter(st=>!f.topic_id||st.topic_id===f.topic_id);
                 return modal('Timer de estudo',h('div',{class:'space-y-5'},[
                     h('div',{class:'text-center'},[
-                        h('div',{class:'font-mono text-5xl font-bold'},fmtHours(timer.value.elapsed)),
+                        h('div',{class:'text-xs font-semibold uppercase tracking-wide text-zinc-500'},timer.value.pomodoro?'Pomodoro · restante':'Cronômetro'),
+                        h('div',{class:'mt-1 font-mono text-5xl font-bold'},formatTimer(timer.value.pomodoro?Math.max(0,Number(timer.value.pomodoro_minutes||25)*60-timer.value.elapsed):timer.value.elapsed)),
                         h('div',{class:'mt-3 flex justify-center gap-2'},[
                             timer.value.running?btn('Pausar',pauseTimer,'warning'):btn(timer.value.elapsed?'Continuar':'Iniciar',startTimer,'success'),
                             btn('Zerar',resetTimer,'ghost'),
                         ]),
                     ]),
                     formGrid([
+                        checkbox(timer.value,'pomodoro','Usar Pomodoro'),
+                        timer.value.pomodoro?field('Minutos do Pomodoro',input(timer.value,'pomodoro_minutes',{type:'number',number:true,min:1,max:180})):null,
                         field('Matéria',select(f,'subject_id',optionize(activeSubjects.value),{placeholder:'—',onChange:()=>{f.topic_id='';f.subtopic_id='';}})),
                         field('Tópico',select(f,'topic_id',optionize(topicOptions),{placeholder:'—',onChange:()=>f.subtopic_id=''})),
                         field('Subtópico',select(f,'subtopic_id',optionize(subOptions),{placeholder:'—'})),
@@ -1161,7 +1191,17 @@ export const CjcStudent = {
                 const f=m.form;
                 return modal(m.item?'Editar caderno':'Novo caderno',h('div',{class:'space-y-4'},[
                     formGrid([field('Título',input(f,'title',{required:true})),field('Pasta',input(f,'folder')),field('Cor',input(f,'color',{type:'color'}))]),
+                    h('div',{class:'flex flex-wrap gap-1'},[
+                        btn('B',()=>insertNotebookFormatting(f,'**texto**'),'ghost'),
+                        btn('I',()=>insertNotebookFormatting(f,'*texto*'),'ghost'),
+                        btn('H1',()=>insertNotebookFormatting(f,'# Título'),'ghost'),
+                        btn('H2',()=>insertNotebookFormatting(f,'## Subtítulo'),'ghost'),
+                        btn('• Lista',()=>insertNotebookFormatting(f,'• item'),'ghost'),
+                        btn('> Citação',()=>insertNotebookFormatting(f,'> citação'),'ghost'),
+                        btn('📌 Alerta',()=>insertNotebookFormatting(f,'📌 ATENÇÃO: '),'ghost'),
+                    ]),
                     field('Conteúdo',textarea(f,'content',{rows:16})),
+                    h('div',{class:'text-right text-[11px] text-zinc-500'},String(f.content||'').length+' caracteres · '+(String(f.content||'').trim()?String(f.content).trim().split(/\s+/).length:0)+' palavras'),
                     formGrid([field('Edital',select(f,'edict_id',activeEdicts.value.map(e=>({value:e.id,label:e.name})),{placeholder:'—'})),field('Matéria',select(f,'subject_id',optionize(activeSubjects.value),{placeholder:'—'})),field('Tópico',select(f,'topic_id',optionize(activeTopics.value),{placeholder:'—'}))]),
                 ]),closeModal,[btn('Salvar',()=>saveNotebook(m),'primary')],'max-w-4xl');
             }
