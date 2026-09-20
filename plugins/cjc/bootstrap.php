@@ -73,6 +73,16 @@ return static function (): void {
         ]);
     });
 
+    Route::middleware(['web', 'auth'])
+        ->prefix('cjc-course')
+        ->name('cjc.course.')
+        ->group(function (): void {
+            Route::get('/products/{product}/lessons/{lesson}/questions', [\Plugins\Cjc\Http\Controllers\CourseQuestionController::class, 'studentLessonQuestions'])
+                ->whereNumber('lesson')->name('lesson-questions');
+            Route::post('/products/{product}/lessons/{lesson}/questions/{question}/answer', [\Plugins\Cjc\Http\Controllers\CourseQuestionController::class, 'answerStudentLessonQuestion'])
+                ->whereNumber('lesson')->name('lesson-questions.answer');
+        });
+
     $routes = __DIR__.DIRECTORY_SEPARATOR.'routes-student.php';
     if (is_file($routes)) {
         Route::middleware(['web', 'auth', 'role:aluno'])

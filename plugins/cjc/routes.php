@@ -2,6 +2,7 @@
 
 use Illuminate\Support\Facades\Route;
 use Plugins\Cjc\Http\Controllers\ContentController;
+use Plugins\Cjc\Http\Controllers\CourseQuestionController;
 use Plugins\Cjc\Http\Controllers\FlashcardController;
 use Plugins\Cjc\Http\Controllers\MaterialController;
 use Plugins\Cjc\Http\Controllers\MetricsController;
@@ -103,3 +104,7 @@ Route::delete('/students/{student}/notebooks/{notebook}', [StudyController::clas
 Route::get('/students/{student}/metrics/summary', [MetricsController::class, 'studentSummary'])->whereNumber('student')->name('cjc.metrics.summary');
 Route::get('/students/{student}/metrics/timeline', [MetricsController::class, 'studentTimeline'])->whereNumber('student')->name('cjc.metrics.timeline');
 Route::get('/students/{student}/metrics/subjects', [MetricsController::class, 'studentSubjects'])->whereNumber('student')->name('cjc.metrics.subjects');
+
+/* Integração simples: questões CJC dentro das aulas do Member Builder */
+Route::get('/course-products/{product}/questions', [CourseQuestionController::class, 'builderData'])->name('cjc.course-questions.data');
+Route::put('/course-products/{product}/lessons/{lesson}/questions', [CourseQuestionController::class, 'syncLessonQuestions'])->whereNumber('lesson')->name('cjc.course-questions.sync');

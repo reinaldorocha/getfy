@@ -112,3 +112,9 @@ Inclui concurso ativo, contagem regressiva, timer, edital, materiais, cronograma
 O CJC original possuía um módulo próprio de cursos. No plugin ele é substituído intencionalmente pela Área de membros do Getfy, que já oferece módulos, aulas, vídeo, PDFs, progresso, comentários, certificados e comunidade.
 
 Isso evita duas implementações concorrentes para a mesma função.
+
+## Questões dentro dos cursos
+
+O Member Builder recebe a aba **Exercícios CJC**. Nela o produtor escolhe uma aula e vincula até 50 questões já existentes no Banco de Questões. As questões não são duplicadas.
+
+Na aula da área de membros, o plugin exibe as questões logo após o conteúdo. A resposta mostra acerto/erro e explicação e também é registrada no histórico e nas métricas do CJC com origem `curso`.

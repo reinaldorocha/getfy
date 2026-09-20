@@ -10,6 +10,7 @@ use Illuminate\Support\Str;
 use Plugins\Cjc\Services\AccessService;
 use Plugins\Cjc\Services\AuditService;
 use Plugins\Cjc\Services\ContentAudienceService;
+use Plugins\Cjc\Services\QuestionAnswerService;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
 class QuestionController extends Controller
@@ -18,6 +19,7 @@ class QuestionController extends Controller
         private readonly AccessService $access,
         private readonly AuditService $audit,
         private readonly ContentAudienceService $audience,
+        private readonly QuestionAnswerService $answers,
     ) {}
 
     public function store(Request $request): JsonResponse
@@ -178,7 +180,7 @@ class QuestionController extends Controller
             throw new NotFoundHttpException('Concurso fora do escopo do aluno.');
         }
 
-        $correct = $this->normalized($data['answer']) === $this->normalized((string) $row->correct_answer);
+        $correct = $this->answers->matches((string) $data['answer'], (string) $row->correct_answer, $row->alternatives);
         $answerId = (string) Str::uuid();
         $now = now();
         $subjectId = $this->resolveSubjectId($tenant, (int) $student->id, $contestId ? (string) $contestId : null, (string) $row->subject);
