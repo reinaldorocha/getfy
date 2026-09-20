@@ -11,6 +11,21 @@ use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
 class AccessService
 {
+    public const DEFAULT_CAPABILITIES = [
+        'dashboard',
+        'edital',
+        'materiais',
+        'cronograma',
+        'cronograma_inteligente',
+        'revisoes',
+        'flashcards',
+        'questoes',
+        'simulados',
+        'cadernos',
+        'metricas',
+        'cursos',
+    ];
+
     public function tenantId(User $actor): int
     {
         $tenantId = (int) ($actor->tenant_id ?: $actor->id);
@@ -57,6 +72,10 @@ class AccessService
             throw new NotFoundHttpException('Produto não encontrado neste tenant.');
         }
 
+        if ($capabilities === []) {
+            $capabilities = self::DEFAULT_CAPABILITIES;
+        }
+
         DB::table('cjc_products')->updateOrInsert(
             ['product_id' => (string) $product->id],
             [
@@ -64,10 +83,13 @@ class AccessService
                 'is_active' => true,
                 'capabilities' => json_encode(array_values(array_unique($capabilities)), JSON_UNESCAPED_UNICODE),
                 'settings' => json_encode($settings, JSON_UNESCAPED_UNICODE),
-                'created_at' => now(),
                 'updated_at' => now(),
             ]
         );
+
+        if (! DB::table('cjc_products')->where('product_id', (string) $product->id)->whereNotNull('created_at')->exists()) {
+            DB::table('cjc_products')->where('product_id', (string) $product->id)->update(['created_at' => now()]);
+        }
     }
 
     public function disableProduct(User $actor, Product $product): void
@@ -87,8 +109,26 @@ class AccessService
     {
         return DB::table('users')
             ->join('product_user', 'product_user.user_id', '=', 'users.id')
+            ->join('products', 'products.id', '=', 'product_user.product_id')
             ->join('cjc_products', 'cjc_products.product_id', '=', 'product_user.product_id')
             ->where('cjc_products.tenant_id', $tenantId)
+            ->where('cjc_products.is_active', true)
+            ->where('products.tenant_id', $tenantId)
+            ->where('products.is_active', true)
+            ->where('users.role', User::ROLE_ALUNO)
+            ->select('users.id', 'users.name', 'users.email')
+            ->distinct()
+            ->orderBy('users.name')
+            ->get();
+    }
+
+    public function studentsForProduct(int $tenantId, string $productId): Collection
+    {
+        return DB::table('users')
+            ->join('product_user', 'product_user.user_id', '=', 'users.id')
+            ->join('cjc_products', 'cjc_products.product_id', '=', 'product_user.product_id')
+            ->where('cjc_products.tenant_id', $tenantId)
+            ->where('cjc_products.product_id', $productId)
             ->where('cjc_products.is_active', true)
             ->where('users.role', User::ROLE_ALUNO)
             ->select('users.id', 'users.name', 'users.email')
@@ -115,6 +155,19 @@ class AccessService
         }
     }
 
+    public function assertCapability(User $student, int $tenantId, string $capability): void
+    {
+        $this->assertStudentAccess($student, $tenantId);
+        if (! $this->hasCapability($student, $tenantId, $capability)) {
+            throw new AccessDeniedHttpException('Seu produto não inclui este recurso do CJC.');
+        }
+    }
+
+    public function hasCapability(User $student, int $tenantId, string $capability): bool
+    {
+        return in_array($capability, $this->studentCapabilities($student, $tenantId), true);
+    }
+
     public function studentHasTenantAccess(User $student, int $tenantId): bool
     {
         return DB::table('product_user')
@@ -132,9 +185,12 @@ class AccessService
     {
         $rows = DB::table('product_user')
             ->join('cjc_products', 'cjc_products.product_id', '=', 'product_user.product_id')
+            ->join('products', 'products.id', '=', 'product_user.product_id')
             ->where('product_user.user_id', $student->id)
             ->where('cjc_products.tenant_id', $tenantId)
             ->where('cjc_products.is_active', true)
+            ->where('products.tenant_id', $tenantId)
+            ->where('products.is_active', true)
             ->pluck('cjc_products.capabilities');
 
         $caps = [];
@@ -149,17 +205,71 @@ class AccessService
         return array_keys($caps);
     }
 
+    public function productIdsForStudent(User $student, int $tenantId): array
+    {
+        return DB::table('product_user')
+            ->join('cjc_products', 'cjc_products.product_id', '=', 'product_user.product_id')
+            ->join('products', 'products.id', '=', 'product_user.product_id')
+            ->where('product_user.user_id', $student->id)
+            ->where('cjc_products.tenant_id', $tenantId)
+            ->where('cjc_products.is_active', true)
+            ->where('products.tenant_id', $tenantId)
+            ->where('products.is_active', true)
+            ->pluck('product_user.product_id')
+            ->map(fn ($id) => (string) $id)
+            ->values()
+            ->all();
+    }
+
     public function ownedTenantIds(User $student): array
     {
         return DB::table('product_user')
             ->join('cjc_products', 'cjc_products.product_id', '=', 'product_user.product_id')
+            ->join('products', 'products.id', '=', 'product_user.product_id')
             ->where('product_user.user_id', $student->id)
             ->where('cjc_products.is_active', true)
+            ->where('products.is_active', true)
             ->distinct()
             ->pluck('cjc_products.tenant_id')
             ->map(fn ($id) => (int) $id)
             ->values()
             ->all();
+    }
+
+    public function tenantCourses(int $tenantId): Collection
+    {
+        return Product::query()
+            ->where('tenant_id', $tenantId)
+            ->where('type', Product::TYPE_AREA_MEMBROS)
+            ->where('is_active', true)
+            ->orderBy('name')
+            ->get(['id', 'name', 'slug', 'description', 'image'])
+            ->map(fn (Product $product) => [
+                'id' => (string) $product->id,
+                'name' => $product->name,
+                'slug' => $product->slug,
+                'description' => $product->description,
+                'image' => $product->image,
+                'builder_url' => url('/produtos/'.$product->id.'/member-builder'),
+            ]);
+    }
+
+    public function studentCourses(User $student, int $tenantId): Collection
+    {
+        return $student->products()
+            ->where('products.tenant_id', $tenantId)
+            ->where('products.type', Product::TYPE_AREA_MEMBROS)
+            ->where('products.is_active', true)
+            ->orderBy('products.name')
+            ->get(['products.id', 'products.name', 'products.slug', 'products.description', 'products.image'])
+            ->map(fn (Product $product) => [
+                'id' => (string) $product->id,
+                'name' => $product->name,
+                'slug' => $product->slug,
+                'description' => $product->description,
+                'image' => $product->image,
+                'access_url' => url('/meus-produtos/produtos/'.$product->id.'/acessar'),
+            ]);
     }
 
     private function syncVirtualCjcProducts(int $tenantId): void
@@ -170,24 +280,25 @@ class AccessService
             if (! is_array($marker) || ($marker['slug'] ?? null) !== 'cjc') {
                 return;
             }
+
             $existing = DB::table('cjc_products')->where('product_id', (string) $product->id)->first();
             if (! $existing) {
                 DB::table('cjc_products')->insert([
                     'product_id' => (string) $product->id,
                     'tenant_id' => $tenantId,
                     'is_active' => true,
-                    'capabilities' => json_encode(['cronograma', 'questoes', 'flashcards', 'revisoes', 'simulados', 'cadernos'], JSON_UNESCAPED_UNICODE),
+                    'capabilities' => json_encode(self::DEFAULT_CAPABILITIES, JSON_UNESCAPED_UNICODE),
                     'settings' => json_encode([], JSON_UNESCAPED_UNICODE),
                     'created_at' => now(),
                     'updated_at' => now(),
                 ]);
             }
+
             if ($product->type === Product::TYPE_LINK) {
                 $desired = url('/cjc-estudos/'.$tenantId);
-                $checkout = $config;
-                if (($checkout['deliverable_link'] ?? null) !== $desired) {
-                    $checkout['deliverable_link'] = $desired;
-                    $product->forceFill(['checkout_config' => $checkout])->save();
+                if (($config['deliverable_link'] ?? null) !== $desired) {
+                    $config['deliverable_link'] = $desired;
+                    $product->forceFill(['checkout_config' => $config])->save();
                 }
             }
         });
