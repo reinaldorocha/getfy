@@ -122,3 +122,18 @@ Na aula da área de membros, o plugin exibe as questões logo após o conteúdo.
 ## Radar e resultados
 
 O painel do produtor permite filtrar alunos por nível de risco, buscar também pelo concurso, copiar uma mensagem de acompanhamento para WhatsApp, editar grupo/resultado/classificação/nota/nomeação de cada concurso do aluno e gerar relatório de desempenho com parecer da mentoria.
+
+
+## Paridade final de interface
+
+A revisão final adicionou:
+- paginação do Banco de Questões (12 por página)
+- agenda de revisões dos próximos 7 dias e alerta de rendimento baixo
+- revisões programadas dentro do calendário do cronograma
+- presets 15/25/45/60, alerta sonoro e contagem de ciclos no Pomodoro
+- drill-down de métricas por dia e mês
+- busca na Ajuda
+- logotipo visual por concurso
+- abertura direta do WhatsApp com mensagem/relatório pré-preenchidos
+
+O Getfy não possui telefone no cadastro padrão de usuário. Portanto o botão do WhatsApp abre o seletor do WhatsApp com a mensagem preenchida, sem destinatário pré-selecionado.

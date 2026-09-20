@@ -165,6 +165,7 @@ export const CjcIndex = {
                     exam_date: item?.exam_date || '',
                     pre_notice: !!item?.pre_notice,
                     review_intervals: item?.review_intervals || '1,7,30',
+                    logo: item?.logo || '',
                 },
             };
         }
@@ -547,6 +548,11 @@ export const CjcIndex = {
             success.value='Mensagem para '+student.name+' copiada. Abra o WhatsApp e cole.';
         }
 
+        function openRadarWhatsApp(student) {
+            const url='https://wa.me/?text='+encodeURIComponent(radarMessage(student));
+            window.open(url,'_blank','noopener,noreferrer');
+        }
+
         function openStudentContestResult(student, contest) {
             modalState.value={type:'studentContest',student,contest,form:{
                 group:contest.group||'foco',
@@ -719,7 +725,8 @@ export const CjcIndex = {
                             h('td', { class: 'p-2' }, (student.metrics?.accuracy || 0) + '%'),
                             h('td', { class: 'min-w-32 p-2' }, progressBar(student.metrics?.edict_percentage || 0)),
                             h('td', { class: 'p-2 text-right' }, h('div',{class:'flex justify-end gap-1'},[
-                                btn('Copiar WhatsApp',()=>copyRadarMessage(student),'ghost'),
+                                btn('📱 WhatsApp',()=>openRadarWhatsApp(student),'success'),
+                                btn('Copiar texto',()=>copyRadarMessage(student),'ghost'),
                                 btn('Acompanhar', () => openStudentDetail(student), 'ghost'),
                             ])),
                         ]))),
@@ -738,7 +745,10 @@ export const CjcIndex = {
                     const assigned = (state.value.student_contests || []).filter(x => x.contest_id === item.id && x.is_active).length;
                     return h('div', { class: 'rounded-xl border border-zinc-200 p-4 dark:border-zinc-700' }, [
                         h('div', { class: 'flex items-start justify-between gap-2' }, [
-                            h('div', [h('strong', item.name), h('div', { class: 'text-xs text-zinc-500' }, [item.board, item.position].filter(Boolean).join(' · '))]),
+                            h('div',{class:'flex min-w-0 items-center gap-3'},[
+                                item.logo?h('img',{src:item.logo,alt:'',class:'h-10 w-10 shrink-0 rounded-lg border border-zinc-200 object-contain dark:border-zinc-700'}):null,
+                                h('div', [h('strong', item.name), h('div', { class: 'text-xs text-zinc-500' }, [item.board, item.position].filter(Boolean).join(' · '))]),
+                            ]),
                             item.pre_notice ? badge('Pré-edital', 'amber') : item.exam_date ? badge(fmtDate(item.exam_date), 'sky') : null,
                         ]),
                         h('div', { class: 'mt-3 text-xs text-zinc-500' }, [
@@ -972,6 +982,26 @@ export const CjcIndex = {
                         field('Data da prova',input(m.form,'exam_date',{type:'date'})), field('Prazos de revisão',input(m.form,'review_intervals',{placeholder:'1,7,30'})),
                     ]),
                     checkbox(m.form,'pre_notice','Pré-edital'),
+                    h('div',{class:'space-y-2'},[
+                        h('div',{class:'text-xs font-semibold'},'Logotipo do concurso (opcional)'),
+                        m.form.logo?h('div',{class:'flex items-center gap-3'},[
+                            h('img',{src:m.form.logo,alt:'Prévia do logotipo',class:'h-16 w-16 rounded-xl border border-zinc-200 object-contain dark:border-zinc-700'}),
+                            btn('Remover logo',()=>m.form.logo='','danger'),
+                        ]):null,
+                        h('input',{
+                            type:'file',
+                            accept:'image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp',
+                            class:'w-full rounded-lg border border-zinc-300 p-2 text-sm dark:border-zinc-700',
+                            onChange:e=>{
+                                const file=e.target.files?.[0];
+                                if(!file)return;
+                                if(file.size>2*1024*1024){message.value='O logotipo deve ter no máximo 2 MB.';e.target.value='';return;}
+                                const reader=new FileReader();
+                                reader.onload=()=>{m.form.logo=String(reader.result||'');};
+                                reader.readAsDataURL(file);
+                            },
+                        }),
+                    ]),
                     h('div',{class:'flex justify-end'},btn('Salvar',()=>saveContest(m),'primary',{disabled:busy.value})),
                 ]),closeModal);
             }
@@ -1161,7 +1191,8 @@ export const CjcIndex = {
                     h('pre',{class:'whitespace-pre-wrap rounded-xl bg-zinc-50 p-4 text-sm font-sans dark:bg-zinc-800'},studentReportText(m.student,m.detail,f.note)),
                     field('Parecer da mentoria (opcional)',textarea(f,'note',{rows:6,placeholder:'Orientações, pontos de atenção e próximos passos…'})),
                 ]),closeModal,[
-                    btn('📱 Copiar p/ WhatsApp',async()=>{await navigator.clipboard.writeText(studentReportText(m.student,m.detail,f.note));success.value='Relatório copiado.';},'ghost'),
+                    btn('📱 Abrir WhatsApp',()=>window.open('https://wa.me/?text='+encodeURIComponent(studentReportText(m.student,m.detail,f.note)),'_blank','noopener,noreferrer'),'success'),
+                    btn('Copiar texto',async()=>{await navigator.clipboard.writeText(studentReportText(m.student,m.detail,f.note));success.value='Relatório copiado.';},'ghost'),
                     btn('Imprimir / PDF',()=>printStudentReport(m.student,m.detail,f.note),'primary'),
                 ],'max-w-4xl');
             }
