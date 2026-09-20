@@ -6,6 +6,7 @@ import MemberLessonContent from '@/components/member-area/lesson/MemberLessonCon
 import MemberLessonMaterials from '@/components/member-area/lesson/MemberLessonMaterials.vue';
 import MemberLessonComments from '@/components/member-area/lesson/MemberLessonComments.vue';
 import Button from '@/components/ui/Button.vue';
+import PluginRenderZone from '@/components/plugins/PluginRenderZone.vue';
 
 defineOptions({ layout: MemberAreaAppLayout });
 
@@ -91,6 +92,11 @@ function submitComment(content) {
             @ended="markComplete"
             @progress="onVideoProgress"
             @last-page-reached="markComplete"
+        />
+
+        <PluginRenderZone
+            zone="member.lesson.after_content"
+            :context="{ product, lesson, slug }"
         />
 
         <div class="flex items-center justify-between gap-4">
