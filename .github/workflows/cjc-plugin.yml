@@ -31,6 +31,9 @@ jobs:
           set -euo pipefail
           find plugins/cjc -type f -name '*.php' -print0 | xargs -0 -n1 php -l
 
+      - name: Validate route/controller bindings
+        run: php plugins/cjc/tests/route_smoke.php
+
       - name: Validate JavaScript syntax
         shell: bash
         run: |
