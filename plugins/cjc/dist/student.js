@@ -55,6 +55,8 @@ export const CjcStudent = {
         const questionTopic = ref('');
         const questionType = ref('');
         const questionSituation = ref('');
+        const questionPage = ref(1);
+        const helpQuery = ref('');
         const edictQuery = ref('');
         const materialType = ref('');
         const materialFolder = ref('');
@@ -97,6 +99,7 @@ export const CjcStudent = {
             startedAt: null,
             pomodoro: false,
             pomodoro_minutes: 25,
+            pomodoro_cycles: 0,
             form: {
                 subject_id: '',
                 topic_id: '',
@@ -166,6 +169,20 @@ export const CjcStudent = {
             return (hours?String(hours).padStart(2,'0')+':':'')+String(minutes).padStart(2,'0')+':'+String(secs).padStart(2,'0');
         }
 
+        function timerBeep() {
+            try {
+                const AudioCtx=window.AudioContext||window.webkitAudioContext;
+                if(!AudioCtx)return;
+                const ctx=new AudioCtx();
+                const gain=ctx.createGain();
+                const osc=ctx.createOscillator();
+                osc.frequency.value=880;
+                gain.gain.setValueAtTime(.12,ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(.001,ctx.currentTime+.7);
+                osc.connect(gain);gain.connect(ctx.destination);osc.start();osc.stop(ctx.currentTime+.7);
+            } catch {}
+        }
+
         function startTimer() {
             if (timer.value.running) return;
             timer.value.running = true;
@@ -175,7 +192,9 @@ export const CjcStudent = {
                 const target = timer.value.pomodoro ? Math.max(1, Number(timer.value.pomodoro_minutes || 25)) * 60 : 0;
                 if (target && timer.value.elapsed >= target) {
                     timer.value.elapsed = target;
+                    timer.value.pomodoro_cycles = Number(timer.value.pomodoro_cycles||0)+1;
                     pauseTimer();
+                    timerBeep();
                     success.value = 'Pomodoro concluído. Registre a sessão quando quiser.';
                 }
             }, 1000);
@@ -410,6 +429,10 @@ export const CjcStudent = {
                 const a=document.createElement('a');const url=URL.createObjectURL(blob);a.href=url;a.download='metricas-cjc.png';a.click();URL.revokeObjectURL(url);
                 success.value='Imagem das métricas baixada.';
             }
+        }
+
+        function openMetricsDetail(start,end,title) {
+            modalState.value={type:'metricsDetail',start,end,title};
         }
 
         async function toggleProgress(type,item,studied) {
@@ -859,33 +882,153 @@ export const CjcStudent = {
         }
 
         function renderSchedule() {
-            const schedule=state.value.schedule;const items=(state.value.schedule_items||[]).filter(i=>scheduleStatus.value==='todos'||i.status===scheduleStatus.value);
+            const schedule=state.value.schedule;
+            const items=(state.value.schedule_items||[]).filter(i=>scheduleStatus.value==='todos'||i.status===scheduleStatus.value);
+            const calendarReviews=(state.value.reviews||[]).filter(r=>!r.completed&&r.next_date&&(!activeContestId.value||String(r.contest_id||'')===String(activeContestId.value)));
             const renderItem=item=>h('div',{class:'flex flex-wrap items-center justify-between gap-3 rounded-lg bg-zinc-50 p-3 dark:bg-zinc-800'},[
                 h('div',{class:'min-w-0'},[h('div',{class:'font-medium'},itemLabel(item)),h('div',{class:'text-xs text-zinc-500'},(item.planned_date?fmtDate(item.planned_date):'Ciclo #'+(item.cycle_position||item.position))+' · '+(item.duration_minutes||0)+' min · prioridade '+(item.priority||0))]),
                 h('div',{class:'flex items-center gap-1'},[badge(item.status,item.status==='concluido'?'green':item.status==='ignorado'?'zinc':'amber'),btn('⏱',()=>openTimer({subject_id:item.subject_id||'',topic_id:item.topic_id||'',subtopic_id:item.subtopic_id||'',mode:'estudo'}),'ghost'),btn(item.status==='concluido'?'Reabrir':'Concluir',()=>toggleScheduleItem(item),item.status==='concluido'?'ghost':'success')]),
             ]);
-            const today=new Date();const baseMonth=new Date(today.getFullYear(),today.getMonth()+scheduleMonthOffset.value,1);const year=baseMonth.getFullYear(),month=baseMonth.getMonth(),days=new Date(year,month+1,0).getDate(),first=(new Date(year,month,1).getDay()+6)%7;
-            const cells=[...Array(first).fill(null),...Array.from({length:days},(_,i)=>i+1)];const monthLabel=baseMonth.toLocaleDateString('pt-BR',{month:'long',year:'numeric'});
+            const today=new Date();
+            const baseMonth=new Date(today.getFullYear(),today.getMonth()+scheduleMonthOffset.value,1);
+            const year=baseMonth.getFullYear(),month=baseMonth.getMonth(),days=new Date(year,month+1,0).getDate(),first=(new Date(year,month,1).getDay()+6)%7;
+            const cells=[...Array(first).fill(null),...Array.from({length:days},(_,i)=>i+1)];
+            const monthLabel=baseMonth.toLocaleDateString('pt-BR',{month:'long',year:'numeric'});
             return h('div',{class:'space-y-4'},[
-                card([sectionTitle('Cronograma',schedule?'Versão '+schedule.version+' · '+schedule.type:'Nenhum cronograma ativo',h('div',{class:'flex flex-wrap gap-2'},[schedule?btn('Reprogramar pendências',reprogramSchedule,'ghost'):null,btn(schedule?'Gerar novo':'Gerar cronograma',openScheduleGenerator)])),
-                    schedule?h('div',{class:'flex flex-wrap items-center gap-2'},[badge(schedule.state,'sky'),badge(schedule.type,'violet'),btn('Lista',()=>scheduleView.value='list',scheduleView.value==='list'?'primary':'ghost'),schedule.type!=='ciclo_inteligente'?btn('Calendário',()=>scheduleView.value='calendar',scheduleView.value==='calendar'?'primary':'ghost'):null,...['todos','pendente','concluido'].map(v=>btn(v==='todos'?'Todos':v==='pendente'?'Pendentes':'Concluídos',()=>scheduleStatus.value=v,scheduleStatus.value===v?'soft':'ghost'))]):empty('Gere seu cronograma a partir do edital e da carga horária semanal.')]),
+                card([
+                    sectionTitle('Cronograma',schedule?'Versão '+schedule.version+' · '+schedule.type:'Nenhum cronograma ativo',h('div',{class:'flex flex-wrap gap-2'},[
+                        schedule?btn('Reprogramar pendências',reprogramSchedule,'ghost'):null,
+                        btn(schedule?'Gerar novo':'Gerar cronograma',openScheduleGenerator),
+                    ])),
+                    schedule?h('div',{class:'flex flex-wrap items-center gap-2'},[
+                        badge(schedule.state,'sky'),badge(schedule.type,'violet'),
+                        btn('Lista',()=>scheduleView.value='list',scheduleView.value==='list'?'primary':'ghost'),
+                        schedule.type!=='ciclo_inteligente'?btn('Calendário',()=>scheduleView.value='calendar',scheduleView.value==='calendar'?'primary':'ghost'):null,
+                        ...['todos','pendente','concluido'].map(v=>btn(v==='todos'?'Todos':v==='pendente'?'Pendentes':'Concluídos',()=>scheduleStatus.value=v,scheduleStatus.value===v?'soft':'ghost')),
+                    ]):empty('Gere seu cronograma a partir do edital e da carga horária semanal.'),
+                ]),
                 schedule&&scheduleView.value==='calendar'&&schedule.type!=='ciclo_inteligente'?card([
-                    h('div',{class:'mb-4 flex items-center justify-between gap-2'},[btn('◀',()=>scheduleMonthOffset.value--,'ghost'),h('strong',{class:'capitalize'},monthLabel),h('div',{class:'flex gap-2'},[btn('Hoje',()=>scheduleMonthOffset.value=0,'ghost'),btn('▶',()=>scheduleMonthOffset.value++,'ghost')])]),
+                    h('div',{class:'mb-4 flex items-center justify-between gap-2'},[
+                        btn('◀',()=>scheduleMonthOffset.value--,'ghost'),
+                        h('strong',{class:'capitalize'},monthLabel),
+                        h('div',{class:'flex gap-2'},[btn('Hoje',()=>scheduleMonthOffset.value=0,'ghost'),btn('▶',()=>scheduleMonthOffset.value++,'ghost')]),
+                    ]),
+                    h('div',{class:'mb-2 flex gap-3 text-[11px] text-zinc-500'},[
+                        h('span','■ Atividade'),h('span',{class:'text-violet-600'},'■ Revisão programada'),
+                    ]),
                     h('div',{class:'grid grid-cols-7 gap-1 text-center text-[11px] font-semibold text-zinc-500'},['Seg','Ter','Qua','Qui','Sex','Sáb','Dom'].map(d=>h('div',{class:'p-1'},d))),
-                    h('div',{class:'mt-1 grid grid-cols-7 gap-1'},cells.map(day=>{if(!day)return h('div',{class:'min-h-24'});const key=year+'-'+String(month+1).padStart(2,'0')+'-'+String(day).padStart(2,'0');const dayItems=items.filter(i=>String(i.planned_date||'').slice(0,10)===key);return h('button',{type:'button',class:'min-h-24 rounded-lg border border-zinc-200 p-2 text-left dark:border-zinc-700 '+(key===new Date().toISOString().slice(0,10)?'ring-2 ring-sky-500':''),onClick:()=>dayItems.length&&(modalState.value={type:'scheduleDay',date:key,items:dayItems})},[h('div',{class:'text-xs font-semibold'},String(day)),...dayItems.slice(0,3).map(i=>h('div',{class:'mt-1 truncate rounded bg-sky-50 px-1 py-0.5 text-[10px] text-sky-700 dark:bg-sky-950 dark:text-sky-200'},itemLabel(i))),dayItems.length>3?h('div',{class:'mt-1 text-[10px] text-zinc-500'},'+'+(dayItems.length-3)+' atividades'):null]);})),
-                ]):schedule?card([sectionTitle(schedule.type==='ciclo_inteligente'?'Ordem do ciclo':'Atividades',items.length+' item(ns)'),items.length?h('div',{class:'space-y-2'},items.map(renderItem)):empty('Nenhuma atividade com este filtro.')]):null,
+                    h('div',{class:'mt-1 grid grid-cols-7 gap-1'},cells.map(day=>{
+                        if(!day)return h('div',{class:'min-h-24'});
+                        const key=year+'-'+String(month+1).padStart(2,'0')+'-'+String(day).padStart(2,'0');
+                        const dayItems=items.filter(i=>String(i.planned_date||'').slice(0,10)===key);
+                        const dayReviews=calendarReviews.filter(r=>String(r.next_date||'').slice(0,10)===key);
+                        const entries=[
+                            ...dayItems.map(i=>({kind:'study',item:i,label:itemLabel(i)})),
+                            ...dayReviews.map(r=>{
+                                const subject=(state.value.subjects||[]).find(s=>s.id===r.subject_id)?.name||'Revisão';
+                                const topic=(state.value.topics||[]).find(t=>t.id===r.topic_id)?.name||'';
+                                return {kind:'review',item:r,label:'🔄 '+subject+(topic?' · '+topic:'')};
+                            }),
+                        ];
+                        return h('button',{
+                            type:'button',
+                            class:'min-h-24 rounded-lg border border-zinc-200 p-2 text-left dark:border-zinc-700 '+(key===new Date().toISOString().slice(0,10)?'ring-2 ring-sky-500':''),
+                            onClick:()=>entries.length&&(modalState.value={type:'scheduleDay',date:key,entries}),
+                        },[
+                            h('div',{class:'text-xs font-semibold'},String(day)),
+                            ...entries.slice(0,3).map(entry=>h('div',{
+                                class:'mt-1 truncate rounded px-1 py-0.5 text-[10px] '+(entry.kind==='review'
+                                    ?'bg-violet-50 text-violet-700 dark:bg-violet-950 dark:text-violet-200'
+                                    :'bg-sky-50 text-sky-700 dark:bg-sky-950 dark:text-sky-200'),
+                            },entry.label)),
+                            entries.length>3?h('div',{class:'mt-1 text-[10px] text-zinc-500'},'+'+(entries.length-3)+' itens'):null,
+                        ]);
+                    })),
+                ]):schedule?card([
+                    sectionTitle(schedule.type==='ciclo_inteligente'?'Ordem do ciclo':'Atividades',items.length+' item(ns)'),
+                    schedule.type==='ciclo_inteligente'?h('div',{class:'mb-4 grid gap-2 md:grid-cols-2 xl:grid-cols-3'},activeSubjects.value.map(subject=>{
+                        const subjectItems=items.filter(i=>String(i.subject_id||'')===String(subject.id));
+                        const done=subjectItems.filter(i=>i.status==='concluido').length;
+                        const seconds=(state.value.recent_sessions||[]).filter(s=>String(s.subject_id||'')===String(subject.id)).reduce((n,s)=>n+Number(s.seconds||0),0);
+                        return h('div',{class:'rounded-lg border border-zinc-200 p-3 text-xs dark:border-zinc-700'},[
+                            h('div',{class:'flex justify-between gap-2'},[h('strong',subject.name),badge('Peso '+(subject.weight||1),(Number(subject.weight||1)>2?'red':'sky'))]),
+                            h('div',{class:'mt-2 text-zinc-500'},done+'/'+subjectItems.length+' itens concluídos · '+fmtHours(seconds)),
+                        ]);
+                    })):null,
+                    items.length?h('div',{class:'space-y-2'},items.map(renderItem)):empty('Nenhuma atividade com este filtro.'),
+                ]):null,
             ]);
         }
 
         function renderReviews() {
-            let list=state.value.reviews||[];if(reviewContestFilter.value!=='todos')list=list.filter(r=>String(r.contest_id||'')===String(reviewContestFilter.value));
-            const today=new Date().toISOString().slice(0,10);const groups=[['Atrasadas',list.filter(r=>!r.completed&&r.next_date&&r.next_date<today),'red'],['Hoje',list.filter(r=>!r.completed&&r.next_date===today),'amber'],['Futuras',list.filter(r=>!r.completed&&(!r.next_date||r.next_date>today)),'sky'],['Concluídas',list.filter(r=>r.completed),'green']];
+            let list=state.value.reviews||[];
+            if(reviewContestFilter.value!=='todos')list=list.filter(r=>String(r.contest_id||'')===String(reviewContestFilter.value));
+            const todayKey=new Date().toISOString().slice(0,10);
+            const groups=[
+                ['Atrasadas',list.filter(r=>!r.completed&&r.next_date&&r.next_date<todayKey),'red'],
+                ['Hoje',list.filter(r=>!r.completed&&r.next_date===todayKey),'amber'],
+                ['Futuras',list.filter(r=>!r.completed&&(!r.next_date||r.next_date>todayKey)),'sky'],
+                ['Concluídas',list.filter(r=>r.completed),'green'],
+            ];
+
+            const nextDays=Array.from({length:7},(_,i)=>{
+                const d=new Date();d.setHours(12,0,0,0);d.setDate(d.getDate()+i);
+                const key=d.toISOString().slice(0,10);
+                return {key,date:d,count:list.filter(r=>!r.completed&&String(r.next_date||'')===key).length};
+            });
+
+            const logs=(state.value.question_logs||[]).filter(log=>reviewContestFilter.value==='todos'||String(log.contest_id||'')===String(reviewContestFilter.value));
+            const subjectPerformance=(state.value.subjects||[]).map(subject=>{
+                const own=logs.filter(log=>String(log.subject_id||'')===String(subject.id));
+                const solved=own.reduce((n,x)=>n+Number(x.solved||0),0);
+                const correct=own.reduce((n,x)=>n+Number(x.correct||0),0);
+                return {subject,solved,accuracy:solved?Math.round(correct/solved*100):null};
+            }).filter(x=>x.solved>=10&&x.accuracy!==null&&x.accuracy<65).sort((a,b)=>a.accuracy-b.accuracy);
+
             return h('div',{class:'space-y-4'},[
-                card([sectionTitle('Revisões','Geradas pelos prazos configurados no concurso ou criadas manualmente.',btn('Nova revisão',()=>openReview())),h('div',{class:'flex flex-wrap gap-2'},[btn('Todos',()=>reviewContestFilter.value='todos',reviewContestFilter.value==='todos'?'primary':'ghost'),...contests.value.map(co=>btn(co.name,()=>reviewContestFilter.value=co.id,String(reviewContestFilter.value)===String(co.id)?'primary':'ghost'))])]),
-                ...groups.map(([label,items])=>card([sectionTitle(label,items.length+' revisão(ões)'),items.length?h('div',{class:'space-y-2'},items.slice(0,150).map(r=>{const subject=(state.value.subjects||[]).find(s=>s.id===r.subject_id)?.name||'Matéria';const topic=(state.value.topics||[]).find(t=>t.id===r.topic_id)?.name;const sub=(state.value.subtopics||[]).find(st=>st.id===r.subtopic_id)?.name;return h('div',{class:'flex flex-wrap items-center justify-between gap-3 rounded-lg bg-zinc-50 p-3 dark:bg-zinc-800'},[
-                    h('div',[h('strong',subject),h('div',{class:'text-xs text-zinc-500'},[topic,sub].filter(Boolean).join(' › ')+' · ciclo '+r.current_cycle+' · '+fmtDate(r.next_date)),r.previous_percentage!==null?h('div',{class:'text-[11px] text-zinc-500'},'Último desempenho: '+r.previous_percentage+'%'):null]),
-                    h('div',{class:'flex flex-wrap gap-1'},[!r.completed?btn('⏱',()=>openTimer({subject_id:r.subject_id||'',topic_id:r.topic_id||'',subtopic_id:r.subtopic_id||'',mode:'revisao'}),'ghost'):null,!r.completed?btn('Revisar',()=>completeReview(r),'success'):null,!r.completed?btn('Adiar',()=>postponeReview(r),'warning'):null,btn('Abrir edital',()=>{if(r.contest_id)setContest(r.contest_id);activeTab.value='edict';},'ghost'),btn('Editar',()=>openReview(r),'ghost'),btn('×',()=>deleteReview(r),'danger')]),
-                ]);})):empty('Nenhuma revisão nesta categoria.')])),
+                card([
+                    sectionTitle('Revisões','Geradas pelos prazos configurados no concurso ou criadas manualmente.',btn('Nova revisão',()=>openReview())),
+                    h('div',{class:'flex flex-wrap gap-2'},[
+                        btn('Todos',()=>reviewContestFilter.value='todos',reviewContestFilter.value==='todos'?'primary':'ghost'),
+                        ...contests.value.map(co=>btn(co.name,()=>reviewContestFilter.value=co.id,String(reviewContestFilter.value)===String(co.id)?'primary':'ghost')),
+                    ]),
+                ]),
+                subjectPerformance.length?card([
+                    sectionTitle('⚠ Rendimento baixo em questões','Matérias abaixo de 65% após pelo menos 10 questões.'),
+                    h('div',{class:'space-y-2'},subjectPerformance.map(row=>h('div',{class:'flex flex-wrap items-center justify-between gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm dark:border-red-900 dark:bg-red-950'},[
+                        h('div',[h('strong',row.subject.name),h('div',{class:'text-xs text-zinc-500'},row.solved+' questões resolvidas')]),
+                        h('div',{class:'flex items-center gap-2'},[badge(row.accuracy+'%','red'),h('span',{class:'text-xs font-semibold text-red-600'},'REVISAR COM PRIORIDADE')]),
+                    ]))),
+                ]):null,
+                card([
+                    sectionTitle('Agenda — próximos 7 dias','Quantidade de revisões previstas.'),
+                    h('div',{class:'grid grid-cols-7 gap-2'},nextDays.map((day,i)=>h('div',{class:'rounded-lg border p-2 text-center text-xs '+(i===0?'border-sky-400 bg-sky-50 dark:bg-sky-950':'border-zinc-200 dark:border-zinc-700')},[
+                        h('div',{class:'font-semibold'},['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'][day.date.getDay()]),
+                        h('div',{class:'mt-1 font-mono text-lg font-bold'},String(day.date.getDate())),
+                        h('div',{class:'mt-1 text-zinc-500'},day.count?day.count+' revisão'+(day.count!==1?'ões':''):'·'),
+                    ]))),
+                ]),
+                h('div',{class:'grid gap-3 sm:grid-cols-2 lg:grid-cols-4'},[
+                    stat('Atrasadas',groups[0][1].length),stat('Hoje',groups[1][1].length),stat('Futuras',groups[2][1].length),stat('Concluídas',groups[3][1].length),
+                ]),
+                ...groups.map(([label,items])=>card([
+                    sectionTitle(label,items.length+' revisão(ões)'),
+                    items.length?h('div',{class:'space-y-2'},items.slice(0,150).map(r=>{
+                        const subject=(state.value.subjects||[]).find(s=>s.id===r.subject_id)?.name||'Matéria';
+                        const topic=(state.value.topics||[]).find(t=>t.id===r.topic_id)?.name;
+                        const sub=(state.value.subtopics||[]).find(st=>st.id===r.subtopic_id)?.name;
+                        return h('div',{class:'flex flex-wrap items-center justify-between gap-3 rounded-lg bg-zinc-50 p-3 dark:bg-zinc-800'},[
+                            h('div',[h('strong',subject),h('div',{class:'text-xs text-zinc-500'},[topic,sub].filter(Boolean).join(' › ')+' · ciclo '+r.current_cycle+' · '+fmtDate(r.next_date)),r.previous_percentage!==null?h('div',{class:'text-[11px] text-zinc-500'},'Último desempenho: '+r.previous_percentage+'%'):null]),
+                            h('div',{class:'flex flex-wrap gap-1'},[
+                                !r.completed?btn('⏱',()=>openTimer({subject_id:r.subject_id||'',topic_id:r.topic_id||'',subtopic_id:r.subtopic_id||'',mode:'revisao'}),'ghost'):null,
+                                !r.completed?btn('Revisar',()=>completeReview(r),'success'):null,
+                                !r.completed?btn('Adiar',()=>postponeReview(r),'warning'):null,
+                                btn('Abrir edital',()=>{if(r.contest_id)setContest(r.contest_id);activeTab.value='edict';},'ghost'),
+                                btn('Editar',()=>openReview(r),'ghost'),btn('×',()=>deleteReview(r),'danger'),
+                            ]),
+                        ]);
+                    })):empty('Nenhuma revisão nesta categoria.'),
+                ])),
             ]);
         }
 
@@ -908,23 +1051,62 @@ export const CjcStudent = {
         }
 
         function renderQuestions() {
-            const list=state.value.questions||[];const subjects=[...new Set(list.map(q=>q.subject))].sort();const topics=[...new Set(list.filter(q=>!questionSubject.value||q.subject===questionSubject.value).map(q=>q.topic).filter(Boolean))].sort();const search=questionQuery.value.toLowerCase();
-            const filtered=list.filter(q=>(!questionSubject.value||q.subject===questionSubject.value)&&(!questionTopic.value||q.topic===questionTopic.value)&&(!questionType.value||q.type===questionType.value)&&(!questionSituation.value||(questionSituation.value==='nao_respondidas'?!q.answered:questionSituation.value==='acertei'?q.answered&&q.last_correct:q.answered&&!q.last_correct))&&(!search||q.prompt.toLowerCase().includes(search)||q.subject.toLowerCase().includes(search)||String(q.topic||'').toLowerCase().includes(search)));
+            const list=state.value.questions||[];
+            const subjects=[...new Set(list.map(q=>q.subject))].sort();
+            const topics=[...new Set(list.filter(q=>!questionSubject.value||q.subject===questionSubject.value).map(q=>q.topic).filter(Boolean))].sort();
+            const search=questionQuery.value.toLowerCase();
+            const filtered=list.filter(q=>
+                (!questionSubject.value||q.subject===questionSubject.value)
+                &&(!questionTopic.value||q.topic===questionTopic.value)
+                &&(!questionType.value||q.type===questionType.value)
+                &&(!questionSituation.value||(questionSituation.value==='nao_respondidas'?!q.answered:questionSituation.value==='acertei'?q.answered&&q.last_correct:q.answered&&!q.last_correct))
+                &&(!search||q.prompt.toLowerCase().includes(search)||q.subject.toLowerCase().includes(search)||String(q.topic||'').toLowerCase().includes(search))
+            );
+            const perPage=12,totalPages=Math.max(1,Math.ceil(filtered.length/perPage));
+            questionPage.value=Math.min(questionPage.value,totalPages);
+            const pageItems=filtered.slice((questionPage.value-1)*perPage,questionPage.value*perPage);
+            const resetPage=()=>questionPage.value=1;
             return h('div',{class:'space-y-4'},[
-                card([sectionTitle('Banco de questões','Filtre, responda, refaça e consulte cada tentativa.',btn('Atualizar estatísticas',loadQuestionStats,'ghost')),h('div',{class:'grid gap-3 md:grid-cols-2 xl:grid-cols-5'},[
-                    field('Disciplina',h('select',{value:questionSubject.value,class:'w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-950',onChange:e=>{questionSubject.value=e.target.value;questionTopic.value='';}},[h('option',{value:''},'Todas'),...subjects.map(s=>h('option',{value:s},s))])),
-                    field('Assunto',h('select',{value:questionTopic.value,class:'w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-950',onChange:e=>questionTopic.value=e.target.value},[h('option',{value:''},'Todos'),...topics.map(t=>h('option',{value:t},t))])),
-                    field('Tipo',h('select',{value:questionType.value,class:'w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-950',onChange:e=>questionType.value=e.target.value},[h('option',{value:''},'Todos'),h('option',{value:'multipla_escolha'},'Múltipla escolha'),h('option',{value:'certo_errado'},'Certo / Errado')])),
-                    field('Situação',h('select',{value:questionSituation.value,class:'w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-950',onChange:e=>questionSituation.value=e.target.value},[h('option',{value:''},'Todas'),h('option',{value:'nao_respondidas'},'Não respondidas'),h('option',{value:'errei'},'Errei'),h('option',{value:'acertei'},'Acertei')])),
-                    field('Buscar',h('input',{value:questionQuery.value,placeholder:'Enunciado…',class:'w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-950',onInput:e=>questionQuery.value=e.target.value})),
-                ]),questionStats.value?h('div',{class:'mt-4 grid gap-3 sm:grid-cols-4'},[stat('Respondidas',questionStats.value.total_answered),stat('Acertos',questionStats.value.correct),stat('Erros',questionStats.value.wrong),stat('Aproveitamento',(questionStats.value.accuracy||0)+'%')]):null]),
-                filtered.length?h('div',{class:'space-y-3'},filtered.slice(0,200).map((q,index)=>{const result=questionResults.value[q.id];const history=questionHistory.value[q.id];return card([
-                    h('div',{class:'flex flex-wrap gap-1'},[badge(q.subject,'sky'),q.topic?badge(q.topic):null,badge(q.type==='certo_errado'?'C/E':'Múltipla'),q.answered?badge(q.last_correct?'Última: acerto':'Última: erro',q.last_correct?'green':'red'):badge('Não respondida')]),h('p',{class:'mt-3 whitespace-pre-wrap text-sm font-medium'},(index+1)+'. '+q.prompt),
-                    q.type==='multipla_escolha'&&Array.isArray(q.alternatives)&&q.alternatives.length?h('div',{class:'mt-3 space-y-2'},q.alternatives.map((a,i)=>h('label',{class:'flex items-start gap-2 rounded-lg border border-zinc-200 p-2 text-sm dark:border-zinc-700'},[h('input',{type:'radio',name:'q-'+q.id,value:String.fromCharCode(65+i),checked:answerDrafts.value[q.id]===String.fromCharCode(65+i),onChange:e=>answerDrafts.value[q.id]=e.target.value}),h('span',String.fromCharCode(65+i)+') '+a)]))):q.type==='certo_errado'?h('div',{class:'mt-3 flex gap-2'},['Certo','Errado'].map(a=>btn(a,()=>answerDrafts.value[q.id]=a,answerDrafts.value[q.id]===a?'primary':'ghost'))):h('input',{value:answerDrafts.value[q.id]||'',class:'mt-3 w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-950',onInput:e=>answerDrafts.value[q.id]=e.target.value}),
-                    result?h('div',{class:'mt-3 rounded-lg border p-3 text-sm '+(result.correct?'border-emerald-200 bg-emerald-50 dark:border-emerald-900 dark:bg-emerald-950':'border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950')},[h('strong',result.correct?'✓ Acerto':'✕ Erro'),!result.correct?h('div',{class:'mt-1'},'Resposta correta: '+result.correct_answer):null,result.explanation?h('p',{class:'mt-2 text-xs'},result.explanation):null]):null,
-                    h('div',{class:'mt-3 flex flex-wrap gap-2'},[btn(result?'Responder novamente':'Responder',()=>answerQuestion(q),'primary'),btn(history?'Ocultar histórico':'Histórico',()=>loadQuestionHistory(q),'ghost'),result?btn('Refazer',()=>{const nr={...questionResults.value};delete nr[q.id];questionResults.value=nr;answerDrafts.value[q.id]='';},'soft'):null]),
-                    history?h('div',{class:'mt-3 space-y-1 rounded-lg bg-zinc-50 p-3 text-xs dark:bg-zinc-800'},history.length?history.map(a=>h('div',{class:'flex justify-between gap-2 border-b border-zinc-200 py-1 last:border-0 dark:border-zinc-700'},[h('span',(a.is_correct?'✓ Acerto':'✕ Erro')+' · '+a.answer),h('span',{class:'text-zinc-500'},fmtDateTime(a.answered_at))])):h('span',{class:'text-zinc-500'},'Nenhuma tentativa registrada.')):null,
-                ]);})):empty('Nenhuma questão encontrada com os filtros.'),
+                card([
+                    sectionTitle('Banco de questões','Filtre, responda, refaça e consulte cada tentativa.',btn('Atualizar estatísticas',loadQuestionStats,'ghost')),
+                    h('div',{class:'grid gap-3 md:grid-cols-2 xl:grid-cols-5'},[
+                        field('Disciplina',h('select',{value:questionSubject.value,class:'w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-950',onChange:e=>{questionSubject.value=e.target.value;questionTopic.value='';resetPage();}},[h('option',{value:''},'Todas'),...subjects.map(s=>h('option',{value:s},s))])),
+                        field('Assunto',h('select',{value:questionTopic.value,class:'w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-950',onChange:e=>{questionTopic.value=e.target.value;resetPage();}},[h('option',{value:''},'Todos'),...topics.map(t=>h('option',{value:t},t))])),
+                        field('Tipo',h('select',{value:questionType.value,class:'w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-950',onChange:e=>{questionType.value=e.target.value;resetPage();}},[h('option',{value:''},'Todos'),h('option',{value:'multipla_escolha'},'Múltipla escolha'),h('option',{value:'certo_errado'},'Certo / Errado')])),
+                        field('Situação',h('select',{value:questionSituation.value,class:'w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-950',onChange:e=>{questionSituation.value=e.target.value;resetPage();}},[h('option',{value:''},'Todas'),h('option',{value:'nao_respondidas'},'Não respondidas'),h('option',{value:'errei'},'Errei'),h('option',{value:'acertei'},'Acertei')])),
+                        field('Buscar',h('input',{value:questionQuery.value,placeholder:'Enunciado…',class:'w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-950',onInput:e=>{questionQuery.value=e.target.value;resetPage();}})),
+                    ]),
+                    h('div',{class:'mt-3 text-xs text-zinc-500'},'Exibindo '+pageItems.length+' de '+filtered.length+' questão(ões).'),
+                    questionStats.value?h('div',{class:'mt-4 grid gap-3 sm:grid-cols-4'},[stat('Respondidas',questionStats.value.total_answered),stat('Acertos',questionStats.value.correct),stat('Erros',questionStats.value.wrong),stat('Aproveitamento',(questionStats.value.accuracy||0)+'%')]):null,
+                ]),
+                pageItems.length?h('div',{class:'space-y-3'},pageItems.map((q,index)=>{
+                    const result=questionResults.value[q.id];const history=questionHistory.value[q.id];
+                    const number=(questionPage.value-1)*perPage+index+1;
+                    return card([
+                        h('div',{class:'flex flex-wrap gap-1'},[badge(q.subject,'sky'),q.topic?badge(q.topic):null,badge(q.type==='certo_errado'?'C/E':'Múltipla'),q.answered?badge(q.last_correct?'Última: acerto':'Última: erro',q.last_correct?'green':'red'):badge('Não respondida')]),
+                        h('p',{class:'mt-3 whitespace-pre-wrap text-sm font-medium'},number+'. '+q.prompt),
+                        q.type==='multipla_escolha'&&Array.isArray(q.alternatives)&&q.alternatives.length?h('div',{class:'mt-3 space-y-2'},q.alternatives.map((a,i)=>h('label',{class:'flex items-start gap-2 rounded-lg border border-zinc-200 p-2 text-sm dark:border-zinc-700'},[
+                            h('input',{type:'radio',name:'q-'+q.id,value:String.fromCharCode(65+i),checked:answerDrafts.value[q.id]===String.fromCharCode(65+i),onChange:e=>answerDrafts.value[q.id]=e.target.value}),
+                            h('span',String.fromCharCode(65+i)+') '+a),
+                        ]))):q.type==='certo_errado'?h('div',{class:'mt-3 flex gap-2'},['Certo','Errado'].map(a=>btn(a,()=>answerDrafts.value[q.id]=a,answerDrafts.value[q.id]===a?'primary':'ghost'))):h('input',{value:answerDrafts.value[q.id]||'',class:'mt-3 w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-950',onInput:e=>answerDrafts.value[q.id]=e.target.value}),
+                        result?h('div',{class:'mt-3 rounded-lg border p-3 text-sm '+(result.correct?'border-emerald-200 bg-emerald-50 dark:border-emerald-900 dark:bg-emerald-950':'border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950')},[
+                            h('strong',result.correct?'✓ Acerto':'✕ Erro'),!result.correct?h('div',{class:'mt-1'},'Resposta correta: '+result.correct_answer):null,result.explanation?h('p',{class:'mt-2 text-xs'},result.explanation):null,
+                        ]):null,
+                        h('div',{class:'mt-3 flex flex-wrap gap-2'},[
+                            btn(result?'Responder novamente':'Responder',()=>answerQuestion(q),'primary'),
+                            btn(history?'Ocultar histórico':'Histórico',()=>loadQuestionHistory(q),'ghost'),
+                            result?btn('Refazer',()=>{const nr={...questionResults.value};delete nr[q.id];questionResults.value=nr;answerDrafts.value[q.id]='';},'soft'):null,
+                        ]),
+                        history?h('div',{class:'mt-3 space-y-1 rounded-lg bg-zinc-50 p-3 text-xs dark:bg-zinc-800'},history.length?history.map(a=>h('div',{class:'flex justify-between gap-2 border-b border-zinc-200 py-1 last:border-0 dark:border-zinc-700'},[
+                            h('span',(a.is_correct?'✓ Acerto':'✕ Erro')+' · '+a.answer),h('span',{class:'text-zinc-500'},fmtDateTime(a.answered_at)),
+                        ])):h('span',{class:'text-zinc-500'},'Nenhuma tentativa registrada.')):null,
+                    ]);
+                })):empty('Nenhuma questão encontrada com os filtros.'),
+                totalPages>1?card([h('div',{class:'flex items-center justify-center gap-2'},[
+                    btn('← Anterior',()=>questionPage.value=Math.max(1,questionPage.value-1),'ghost',{disabled:questionPage.value<=1}),
+                    h('span',{class:'text-xs'},'Página '+questionPage.value+' de '+totalPages),
+                    btn('Próxima →',()=>questionPage.value=Math.min(totalPages,questionPage.value+1),'ghost',{disabled:questionPage.value>=totalPages}),
+                ])]):null,
             ]);
         }
 
@@ -981,8 +1163,8 @@ export const CjcStudent = {
                     card([sectionTitle('⚠ Maior dificuldade'),hardest.length?h('div',{class:'space-y-2'},hardest.map((s,i)=>h('div',{class:'flex justify-between rounded-lg bg-zinc-50 p-2 text-sm dark:bg-zinc-800'},[h('span',(i+1)+'. '+s.name),h('strong',s.accuracy+'%')]))):empty('Resolva questões para gerar o ranking.')]),
                 ]),
                 card([sectionTitle('Meta do ciclo x realizado','Compara o tempo planejado no cronograma com o tempo estudado no período.'),h('div',{class:'grid gap-3 sm:grid-cols-3'},[stat('Planejado',fmtHours(planned)),stat('Estudado',fmtHours(studied)),stat('Saldo',(studied>=planned?'+':'-')+fmtHours(Math.abs(studied-planned)))])]),
-                card([sectionTitle('Mapa de atividade','Últimos 90 dias.'),h('div',{class:'grid grid-cols-[repeat(15,minmax(0,1fr))] gap-1'},heatDays.map(d=>h('div',{title:fmtDate(d.key)+' · '+fmtHours(d.seconds)+' · '+d.questions+' questões',class:'aspect-square rounded-sm bg-emerald-500',style:{opacity:d.seconds?Math.max(.2,d.seconds/heatMax):.06}})))]),
-                card([sectionTitle('Retrospectiva anual','Resumo mensal dos registros disponíveis.',h('select',{value:metricsYear.value,class:'rounded-lg border border-zinc-300 px-2 py-1 text-xs dark:border-zinc-700 dark:bg-zinc-950',onChange:e=>metricsYear.value=Number(e.target.value)},[...new Set([new Date().getFullYear(),...sessions.map(s=>Number(String(s.studied_at||'').slice(0,4))).filter(Boolean),...logs.map(s=>Number(String(s.recorded_at||'').slice(0,4))).filter(Boolean)])].sort((a,b)=>b-a).map(y=>h('option',{value:y},String(y))))),h('div',{class:'grid gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6'},months.map(month=>h('div',{class:'rounded-lg bg-zinc-50 p-3 text-xs dark:bg-zinc-800'},[h('strong',{class:'capitalize'},month.name),h('div',{class:'mt-1'},fmtHours(month.seconds)),h('div',{class:'text-zinc-500'},month.questions+' questões · '+month.days+' dias')])))]),
+                card([sectionTitle('Mapa de atividade','Últimos 90 dias.'),h('div',{class:'grid grid-cols-[repeat(15,minmax(0,1fr))] gap-1'},heatDays.map(d=>h('button',{type:'button',title:fmtDate(d.key)+' · '+fmtHours(d.seconds)+' · '+d.questions+' questões',class:'aspect-square rounded-sm bg-emerald-500',style:{opacity:d.seconds?Math.max(.2,d.seconds/heatMax):.06},onClick:()=>openMetricsDetail(d.key,d.key,'Detalhes · '+fmtDate(d.key))})))]),
+                card([sectionTitle('Retrospectiva anual','Resumo mensal dos registros disponíveis.',h('select',{value:metricsYear.value,class:'rounded-lg border border-zinc-300 px-2 py-1 text-xs dark:border-zinc-700 dark:bg-zinc-950',onChange:e=>metricsYear.value=Number(e.target.value)},[...new Set([new Date().getFullYear(),...sessions.map(s=>Number(String(s.studied_at||'').slice(0,4))).filter(Boolean),...logs.map(s=>Number(String(s.recorded_at||'').slice(0,4))).filter(Boolean)])].sort((a,b)=>b-a).map(y=>h('option',{value:y},String(y))))),h('div',{class:'grid gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6'},months.map(month=>h('button',{type:'button',class:'rounded-lg bg-zinc-50 p-3 text-left text-xs hover:ring-1 hover:ring-sky-400 dark:bg-zinc-800',onClick:()=>{const monthIndex=months.indexOf(month);const start=metricsYear.value+'-'+String(monthIndex+1).padStart(2,'0')+'-01';const end=new Date(metricsYear.value,monthIndex+1,0).toISOString().slice(0,10);openMetricsDetail(start,end,'Detalhes · '+month.name+' '+metricsYear.value);}},[h('strong',{class:'capitalize'},month.name),h('div',{class:'mt-1'},fmtHours(month.seconds)),h('div',{class:'text-zinc-500'},month.questions+' questões · '+month.days+' dias')])))]),
             ]);
         }
 
@@ -1019,18 +1201,28 @@ export const CjcStudent = {
         }
 
         function renderHelp() {
-            return card([
-                sectionTitle('Ajuda CJC','Como sua preparação funciona.'),
-                h('div',{class:'prose prose-sm max-w-none dark:prose-invert'},[
-                    h('p','Escolha o concurso ativo no topo. O conteúdo exibido respeita seu produto, concursos e editais atribuídos.'),
-                    h('ul',[
-                        h('li','Use o Timer para registrar tempo e questões no mesmo lançamento.'),
-                        h('li','Ao concluir tópicos do edital, o CJC cria revisões automaticamente conforme os prazos do concurso.'),
-                        h('li','O cronograma inteligente prioriza matérias com baixa cobertura/desempenho e respeita sua carga horária.'),
-                        h('li','Flashcards usam repetição espaçada SM-2.'),
-                        h('li','Cursos e aulas usam a área de membros completa do Getfy.'),
-                    ]),
+            const topics=[
+                {icon:'⏱',title:'Cronômetro e Pomodoro',text:'Use o Timer para registrar tempo, questões, acertos e observações até o nível de subtópico.',items:['Pomodoro com blocos de 15, 25, 45 ou 60 minutos ou duração personalizada.','O alerta sonoro avisa quando o bloco termina.','Os lançamentos alimentam histórico e métricas.']},
+                {icon:'📝',title:'Edital e subtópicos',text:'O edital organiza matérias, tópicos e subtópicos com progresso e desempenho.',items:['Marcar conteúdo como estudado gera revisões conforme os prazos do concurso.','Registre estudo e abra o Timer diretamente no item.','Use a busca para localizar conteúdos.']},
+                {icon:'✨',title:'Importação por IA',text:'Editais, questões e flashcards possuem prompt pronto para copiar e JSON para importar.',items:['Revise o JSON antes de importar.','Flashcards são exclusivamente Certo/Errado.','Questões podem ser vinculadas a produtos específicos.']},
+                {icon:'📚',title:'Cronograma',text:'Use agenda por dias ou ciclo inteligente com disponibilidade semanal, afinidade e prioridades.',items:['O calendário reúne atividades e revisões programadas.','Pendências podem ser reprogramadas em cascata.','O ciclo inteligente prioriza cobertura e desempenho.']},
+                {icon:'🔄',title:'Revisões',text:'Acompanhe atrasadas, hoje, futuras e concluídas.',items:['Veja a agenda dos próximos 7 dias.','Matérias com baixo rendimento recebem alerta de prioridade.','Use Timer, adie ou abra o conteúdo no edital.']},
+                {icon:'🎴',title:'Flashcards',text:'Responda Certo ou Errado e avalie a dificuldade para o SM-2.',items:['Errei, Difícil, Bom e Fácil ajustam a próxima revisão.','Você pode criar baralhos pessoais.','O mentor pode importar baralhos por IA/JSON.']},
+                {icon:'❓',title:'Banco de Questões',text:'Filtre por matéria, assunto, tipo e situação.',items:['Consulte o histórico de cada questão.','Refaça questões erradas.','Respostas feitas dentro dos cursos também entram nas métricas.']},
+                {icon:'📊',title:'Métricas e relatórios',text:'Acompanhe tempo, questões, acerto, edital, heatmap e retrospectiva anual.',items:['Gere relatório para impressão/PDF.','Copie relatório formatado para WhatsApp.','Abra dias e meses para conferir os lançamentos.']},
+                {icon:'🎓',title:'Cursos',text:'Cursos e aulas usam a área de membros nativa do Getfy.',items:['O produtor pode vincular questões do CJC às aulas.','O aluno responde dentro da própria aula.','Acertos e erros alimentam o CJC.']},
+            ];
+            const q=helpQuery.value.trim().toLowerCase();
+            const filtered=topics.filter(topic=>!q||[topic.title,topic.text,...topic.items].join(' ').toLowerCase().includes(q));
+            return h('div',{class:'space-y-4'},[
+                card([
+                    sectionTitle('Ajuda CJC','Busque os fluxos principais da sua preparação.'),
+                    h('input',{type:'search',value:helpQuery.value,placeholder:'Buscar na ajuda…',class:'w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-950',onInput:e=>helpQuery.value=e.target.value}),
                 ]),
+                filtered.length?h('div',{class:'grid gap-3 md:grid-cols-2 xl:grid-cols-3'},filtered.map(topic=>card([
+                    h('div',{class:'text-2xl'},topic.icon),h('h3',{class:'mt-2 font-bold'},topic.title),h('p',{class:'mt-1 text-sm text-zinc-500'},topic.text),
+                    h('ul',{class:'mt-3 list-disc space-y-1 pl-5 text-xs text-zinc-500'},topic.items.map(item=>h('li',item))),
+                ]))):empty('Nenhum tópico encontrado na ajuda.'),
             ]);
         }
 
@@ -1061,13 +1253,55 @@ export const CjcStudent = {
             }
 
             if(m.type==='scheduleDay'){
-                return modal('Atividades · '+fmtDate(m.date),h('div',{class:'space-y-2'},(m.items||[]).map(item=>h('div',{class:'flex flex-wrap items-center justify-between gap-2 rounded-lg bg-zinc-50 p-3 text-sm dark:bg-zinc-800'},[
-                    h('div',[h('strong',itemLabel(item)),h('div',{class:'text-xs text-zinc-500'},(item.duration_minutes||0)+' min · '+item.status)]),
-                    h('div',{class:'flex gap-1'},[
-                        btn('⏱ Timer',()=>{closeModal();openTimer({subject_id:item.subject_id||'',topic_id:item.topic_id||'',subtopic_id:item.subtopic_id||'',mode:'estudo'});},'ghost'),
-                        btn(item.status==='concluido'?'Reabrir':'Concluir',async()=>{await toggleScheduleItem(item);closeModal();},item.status==='concluido'?'ghost':'success'),
+                const entries=m.entries||[];
+                return modal('Atividades · '+fmtDate(m.date),h('div',{class:'space-y-2'},entries.map(entry=>{
+                    const item=entry.item;
+                    if(entry.kind==='review'){
+                        const subject=(state.value.subjects||[]).find(s=>s.id===item.subject_id)?.name||'Revisão';
+                        const topic=(state.value.topics||[]).find(t=>t.id===item.topic_id)?.name||'';
+                        return h('div',{class:'flex flex-wrap items-center justify-between gap-2 rounded-lg bg-violet-50 p-3 text-sm dark:bg-violet-950'},[
+                            h('div',[h('strong','🔄 '+subject),h('div',{class:'text-xs text-zinc-500'},topic+' · ciclo '+item.current_cycle)]),
+                            h('div',{class:'flex gap-1'},[
+                                btn('⏱ Timer',()=>{closeModal();openTimer({subject_id:item.subject_id||'',topic_id:item.topic_id||'',subtopic_id:item.subtopic_id||'',mode:'revisao'});},'ghost'),
+                                btn('Revisar',async()=>{await completeReview(item);closeModal();},'success'),
+                                btn('Adiar',async()=>{await postponeReview(item);closeModal();},'warning'),
+                            ]),
+                        ]);
+                    }
+                    return h('div',{class:'flex flex-wrap items-center justify-between gap-2 rounded-lg bg-zinc-50 p-3 text-sm dark:bg-zinc-800'},[
+                        h('div',[h('strong',itemLabel(item)),h('div',{class:'text-xs text-zinc-500'},(item.duration_minutes||0)+' min · '+item.status)]),
+                        h('div',{class:'flex gap-1'},[
+                            btn('⏱ Timer',()=>{closeModal();openTimer({subject_id:item.subject_id||'',topic_id:item.topic_id||'',subtopic_id:item.subtopic_id||'',mode:'estudo'});},'ghost'),
+                            btn(item.status==='concluido'?'Reabrir':'Concluir',async()=>{await toggleScheduleItem(item);closeModal();},item.status==='concluido'?'ghost':'success'),
+                        ]),
+                    ]);
+                })),closeModal);
+            }
+
+            if(m.type==='metricsDetail'){
+                const inRange=value=>{const key=String(value||'').slice(0,10);return key>=m.start&&key<=m.end;};
+                const sessions=(state.value.recent_sessions||[]).filter(s=>inRange(s.studied_at));
+                const logs=(state.value.question_logs||[]).filter(q=>inRange(q.recorded_at));
+                const seconds=sessions.reduce((n,s)=>n+Number(s.seconds||0),0);
+                const solved=logs.reduce((n,q)=>n+Number(q.solved||0),0);
+                const correct=logs.reduce((n,q)=>n+Number(q.correct||0),0);
+                return modal(m.title||'Detalhes',h('div',{class:'space-y-4'},[
+                    h('div',{class:'grid gap-3 sm:grid-cols-3'},[stat('Tempo',fmtHours(seconds)),stat('Questões',solved),stat('Acerto',solved?Math.round(correct/solved*100)+'%':'—')]),
+                    card([
+                        sectionTitle('Sessões de estudo'),
+                        sessions.length?h('div',{class:'space-y-2'},sessions.map(s=>h('div',{class:'flex items-center justify-between gap-2 rounded-lg bg-zinc-50 p-2 text-xs dark:bg-zinc-800'},[
+                            h('div',[h('strong',fmtHours(s.seconds||0)),h('div',{class:'text-zinc-500'},fmtDateTime(s.studied_at)+' · '+(s.mode||s.origin||'estudo'))]),
+                            btn('Editar',()=>openHistorySession(s),'ghost'),
+                        ]))):empty('Nenhuma sessão neste período.'),
                     ]),
-                ]))),closeModal);
+                    card([
+                        sectionTitle('Lançamentos de questões'),
+                        logs.length?h('div',{class:'space-y-2'},logs.map(q=>h('div',{class:'flex items-center justify-between gap-2 rounded-lg bg-zinc-50 p-2 text-xs dark:bg-zinc-800'},[
+                            h('div',[h('strong',(q.solved||0)+' questões · '+(q.correct||0)+' acertos'),h('div',{class:'text-zinc-500'},fmtDateTime(q.recorded_at)+' · '+(q.origin||'manual'))]),
+                            btn('Editar',()=>openQuestionLog(q),'ghost'),
+                        ]))):empty('Nenhum lançamento neste período.'),
+                    ]),
+                ]),closeModal,null,'max-w-5xl');
             }
 
             if(m.type==='report'){
@@ -1089,6 +1323,7 @@ export const CjcStudent = {
                     h('div',{class:'text-center'},[
                         h('div',{class:'text-xs font-semibold uppercase tracking-wide text-zinc-500'},timer.value.pomodoro?'Pomodoro · restante':'Cronômetro'),
                         h('div',{class:'mt-1 font-mono text-5xl font-bold'},formatTimer(timer.value.pomodoro?Math.max(0,Number(timer.value.pomodoro_minutes||25)*60-timer.value.elapsed):timer.value.elapsed)),
+                        timer.value.pomodoro&&timer.value.pomodoro_cycles?h('div',{class:'mt-2 text-xs text-zinc-500'},timer.value.pomodoro_cycles+' pomodoro(s) concluído(s) nesta sessão'):null,
                         h('div',{class:'mt-3 flex justify-center gap-2'},[
                             timer.value.running?btn('Pausar',pauseTimer,'warning'):btn(timer.value.elapsed?'Continuar':'Iniciar',startTimer,'success'),
                             btn('Zerar',resetTimer,'ghost'),
@@ -1096,7 +1331,14 @@ export const CjcStudent = {
                     ]),
                     formGrid([
                         checkbox(timer.value,'pomodoro','Usar Pomodoro'),
-                        timer.value.pomodoro?field('Minutos do Pomodoro',input(timer.value,'pomodoro_minutes',{type:'number',number:true,min:1,max:180})):null,
+                        timer.value.pomodoro?h('div',{class:'md:col-span-2'},[
+                            h('div',{class:'mb-1 text-xs font-semibold'},'Bloco de foco'),
+                            h('div',{class:'flex flex-wrap gap-1'},[15,25,45,60].map(value=>btn(value+' min',()=>{
+                                if(timer.value.running)return;
+                                timer.value.pomodoro_minutes=value;timer.value.elapsed=0;timer.value.startedAt=null;
+                            },Number(timer.value.pomodoro_minutes)===value?'primary':'ghost',{disabled:timer.value.running}))),
+                        ]):null,
+                        timer.value.pomodoro?field('Minutos personalizados',input(timer.value,'pomodoro_minutes',{type:'number',number:true,min:1,max:180})):null,
                         field('Matéria',select(f,'subject_id',optionize(activeSubjects.value),{placeholder:'—',onChange:()=>{f.topic_id='';f.subtopic_id='';}})),
                         field('Tópico',select(f,'topic_id',optionize(topicOptions),{placeholder:'—',onChange:()=>f.subtopic_id=''})),
                         field('Subtópico',select(f,'subtopic_id',optionize(subOptions),{placeholder:'—'})),
