@@ -1,0 +1,6 @@
+{
+  "exports": ["CjcIndex", "CjcStudent"],
+  "chunks": {
+    "main": "plugin-ui.js"
+  }
+}
