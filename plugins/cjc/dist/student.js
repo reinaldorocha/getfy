@@ -996,7 +996,12 @@ export const CjcStudent = {
         }
 
         const availableTabs = computed(() => MODULES
-            .filter(([, , capability]) => !capability || capabilities.value.includes(capability))
+            .filter(([id, , capability]) => {
+                if (id === 'schedule') {
+                    return capabilities.value.includes('cronograma') || capabilities.value.includes('cronograma_inteligente');
+                }
+                return !capability || capabilities.value.includes(capability);
+            })
             .map(([id,label])=>({id,label})));
 
         return () => h('div',{class:'space-y-5'},[

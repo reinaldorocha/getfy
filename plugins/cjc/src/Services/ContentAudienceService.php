@@ -6,7 +6,7 @@ use App\Models\User;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
-use InvalidArgumentException;
+use Illuminate\\Validation\\ValidationException;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
 class ContentAudienceService
@@ -117,7 +117,7 @@ class ContentAudienceService
             $id = $idValue === null || $idValue === '' ? null : (string) $idValue;
 
             if (! in_array($type, self::TARGET_TYPES, true)) {
-                throw new InvalidArgumentException('Tipo de disponibilização CJC inválido.');
+                throw ValidationException::withMessages(['targets' => 'Tipo de disponibilização CJC inválido.']);
             }
 
             if ($type === 'global') {
@@ -125,7 +125,7 @@ class ContentAudienceService
             }
 
             if ($id === null) {
-                throw new InvalidArgumentException('Destino obrigatório para a disponibilização selecionada.');
+                throw ValidationException::withMessages(['targets' => 'Destino obrigatório para a disponibilização selecionada.']);
             }
 
             $this->assertTargetExists($tenantId, $type, $id);
@@ -224,7 +224,7 @@ class ContentAudienceService
     private function assertContentType(string $contentType): void
     {
         if (! in_array($contentType, self::CONTENT_TYPES, true)) {
-            throw new InvalidArgumentException('Tipo de conteúdo CJC inválido.');
+            throw ValidationException::withMessages(['content_type' => 'Tipo de conteúdo CJC inválido.']);
         }
     }
 }

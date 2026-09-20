@@ -49,7 +49,7 @@ class StudyController extends Controller
         }
 
         $data = $request->validate(['from_date' => ['nullable', 'date']]);
-        $count = $this->engine->reprogram($tenant, $target->id, $schedule->id, $data['from_date'] ?? null);
+        $count = $this->safeEngineCall(fn () => $this->engine->reprogram($tenant, $target->id, $schedule->id, $data['from_date'] ?? null));
 
         return response()->json(['ok' => true, 'reprogrammed' => $count, 'schedule_id' => $schedule->id]);
     }
@@ -110,7 +110,7 @@ class StudyController extends Controller
         }
 
         $data = $request->validate(['from_date' => ['nullable', 'date']]);
-        $count = $this->engine->reprogram($tenant, $student->id, $schedule->id, $data['from_date'] ?? null);
+        $count = $this->safeEngineCall(fn () => $this->engine->reprogram($tenant, $student->id, $schedule->id, $data['from_date'] ?? null));
 
         return response()->json(['ok' => true, 'reprogrammed' => $count, 'schedule_id' => $schedule->id]);
     }
@@ -547,7 +547,7 @@ class StudyController extends Controller
         }
 
         $configuration['tipo'] = $mode;
-        $items = $this->engine->generate($student, $tenant, $data['contest_id'], $configuration);
+        $items = $this->safeEngineCall(fn () => $this->engine->generate($student, $tenant, $data['contest_id'], $configuration));
 
         $request->merge([
             'contest_id' => $data['contest_id'],
@@ -1140,7 +1140,7 @@ class StudyController extends Controller
 
     private function validateReview(Request $request, bool $partial): array
     {
-        $required = $partial ? 'sometimes' : 'nullable';
+        $required = $partial ? 'sometimes' : 'required';
 
         return $request->validate([
             'contest_id' => [$required, 'uuid'],
@@ -1320,6 +1320,15 @@ class StudyController extends Controller
             if (! empty($data[$field]) && ! DB::table($table)->where('tenant_id', $tenant)->where('id', $data[$field])->exists()) {
                 throw new NotFoundHttpException('Referência CJC não encontrada neste tenant.');
             }
+        }
+    }
+
+    private function safeEngineCall(callable $callback): mixed
+    {
+        try {
+            return $callback();
+        } catch (\\RuntimeException $e) {
+            abort(422, $e->getMessage());
         }
     }
 
