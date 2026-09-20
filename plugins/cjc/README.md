@@ -118,3 +118,7 @@ Isso evita duas implementações concorrentes para a mesma função.
 O Member Builder recebe a aba **Exercícios CJC**. Nela o produtor escolhe uma aula e vincula até 50 questões já existentes no Banco de Questões. As questões não são duplicadas.
 
 Na aula da área de membros, o plugin exibe as questões logo após o conteúdo. A resposta mostra acerto/erro e explicação e também é registrada no histórico e nas métricas do CJC com origem `curso`.
+
+## Radar e resultados
+
+O painel do produtor permite filtrar alunos por nível de risco, buscar também pelo concurso, copiar uma mensagem de acompanhamento para WhatsApp, editar grupo/resultado/classificação/nota/nomeação de cada concurso do aluno e gerar relatório de desempenho com parecer da mentoria.

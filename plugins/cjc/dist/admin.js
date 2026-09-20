@@ -1,7 +1,7 @@
 import { h, ref, computed } from 'vue';
 import { EDITAL_PROMPT, QUESTIONS_PROMPT, FLASHCARDS_PROMPT } from './prompts.js';
 import {
-    api, alertBox, badge, btn, card, checkbox, empty, field, fmtDate, fmtDateTime, fmtMoney,
+    api, alertBox, badge, btn, card, checkbox, empty, field, fmtDate, fmtDateTime, fmtHours, fmtMoney,
     input, jsonBody, modal, optionize, progressBar, riskBadge, sectionTitle, select, stat, tabs, textarea,
 } from './shared.js';
 
@@ -31,6 +31,7 @@ export const CjcIndex = {
         const message = ref('');
         const success = ref('');
         const query = ref('');
+        const studentRiskFilter = ref('todos');
         const expandedDeck = ref('');
         const expandedEdict = ref('');
 
@@ -525,6 +526,89 @@ export const CjcIndex = {
             m.detail = await api('/cjc/students/' + m.item.id);
         }
 
+        function radarMessage(student) {
+            const metrics=student.metrics||{};
+            const contest=(student.contest_names||[])[0]||'seu concurso';
+            let body='Olá '+student.name+', tudo bem? ';
+            if(metrics.risk_level==='vermelho'){
+                body+='Notei no CJC que sua preparação precisa de atenção';
+                if(metrics.days_without_study>=2)body+=' e já são '+metrics.days_without_study+' dias sem registro de estudo';
+                body+='. Como posso te ajudar a retomar o ritmo para '+contest+'?';
+            }else if(metrics.risk_level==='amarelo'){
+                body+='Vi alguns pontos de atenção na sua preparação para '+contest+'. Vamos ajustar o ritmo e as revisões desta semana?';
+            }else{
+                body+='Seu ritmo no CJC está em dia para '+contest+'. Continue mantendo a constância!';
+            }
+            return body;
+        }
+
+        async function copyRadarMessage(student) {
+            await navigator.clipboard.writeText(radarMessage(student));
+            success.value='Mensagem para '+student.name+' copiada. Abra o WhatsApp e cole.';
+        }
+
+        function openStudentContestResult(student, contest) {
+            modalState.value={type:'studentContest',student,contest,form:{
+                group:contest.group||'foco',
+                position:contest.order??0,
+                include_in_stats:contest.include_in_stats!==false&&Number(contest.include_in_stats)!==0,
+                result:contest.result||'aguardando',
+                ranking:contest.ranking??'',
+                final_score:contest.final_score??'',
+                appointed:!!contest.appointed,
+                appointment_date:contest.appointment_date||'',
+            }};
+        }
+
+        async function saveStudentContestResult(m) {
+            const f=m.form;
+            const payload={
+                group:f.group,
+                position:Number(f.position||0),
+                include_in_stats:!!f.include_in_stats,
+                result:f.result||null,
+                ranking:f.ranking===''?null:Number(f.ranking),
+                final_score:f.final_score===''?null:Number(f.final_score),
+                appointed:!!f.appointed,
+                appointment_date:f.appointed&&f.appointment_date?f.appointment_date:null,
+            };
+            await run(()=>api('/cjc/contests/'+m.contest.id+'/students/'+m.student.id,{method:'PATCH',body:jsonBody(payload)}),'Resultado do concurso atualizado.');
+            await openStudentDetail(m.student);
+        }
+
+        function studentReportText(student,detail,note='') {
+            const m=detail.metrics_summary||{};
+            const lines=(detail.metrics_subjects||[]).slice().sort((a,b)=>Number(b.seconds||0)-Number(a.seconds||0)).slice(0,8)
+                .map(s=>'• '+s.name+': '+fmtHours(s.seconds||0)+' · '+(s.accuracy??'—')+'% acerto · '+(s.coverage||0)+'% edital').join('\n');
+            return [
+                '📊 *RELATÓRIO DE DESEMPENHO — CJC*',
+                '👤 *Aluno:* '+student.name,
+                '📅 *Período:* '+(m.period?.start?fmtDate(m.period.start)+' a '+fmtDate(m.period.end):'últimos 30 dias'),
+                '⏱️ *Tempo estudado:* '+fmtHours(m.seconds_studied||0),
+                '📝 *Questões:* '+(m.questions_solved||0),
+                '✅ *Taxa de acerto:* '+(m.accuracy??0)+'%',
+                '📚 *Edital:* '+(m.edict_percentage||0)+'%',
+                '🔥 *Sequência:* '+(m.current_streak||0)+' dias',
+                lines?'\n*Por matéria*\n'+lines:'',
+                note.trim()?'\n💬 *PARECER DA MENTORIA:*\n'+note.trim():'',
+            ].filter(Boolean).join('\n');
+        }
+
+        function printStudentReport(student,detail,note='') {
+            const m=detail.metrics_summary||{};
+            const rows=(detail.metrics_subjects||[]).map(s=>'<tr><td>'+String(s.name||'')+'</td><td>'+fmtHours(s.seconds||0)+'</td><td>'+(s.accuracy??'—')+'%</td><td>'+(s.coverage||0)+'%</td></tr>').join('');
+            const w=window.open('','_blank','width=900,height=1000');
+            if(!w){message.value='O navegador bloqueou a janela do relatório.';return;}
+            const esc=v=>String(v??'').replace(/[&<>"]/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[ch]));
+            w.document.write('<!doctype html><html><head><meta charset="utf-8"><title>Relatório CJC</title><style>body{font-family:Arial,sans-serif;color:#172033;padding:36px}.muted{color:#667085}.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:24px 0}.box{border:1px solid #ddd;border-radius:10px;padding:14px}.box b{display:block;font-size:22px;margin-top:6px}table{width:100%;border-collapse:collapse}th,td{padding:9px;border-bottom:1px solid #eee;text-align:left}.note{white-space:pre-wrap;background:#f6f7f9;padding:16px;border-radius:10px;margin-top:24px}</style></head><body>'
+                +'<h1>Relatório de Desempenho — CJC</h1><div class="muted">'+esc(student.name)+' · '+esc(m.period?.start?fmtDate(m.period.start)+' a '+fmtDate(m.period.end):'Últimos 30 dias')+'</div>'
+                +'<div class="grid"><div class="box">Tempo<b>'+esc(fmtHours(m.seconds_studied||0))+'</b></div><div class="box">Questões<b>'+esc(m.questions_solved||0)+'</b></div><div class="box">Acerto<b>'+esc((m.accuracy??0)+'%')+'</b></div><div class="box">Edital<b>'+esc((m.edict_percentage||0)+'%')+'</b></div></div>'
+                +'<h2>Desempenho por matéria</h2><table><thead><tr><th>Matéria</th><th>Tempo</th><th>Acerto</th><th>Edital</th></tr></thead><tbody>'+rows+'</tbody></table>'
+                +(note.trim()?'<div class="note"><b>Parecer da mentoria</b><br>'+esc(note).replace(/\n/g,'<br>')+'</div>':'')
+                +'<script>window.onload=()=>window.print()<\/script></body></html>');
+            w.document.close();
+        }
+
         function renderDashboard() {
             const summary = state.value.summary || {};
             const risk = students.value.slice().sort((a, b) => {
@@ -594,13 +678,29 @@ export const CjcIndex = {
 
         function renderStudents() {
             const q = query.value.toLowerCase();
-            const filtered = students.value.filter(s => !q || s.name.toLowerCase().includes(q) || s.email.toLowerCase().includes(q));
+            const filtered = students.value.filter(s => {
+                const riskOk=studentRiskFilter.value==='todos'||s.metrics?.risk_level===studentRiskFilter.value;
+                const text=[s.name,s.email,...(s.contest_names||[])].join(' ').toLowerCase();
+                return riskOk&&(!q||text.includes(q));
+            });
+            const counts={
+                todos:students.value.length,
+                vermelho:students.value.filter(s=>s.metrics?.risk_level==='vermelho').length,
+                amarelo:students.value.filter(s=>s.metrics?.risk_level==='amarelo').length,
+                verde:students.value.filter(s=>s.metrics?.risk_level==='verde').length,
+            };
             return card([
-                sectionTitle('Alunos e Radar', 'A lista vem automaticamente dos compradores/usuários com acesso aos produtos CJC.'),
+                sectionTitle('Alunos e Radar', 'Filtre por risco e acompanhe os compradores/usuários com acesso aos produtos CJC.'),
+                h('div',{class:'mb-4 flex flex-wrap gap-2'},[
+                    btn('Todos ('+counts.todos+')',()=>studentRiskFilter.value='todos',studentRiskFilter.value==='todos'?'primary':'ghost'),
+                    btn('🔴 Risco ('+counts.vermelho+')',()=>studentRiskFilter.value='vermelho',studentRiskFilter.value==='vermelho'?'danger':'ghost'),
+                    btn('🟡 Atenção ('+counts.amarelo+')',()=>studentRiskFilter.value='amarelo',studentRiskFilter.value==='amarelo'?'warning':'ghost'),
+                    btn('🟢 Em dia ('+counts.verde+')',()=>studentRiskFilter.value='verde',studentRiskFilter.value==='verde'?'success':'ghost'),
+                ]),
                 h('div', { class: 'mb-4 max-w-md' }, [
                     h('input', {
                         value: query.value,
-                        placeholder: 'Buscar aluno...',
+                        placeholder: 'Buscar aluno, e-mail ou concurso...',
                         class: 'w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-950',
                         onInput: e => query.value = e.target.value,
                     }),
@@ -613,12 +713,15 @@ export const CjcIndex = {
                             h('th', { class: 'p-2' }, 'Edital'), h('th', { class: 'p-2' }, ''),
                         ])]),
                         h('tbody', filtered.map(student => h('tr', { class: 'border-t border-zinc-200 dark:border-zinc-800' }, [
-                            h('td', { class: 'p-2' }, [h('div', { class: 'font-medium' }, student.name), h('div', { class: 'text-xs text-zinc-500' }, student.email)]),
+                            h('td', { class: 'p-2' }, [h('div', { class: 'font-medium' }, student.name), h('div', { class: 'text-xs text-zinc-500' }, student.email),student.contest_names?.length?h('div',{class:'mt-1 text-[11px] text-zinc-500'},student.contest_names.join(' · ')):null]),
                             h('td', { class: 'p-2' }, riskBadge(student.metrics?.risk_level)),
                             h('td', { class: 'p-2' }, (student.metrics?.study_hours_7d || 0) + 'h'),
                             h('td', { class: 'p-2' }, (student.metrics?.accuracy || 0) + '%'),
                             h('td', { class: 'min-w-32 p-2' }, progressBar(student.metrics?.edict_percentage || 0)),
-                            h('td', { class: 'p-2 text-right' }, btn('Acompanhar', () => openStudentDetail(student), 'ghost')),
+                            h('td', { class: 'p-2 text-right' }, h('div',{class:'flex justify-end gap-1'},[
+                                btn('Copiar WhatsApp',()=>copyRadarMessage(student),'ghost'),
+                                btn('Acompanhar', () => openStudentDetail(student), 'ghost'),
+                            ])),
                         ]))),
                     ]),
                 ]) : empty('Nenhum aluno encontrado.'),
@@ -993,6 +1096,10 @@ export const CjcIndex = {
             if (m.type === 'student') {
                 const d=m.detail||{};
                 return modal('Acompanhamento · '+m.item.name,h('div',{class:'space-y-5'},[
+                    h('div',{class:'flex flex-wrap justify-end gap-2'},[
+                        btn('📱 Copiar relatório',async()=>{await navigator.clipboard.writeText(studentReportText(m.item,d,''));success.value='Relatório copiado para enviar no WhatsApp.';},'ghost'),
+                        btn('📄 Relatório / PDF',()=>modalState.value={type:'studentReport',student:m.item,detail:d,form:{note:''}},'ghost'),
+                    ]),
                     h('div',{class:'grid gap-3 sm:grid-cols-2 lg:grid-cols-4'},[
                         stat('Horas / 7d',d.metrics?.study_hours_7d),stat('Acerto',(d.metrics?.accuracy||0)+'%'),
                         stat('Edital',(d.metrics?.edict_percentage||0)+'%'),stat('Revisões',d.metrics?.pending_reviews||0),
@@ -1006,11 +1113,57 @@ export const CjcIndex = {
                             h('div',{class:'flex items-end'},btn('Atribuir edital',()=>assignToStudent(m,'edict'),'soft')),
                         ]),
                     ]),
-                    card([sectionTitle('Concursos do aluno'),(d.contests||[]).length?h('div',{class:'space-y-2'},d.contests.map(c=>h('div',{class:'rounded-lg bg-zinc-50 p-3 text-sm dark:bg-zinc-800'},c.name+' · '+c.group+(c.result?' · '+c.result:'')))):empty('Sem concursos.')]),
+                    card([
+                        sectionTitle('Concursos do aluno','Resultado, classificação e nomeação ficam por aluno.'),
+                        (d.contests||[]).length?h('div',{class:'space-y-2'},d.contests.map(contest=>h('div',{class:'flex flex-wrap items-center justify-between gap-3 rounded-lg bg-zinc-50 p-3 text-sm dark:bg-zinc-800'},[
+                            h('div',[
+                                h('strong',contest.name),
+                                h('div',{class:'mt-1 flex flex-wrap gap-1'},[
+                                    badge(contest.group||'foco','sky'),
+                                    contest.result?badge(String(contest.result).replace('_',' '),contest.result==='aprovado'?'green':contest.result==='reprovado'||contest.result==='eliminado'?'red':'amber'):null,
+                                    contest.ranking?badge('#'+contest.ranking):null,
+                                    contest.final_score!==null&&contest.final_score!==undefined?badge('Nota '+contest.final_score):null,
+                                    contest.appointed?badge('🎉 Nomeado','green'):null,
+                                ]),
+                                contest.appointed&&contest.appointment_date?h('div',{class:'mt-1 text-xs text-zinc-500'},'Nomeação: '+fmtDate(contest.appointment_date)):null,
+                            ]),
+                            btn('Editar resultado',()=>openStudentContestResult(m.item,contest),'ghost'),
+                        ]))):empty('Sem concursos.'),
+                    ]),
                     card([sectionTitle('Métricas por matéria'),(d.metrics_subjects||[]).length?h('div',{class:'space-y-2'},d.metrics_subjects.map(s=>h('div',{class:'grid gap-2 rounded-lg bg-zinc-50 p-3 text-xs dark:bg-zinc-800 md:grid-cols-4'},[
-                        h('strong',s.name),h('span','Tempo: '+Math.round((s.seconds||0)/60)+' min'),h('span','Acerto: '+(s.accuracy??'—')+'%'),h('span','Edital: '+(s.coverage||0)+'%'),
+                        h('strong',s.name),h('span','Tempo: '+fmtHours(s.seconds||0)),h('span','Acerto: '+(s.accuracy??'—')+'%'),h('span','Edital: '+(s.coverage||0)+'%'),
                     ]))):empty('Sem dados suficientes.')]),
                 ]),closeModal,null,'max-w-5xl');
+            }
+
+            if(m.type==='studentContest'){
+                const f=m.form;
+                return modal('Resultado · '+m.student.name+' · '+m.contest.name,h('div',{class:'space-y-4'},[
+                    formGrid([
+                        field('Grupo',select(f,'group',[{value:'foco',label:'Foco principal'},{value:'mira',label:'Na mira'},{value:'realizado',label:'Realizado'}])),
+                        field('Ordem',input(f,'position',{type:'number',number:true,min:0})),
+                        field('Resultado',select(f,'result',[
+                            {value:'aguardando',label:'Aguardando resultado'},{value:'aprovado',label:'Aprovado'},
+                            {value:'cadastro_reserva',label:'Cadastro reserva'},{value:'reprovado',label:'Reprovado'},{value:'eliminado',label:'Eliminado'},
+                        ])),
+                        field('Classificação',input(f,'ranking',{type:'number',number:true,min:1})),
+                        field('Nota final',input(f,'final_score',{type:'number',number:true,step:'0.01'})),
+                        checkbox(f,'include_in_stats','Incluir nas estatísticas'),
+                        checkbox(f,'appointed','Aluno nomeado'),
+                        f.appointed?field('Data da nomeação',input(f,'appointment_date',{type:'date'})):null,
+                    ]),
+                ]),closeModal,[btn('Salvar resultado',()=>saveStudentContestResult(m),'primary')]);
+            }
+
+            if(m.type==='studentReport'){
+                const f=m.form;
+                return modal('Relatório · '+m.student.name,h('div',{class:'space-y-4'},[
+                    h('pre',{class:'whitespace-pre-wrap rounded-xl bg-zinc-50 p-4 text-sm font-sans dark:bg-zinc-800'},studentReportText(m.student,m.detail,f.note)),
+                    field('Parecer da mentoria (opcional)',textarea(f,'note',{rows:6,placeholder:'Orientações, pontos de atenção e próximos passos…'})),
+                ]),closeModal,[
+                    btn('📱 Copiar p/ WhatsApp',async()=>{await navigator.clipboard.writeText(studentReportText(m.student,m.detail,f.note));success.value='Relatório copiado.';},'ghost'),
+                    btn('Imprimir / PDF',()=>printStudentReport(m.student,m.detail,f.note),'primary'),
+                ],'max-w-4xl');
             }
 
             return null;

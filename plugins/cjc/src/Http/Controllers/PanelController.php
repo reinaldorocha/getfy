@@ -55,7 +55,7 @@ class PanelController extends Controller
             ->where('sc.is_active', true)
             ->select(
                 'c.id', 'c.name', 'c.board', 'c.position', 'c.exam_date',
-                'sc.group', 'sc.position as order', 'sc.result', 'sc.ranking',
+                'sc.group', 'sc.position as order', 'sc.include_in_stats', 'sc.result', 'sc.ranking',
                 'sc.final_score', 'sc.appointed', 'sc.appointment_date',
             )
             ->orderBy('sc.position')
@@ -186,6 +186,15 @@ class PanelController extends Controller
                     'name' => $student->name,
                     'email' => $student->email,
                     'metrics' => $this->metrics->studentSummary($tenantId, (int) $student->id),
+                    'contest_names' => DB::table('cjc_student_contests as sc')
+                        ->join('cjc_contests as c', 'c.id', '=', 'sc.contest_id')
+                        ->where('sc.tenant_id', $tenantId)
+                        ->where('sc.student_id', $student->id)
+                        ->where('sc.is_active', true)
+                        ->where('c.is_active', true)
+                        ->orderBy('sc.position')
+                        ->pluck('c.name')
+                        ->values(),
                     'product_ids' => DB::table('product_user')
                         ->join('cjc_products', 'cjc_products.product_id', '=', 'product_user.product_id')
                         ->where('product_user.user_id', $student->id)
