@@ -925,13 +925,23 @@ class PluginRegistry
             if (! is_array($menu)) {
                 continue;
             }
-            foreach ($menu as $entry) {
-                if (empty($entry['label']) || empty($entry['href'])) {
+            $entries = array_is_list($menu) ? $menu : [$menu];
+            foreach ($entries as $entry) {
+                if (! is_array($entry) || empty($entry['label'])) {
+                    continue;
+                }
+                $href = $entry['href'] ?? null;
+                if (! is_string($href) || $href === '') {
+                    $route = $entry['route'] ?? null;
+                    $slug = trim((string) ($plugin['slug'] ?? ''), '/');
+                    $href = is_string($route) && $route !== '' && $slug !== '' ? '/'.$slug : null;
+                }
+                if (! is_string($href) || $href === '') {
                     continue;
                 }
                 $items[] = [
                     'name' => $entry['label'],
-                    'href' => $entry['href'],
+                    'href' => $href,
                     'icon' => $entry['icon'] ?? null,
                 ];
             }

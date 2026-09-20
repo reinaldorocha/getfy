@@ -1,0 +1,4 @@
+{
+  "entry": "plugin-ui.js",
+  "exports": ["Dashboard", "Integrations", "ProductPanel"]
+}

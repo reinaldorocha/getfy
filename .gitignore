@@ -14,11 +14,7 @@
 /.tools
 /auth.json
 /node_modules
-# Plugins instalados pelo painel / ZIP (persistente; não versionar).
-# Exceção: plugins bundled mantidos no repositório.
-/plugins/*
-!/plugins/cjc/
-!/plugins/cjc/**
+/plugins-backup
 /plugins-installed
 /storage/app/plugins-installed
 .docker/plugins-installed

@@ -1,0 +1,68 @@
+{
+  "slug": "zaprei",
+  "name": "ZapRei",
+  "version": "1.0.0",
+  "type": "integration",
+  "description": "Automação de WhatsApp com fluxos visuais, campanhas e contatos, exclusiva para a Evolution GO API.",
+  "author": "Getfy",
+  "requires": {
+    "getfy": ">=2.0.0",
+    "plugin_api": 2
+  },
+  "routes": "routes.php",
+  "public_routes": {
+    "file": "routes-public.php",
+    "prefix": "webhooks/inbound/zaprei"
+  },
+  "migrations": "database/migrations",
+  "commands": ["Plugins\\Zaprei\\Console\\ResumeWaitingFlowsCommand"],
+  "schedule": [
+    { "command": "zaprei:resume-flows", "cron": "* * * * *" }
+  ],
+  "capabilities": [
+    { "id": "manage", "label": "Gerenciar ZapRei" },
+    { "id": "connections", "label": "Gerenciar conexões do ZapRei" },
+    { "id": "campaigns", "label": "Gerenciar campanhas do ZapRei" }
+  ],
+  "menu": {
+    "label": "ZapRei",
+    "route": "zaprei.index",
+    "icon": "MessageCircle"
+  },
+  "integration_app": {
+    "id": "zaprei",
+    "name": "ZapRei",
+    "description": "Dispare mensagens de WhatsApp por eventos e campanhas usando a Evolution GO.",
+    "image": "assets/icon.svg"
+  },
+  "product_panel": {
+    "id": "zaprei",
+    "label": "ZapRei"
+  },
+  "events": {
+    "App\\Events\\OrderPending": ["Plugins\\Zaprei\\Listeners\\DispatchFlows"],
+    "App\\Events\\OrderCompleted": ["Plugins\\Zaprei\\Listeners\\DispatchFlows"],
+    "App\\Events\\OrderRejected": ["Plugins\\Zaprei\\Listeners\\DispatchFlows"],
+    "App\\Events\\OrderCancelled": ["Plugins\\Zaprei\\Listeners\\DispatchFlows"],
+    "App\\Events\\OrderRefunded": ["Plugins\\Zaprei\\Listeners\\DispatchFlows"],
+    "App\\Events\\PixGenerated": ["Plugins\\Zaprei\\Listeners\\DispatchFlows"],
+    "App\\Events\\BoletoGenerated": ["Plugins\\Zaprei\\Listeners\\DispatchFlows"],
+    "App\\Events\\AccessDeliveryReady": ["Plugins\\Zaprei\\Listeners\\DispatchFlows"],
+    "App\\Events\\CartAbandoned": ["Plugins\\Zaprei\\Listeners\\DispatchFlows"],
+    "App\\Events\\SubscriptionCreated": ["Plugins\\Zaprei\\Listeners\\DispatchFlows"],
+    "App\\Events\\SubscriptionRenewed": ["Plugins\\Zaprei\\Listeners\\DispatchFlows"],
+    "App\\Events\\SubscriptionCancelled": ["Plugins\\Zaprei\\Listeners\\DispatchFlows"],
+    "App\\Events\\SubscriptionPastDue": ["Plugins\\Zaprei\\Listeners\\DispatchFlows"]
+  },
+  "frontend": {
+    "entry": "dist/plugin-ui.js",
+    "manifest": "dist/ui.manifest.json",
+    "exports": {
+      "integrations": "Integrations",
+      "product_panel": "ProductPanel"
+    },
+    "pages": {
+      "Dashboard": "Dashboard"
+    }
+  }
+}
