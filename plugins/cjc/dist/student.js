@@ -21,12 +21,25 @@ const MODULES = [
     ['help', 'Ajuda', null],
 ];
 
+function availableModules(capabilities = []) {
+    return MODULES.filter(([id, , capability]) => {
+        if (id === 'schedule') {
+            return capabilities.includes('cronograma') || capabilities.includes('cronograma_inteligente');
+        }
+        return !capability || capabilities.includes(capability);
+    });
+}
+
+function firstAllowedModule(capabilities = []) {
+    return availableModules(capabilities)[0]?.[0] || 'help';
+}
+
 export const CjcStudent = {
     name: 'CjcStudent',
     props: { plugin_ui_page: { type: Object, default: () => ({}) } },
     setup(props) {
         const state = ref(props.plugin_ui_page || {});
-        const activeTab = ref('dashboard');
+        const activeTab = ref(firstAllowedModule(state.value.capabilities || []));
         const modalState = ref(null);
         const busy = ref(false);
         const message = ref('');
@@ -79,6 +92,11 @@ export const CjcStudent = {
             const url = base.value + '/data' + (contestId ? '?contest_id='+encodeURIComponent(contestId) : '');
             state.value = await api(url);
             if (!activeContestId.value && state.value.active_contest_id) activeContestId.value = state.value.active_contest_id;
+
+            const allowedIds = availableModules(state.value.capabilities || []).map(([id]) => id);
+            if (!allowedIds.includes(activeTab.value)) {
+                activeTab.value = firstAllowedModule(state.value.capabilities || []);
+            }
         }
 
         async function run(fn, ok = '', doRefresh = true) {
@@ -995,13 +1013,7 @@ export const CjcStudent = {
             return null;
         }
 
-        const availableTabs = computed(() => MODULES
-            .filter(([id, , capability]) => {
-                if (id === 'schedule') {
-                    return capabilities.value.includes('cronograma') || capabilities.value.includes('cronograma_inteligente');
-                }
-                return !capability || capabilities.value.includes(capability);
-            })
+        const availableTabs = computed(() => availableModules(capabilities.value)
             .map(([id,label])=>({id,label})));
 
         return () => h('div',{class:'space-y-5'},[
