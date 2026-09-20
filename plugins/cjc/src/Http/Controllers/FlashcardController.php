@@ -480,14 +480,11 @@ class FlashcardController extends Controller
         $prefix = $partial ? 'sometimes|' : '';
 
         return $request->validate([
-            'type' => [$prefix.'in:basico,lacuna,multipla_escolha,certo_errado'],
+            'type' => [$prefix.'in:certo_errado'],
             'front' => [$prefix.'required', 'string'],
-            'back' => ['sometimes', 'nullable', 'string'],
             'hint' => ['sometimes', 'nullable', 'string'],
-            'alternatives' => ['sometimes', 'nullable', 'array'],
-            'correct_answer' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'correct_answer' => [$prefix.'required', 'string', 'in:Certo,Errado,certo,errado'],
             'explanation' => ['sometimes', 'nullable', 'string'],
-            'alternative_explanations' => ['sometimes', 'nullable', 'array'],
             'tags' => ['sometimes', 'nullable', 'array'],
             'topic_id' => ['sometimes', 'nullable', 'uuid'],
             'subtopic_id' => ['sometimes', 'nullable', 'uuid'],
@@ -514,20 +511,12 @@ class FlashcardController extends Controller
 
     private function normalizeCardInput(array $raw): array
     {
-        $alternatives = $raw['alternatives'] ?? $raw['alternativas'] ?? [];
-        if (is_string($alternatives)) {
-            $alternatives = preg_split('/\r?\n/', $alternatives) ?: [];
-        }
-
         return [
-            'type' => (string) ($raw['type'] ?? $raw['tipo'] ?? 'basico'),
+            'type' => (string) ($raw['type'] ?? $raw['tipo'] ?? 'certo_errado'),
             'front' => trim((string) ($raw['front'] ?? $raw['frente'] ?? '')),
-            'back' => ($raw['back'] ?? $raw['verso'] ?? null) ?: null,
             'hint' => ($raw['hint'] ?? $raw['dica'] ?? null) ?: null,
-            'alternatives' => is_array($alternatives) ? array_values($alternatives) : [],
             'correct_answer' => ($raw['correct_answer'] ?? $raw['respostaCorreta'] ?? null) ?: null,
             'explanation' => ($raw['explanation'] ?? $raw['explicacao'] ?? null) ?: null,
-            'alternative_explanations' => $raw['alternative_explanations'] ?? $raw['explicacoesAlternativas'] ?? [],
             'tags' => $raw['tags'] ?? $raw['etiquetas'] ?? [],
             'topic_id' => ($raw['topic_id'] ?? $raw['topicoId'] ?? null) ?: null,
             'subtopic_id' => ($raw['subtopic_id'] ?? $raw['subtopicoId'] ?? null) ?: null,
@@ -581,14 +570,14 @@ class FlashcardController extends Controller
             'id' => $id,
             'tenant_id' => $tenantId,
             'deck_id' => $deckId,
-            'type' => $data['type'] ?? 'basico',
+            'type' => 'certo_errado',
             'front' => trim((string) $data['front']),
-            'back' => $data['back'] ?? null,
+            'back' => null,
             'hint' => $data['hint'] ?? null,
-            'alternatives' => ! empty($data['alternatives']) ? json_encode(array_values($data['alternatives']), JSON_UNESCAPED_UNICODE) : null,
-            'correct_answer' => $data['correct_answer'] ?? null,
+            'alternatives' => null,
+            'correct_answer' => $this->normalizeTrueFalseAnswer((string) ($data['correct_answer'] ?? '')),
             'explanation' => $data['explanation'] ?? null,
-            'alternative_explanations' => ! empty($data['alternative_explanations']) ? json_encode($data['alternative_explanations'], JSON_UNESCAPED_UNICODE) : null,
+            'alternative_explanations' => null,
             'tags' => ! empty($data['tags']) ? json_encode(array_values($data['tags']), JSON_UNESCAPED_UNICODE) : null,
             'topic_id' => $data['topic_id'] ?? null,
             'subtopic_id' => $data['subtopic_id'] ?? null,
@@ -604,12 +593,19 @@ class FlashcardController extends Controller
     private function cardUpdatePayload(array $data): array
     {
         $update = $data;
-        foreach (['alternatives', 'alternative_explanations', 'tags'] as $field) {
-            if (array_key_exists($field, $update)) {
-                $update[$field] = $update[$field] === null || $update[$field] === []
-                    ? null
-                    : json_encode($update[$field], JSON_UNESCAPED_UNICODE);
-            }
+        $update['type'] = 'certo_errado';
+        $update['back'] = null;
+        $update['alternatives'] = null;
+        $update['alternative_explanations'] = null;
+
+        if (array_key_exists('correct_answer', $update)) {
+            $update['correct_answer'] = $this->normalizeTrueFalseAnswer((string) $update['correct_answer']);
+        }
+
+        if (array_key_exists('tags', $update)) {
+            $update['tags'] = $update['tags'] === null || $update['tags'] === []
+                ? null
+                : json_encode($update['tags'], JSON_UNESCAPED_UNICODE);
         }
 
         return $update;
@@ -617,17 +613,26 @@ class FlashcardController extends Controller
 
     private function validateCardData(array $data): void
     {
-        $type = $data['type'] ?? 'basico';
+        $type = (string) ($data['type'] ?? 'certo_errado');
         $front = trim((string) ($data['front'] ?? ''));
+
         if ($front === '') {
-            throw new \InvalidArgumentException('Frente do flashcard é obrigatória.');
+            abort(422, 'A afirmação do flashcard é obrigatória.');
         }
-        if (! in_array($type, ['basico', 'lacuna', 'multipla_escolha', 'certo_errado'], true)) {
-            throw new \InvalidArgumentException('Tipo de flashcard inválido.');
+
+        if ($type !== 'certo_errado') {
+            abort(422, 'O CJC aceita somente flashcards do tipo Certo/Errado.');
         }
-        if (in_array($type, ['multipla_escolha', 'certo_errado'], true) && empty($data['correct_answer'])) {
-            throw new \InvalidArgumentException('Resposta correta é obrigatória para este tipo de flashcard.');
+
+        $answer = mb_strtolower(trim((string) ($data['correct_answer'] ?? '')), 'UTF-8');
+        if (! in_array($answer, ['certo', 'errado'], true)) {
+            abort(422, 'A resposta correta do flashcard deve ser Certo ou Errado.');
         }
+    }
+
+    private function normalizeTrueFalseAnswer(string $answer): string
+    {
+        return mb_strtolower(trim($answer), 'UTF-8') === 'certo' ? 'Certo' : 'Errado';
     }
 
     private function validateDeckReferences(int $tenantId, array $data, ?string $selfId = null): void

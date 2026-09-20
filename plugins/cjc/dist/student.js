@@ -49,6 +49,7 @@ export const CjcStudent = {
         const deckFilter = ref('');
         const answerDrafts = ref({});
         const questionStats = ref(null);
+        const flashcardFeedback = ref({});
 
         const tenant = computed(() => Number(state.value.tenant_id || 0));
         const base = computed(() => '/cjc-estudos/' + tenant.value);
@@ -323,11 +324,23 @@ export const CjcStudent = {
             await run(()=>api(base.value+'/reviews/'+review.id,{method:'DELETE'}));
         }
 
-        async function reviewCard(card,quality) {
+        async function answerFlashcard(card, answer) {
+            const expected=String(card.correct_answer||'').trim().toLowerCase();
+            const chosen=String(answer).trim().toLowerCase();
+            const correct=expected===chosen;
             const result=await run(()=>api(base.value+'/flashcards/'+card.id+'/review',{
-                method:'POST',body:jsonBody({quality,contest_id:activeContestId.value||null}),
-            }),'Flashcard revisado.');
-            if(result?.next_review) success.value='Próxima revisão: '+fmtDate(result.next_review);
+                method:'POST',body:jsonBody({quality:correct?4:1,contest_id:activeContestId.value||null}),
+            }),'',false);
+            flashcardFeedback.value={
+                ...flashcardFeedback.value,
+                [card.id]:{
+                    correct,
+                    chosen:answer,
+                    expected:card.correct_answer,
+                    explanation:card.explanation||'',
+                    next_review:result?.next_review||null,
+                },
+            };
         }
 
         function openOwnDeck(item=null) {
@@ -351,9 +364,8 @@ export const CjcStudent = {
 
         function openOwnCard(deck,item=null) {
             modalState.value={type:'ownCard',deck,item,form:{
-                type:item?.type||'basico',front:item?.front||'',back:item?.back||'',hint:item?.hint||'',
-                alternatives:Array.isArray(item?.alternatives)?item.alternatives.join('\n'):'',
-                correct_answer:item?.correct_answer||'',explanation:item?.explanation||'',
+                type:'certo_errado',front:item?.front||'',hint:item?.hint||'',
+                correct_answer:item?.correct_answer||'Certo',explanation:item?.explanation||'',
                 tags:Array.isArray(item?.tags)?item.tags.join(', '):'',
             }};
         }
@@ -361,9 +373,8 @@ export const CjcStudent = {
         async function saveOwnCard(m) {
             const f=m.form;
             const payload={
-                type:f.type,front:f.front,back:f.back||null,hint:f.hint||null,
-                alternatives:f.type==='multipla_escolha'?f.alternatives.split(/\r?\n/).map(x=>x.trim()).filter(Boolean):[],
-                correct_answer:f.correct_answer||null,explanation:f.explanation||null,
+                type:'certo_errado',front:f.front,hint:f.hint||null,
+                correct_answer:f.correct_answer,explanation:f.explanation||null,
                 tags:f.tags.split(',').map(x=>x.trim()).filter(Boolean),
             };
             const url=m.item?base.value+'/flashcards/'+m.item.id:base.value+'/flashcard-decks/'+m.deck.id+'/cards';
@@ -681,24 +692,30 @@ export const CjcStudent = {
             const due=cards.filter(c=>(!deckFilter.value||c.deck_id===deckFilter.value)&&(!c.next_review||c.next_review<=now));
             return h('div',{class:'space-y-4'},[
                 card([
-                    sectionTitle('Flashcards','Avalie de 0 a 5; o CJC usa repetição espaçada SM-2.',btn('Meu novo baralho',()=>openOwnDeck())),
+                    sectionTitle('Flashcards','Responda Certo ou Errado. O resultado alimenta automaticamente a repetição espaçada SM-2.',btn('Meu novo baralho',()=>openOwnDeck())),
                     field('Baralho',h('select',{value:deckFilter.value,class:'w-full max-w-md rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-950',onChange:e=>deckFilter.value=e.target.value},[
                         h('option',{value:''},'Todos os baralhos'),...decks.map(d=>h('option',{value:d.id},(d.icon||'')+' '+d.name)),
                     ])),
                 ]),
                 card([
                     sectionTitle('Pendentes para revisão',due.length+' cartão(ões)'),
-                    due.length?h('div',{class:'grid gap-3 md:grid-cols-2'},due.slice(0,100).map(c=>h('div',{class:'rounded-xl border border-zinc-200 p-4 dark:border-zinc-700'},[
-                        h('div',{class:'text-xs text-zinc-500'},decks.find(d=>d.id===c.deck_id)?.name||'Baralho'),
-                        h('div',{class:'mt-2 font-semibold'},c.front),
-                        c.hint?h('details',{class:'mt-2 text-xs'},[h('summary','Dica'),h('p',{class:'mt-1'},c.hint)]):null,
-                        h('details',{class:'mt-3 text-sm'},[
-                            h('summary',{class:'cursor-pointer font-semibold text-sky-600'},'Mostrar resposta'),
-                            h('div',{class:'mt-2 whitespace-pre-wrap'},c.back||c.correct_answer||'Sem verso'),
-                            c.explanation?h('p',{class:'mt-2 text-xs text-zinc-500'},c.explanation):null,
-                        ]),
-                        h('div',{class:'mt-4 flex flex-wrap gap-1'},[0,1,2,3,4,5].map(q=>btn(String(q),()=>reviewCard(c,q),q>=3?'success':q===2?'warning':'danger'))),
-                    ]))):empty('Nenhum flashcard pendente agora.'),
+                    due.length?h('div',{class:'grid gap-3 md:grid-cols-2'},due.slice(0,100).map(c=>{
+                        const feedback=flashcardFeedback.value[c.id];
+                        return h('div',{class:'rounded-xl border border-zinc-200 p-4 dark:border-zinc-700'},[
+                            h('div',{class:'text-xs text-zinc-500'},decks.find(d=>d.id===c.deck_id)?.name||'Baralho'),
+                            h('div',{class:'mt-2 font-semibold'},c.front),
+                            c.hint&&!feedback?h('details',{class:'mt-2 text-xs'},[h('summary','Dica'),h('p',{class:'mt-1'},c.hint)]):null,
+                            !feedback?h('div',{class:'mt-4 grid grid-cols-2 gap-2'},[
+                                btn('Certo',()=>answerFlashcard(c,'Certo'),'success'),
+                                btn('Errado',()=>answerFlashcard(c,'Errado'),'danger'),
+                            ]):h('div',{class:'mt-4 rounded-lg border p-3 '+(feedback.correct?'border-emerald-200 bg-emerald-50 dark:border-emerald-900 dark:bg-emerald-950':'border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950')},[
+                                h('strong',{class:'text-sm'},feedback.correct?'✓ Você acertou':'✗ Você errou'),
+                                h('div',{class:'mt-1 text-sm'},'Resposta correta: '+feedback.expected),
+                                feedback.explanation?h('p',{class:'mt-2 text-xs'},feedback.explanation):null,
+                                feedback.next_review?h('p',{class:'mt-2 text-[11px] text-zinc-500'},'Próxima revisão: '+fmtDate(feedback.next_review)):null,
+                            ]),
+                        ]);
+                    })):empty('Nenhum flashcard pendente agora.'),
                 ]),
                 card([
                     sectionTitle('Meus baralhos','Você também pode criar flashcards pessoais.'),
@@ -962,12 +979,13 @@ export const CjcStudent = {
 
             if(m.type==='ownCard'){
                 const f=m.form;
-                return modal(m.item?'Editar meu flashcard':'Novo flashcard',h('div',{class:'space-y-4'},[
-                    field('Tipo',select(f,'type',[{value:'basico',label:'Básico'},{value:'lacuna',label:'Lacuna'},{value:'multipla_escolha',label:'Múltipla escolha'},{value:'certo_errado',label:'Certo / Errado'}])),
-                    field('Frente',textarea(f,'front',{rows:4})),field('Verso',textarea(f,'back',{rows:4})),field('Dica',textarea(f,'hint',{rows:2})),
-                    f.type==='multipla_escolha'?field('Alternativas (uma por linha)',textarea(f,'alternatives',{rows:5})):null,
-                    ['multipla_escolha','certo_errado'].includes(f.type)?field('Resposta correta',input(f,'correct_answer')):null,
-                    field('Explicação',textarea(f,'explanation',{rows:3})),field('Etiquetas',input(f,'tags',{placeholder:'lei seca, difícil, revisão'})),
+                return modal(m.item?'Editar meu flashcard':'Novo flashcard Certo/Errado',h('div',{class:'space-y-4'},[
+                    h('div',{class:'rounded-lg bg-zinc-50 p-3 text-xs text-zinc-500 dark:bg-zinc-800'},'Crie uma afirmação e defina se ela está certa ou errada.'),
+                    field('Afirmação',textarea(f,'front',{rows:5})),
+                    field('Resposta correta',select(f,'correct_answer',[{value:'Certo',label:'Certo'},{value:'Errado',label:'Errado'}])),
+                    field('Explicação / fundamento',textarea(f,'explanation',{rows:4})),
+                    field('Dica (opcional)',textarea(f,'hint',{rows:2})),
+                    field('Etiquetas',input(f,'tags',{placeholder:'lei seca, difícil, revisão'})),
                 ]),closeModal,[btn('Salvar',()=>saveOwnCard(m),'primary')],'max-w-4xl');
             }
 

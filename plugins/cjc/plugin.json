@@ -1,7 +1,7 @@
 {
   "slug": "cjc",
   "name": "CJC - Chega Junto Concurseiro",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Mentoria e preparação para concursos integrada ao Getfy. Reutiliza usuários, produtos, acesso, pagamentos, SMTP e tenants do core.",
   "type": "member",
   "requires": {

@@ -33,7 +33,7 @@ O Getfy continua responsável por autenticação, usuários, senha, recuperaçã
 - Timer e histórico de sessões de estudo
 - Lançamentos manuais de questões
 - Banco de questões, importação, resposta, histórico e estatísticas
-- Flashcards básicos, lacuna, múltipla escolha e certo/errado
+- Flashcards exclusivamente de Certo/Errado, com explicação/fundamento
 - Baralhos do mentor e baralhos pessoais do aluno
 - Repetição espaçada SM-2
 - Revisões programadas
@@ -42,6 +42,12 @@ O Getfy continua responsável por autenticação, usuários, senha, recuperaçã
 - Métricas por período, linha do tempo, matérias, cobertura, streak e simulados
 - Auditoria
 - Cursos integrados à Área de membros do Getfy
+
+## Prompts de IA
+
+Os importadores de concurso/edital, questões e flashcards incluem o botão **Copiar Prompt**, reaproveitando o fluxo do CJC original.
+
+Flashcards usam um prompt específico que gera somente afirmações de **Certo/Errado**. Questões de múltipla escolha permanecem no Banco de Questões.
 
 ## Disponibilização de conteúdo
 

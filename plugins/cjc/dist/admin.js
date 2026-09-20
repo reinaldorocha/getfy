@@ -1,4 +1,5 @@
 import { h, ref, computed } from 'vue';
+import { EDITAL_PROMPT, QUESTIONS_PROMPT, FLASHCARDS_PROMPT } from './prompts.js';
 import {
     api, alertBox, badge, btn, card, checkbox, empty, field, fmtDate, fmtDateTime, fmtMoney,
     input, jsonBody, modal, optionize, progressBar, riskBadge, sectionTitle, select, stat, tabs, textarea,
@@ -214,6 +215,17 @@ export const CjcIndex = {
             };
         }
 
+        function promptForMode(mode) {
+            if (mode === 'catalog') return EDITAL_PROMPT;
+            if (mode === 'questions') return QUESTIONS_PROMPT;
+            return FLASHCARDS_PROMPT;
+        }
+
+        async function copyImportPrompt(mode) {
+            await navigator.clipboard.writeText(promptForMode(mode));
+            success.value = 'Prompt copiado. Cole no ChatGPT, Gemini ou outra IA.';
+        }
+
         async function submitJson(m) {
             let parsed;
             try { parsed = JSON.parse(m.form.json); }
@@ -226,10 +238,18 @@ export const CjcIndex = {
                 payload = { payload: parsed };
             } else if (m.mode === 'questions') {
                 url = '/cjc/questions/import';
-                payload = Array.isArray(parsed) ? { questions: parsed } : parsed;
+                payload = Array.isArray(parsed) ? { questions: parsed } : { ...parsed };
+                payload.targets = normalizedTargets(m.form.targets);
             } else {
                 url = '/cjc/flashcard-decks/import';
-                payload = Array.isArray(parsed) ? { decks: parsed } : parsed;
+                if (Array.isArray(parsed)) {
+                    payload = { decks: parsed };
+                } else if (Array.isArray(parsed.decks) || Array.isArray(parsed.baralhos)) {
+                    payload = { ...parsed };
+                } else {
+                    payload = { baralhos: [parsed] };
+                }
+                payload.targets = normalizedTargets(m.form.targets);
             }
 
             await run(() => api(url, { method: 'POST', body: jsonBody(payload) }), 'Importação concluída.');
@@ -408,12 +428,10 @@ export const CjcIndex = {
                 deck,
                 item,
                 form: {
-                    type: item?.type || 'basico',
+                    type: 'certo_errado',
                     front: item?.front || '',
-                    back: item?.back || '',
                     hint: item?.hint || '',
-                    alternatives: Array.isArray(item?.alternatives) ? item.alternatives.join('\n') : '',
-                    correct_answer: item?.correct_answer || '',
+                    correct_answer: item?.correct_answer || 'Certo',
                     explanation: item?.explanation || '',
                     tags: Array.isArray(item?.tags) ? item.tags.join(', ') : '',
                     topic_id: item?.topic_id || '',
@@ -424,14 +442,10 @@ export const CjcIndex = {
 
         async function saveCard(m) {
             const payload = {
-                type: m.form.type,
+                type: 'certo_errado',
                 front: m.form.front,
-                back: m.form.back || null,
                 hint: m.form.hint || null,
-                alternatives: m.form.type === 'multipla_escolha'
-                    ? m.form.alternatives.split(/\r?\n/).map(x => x.trim()).filter(Boolean)
-                    : [],
-                correct_answer: m.form.correct_answer || null,
+                correct_answer: m.form.correct_answer,
                 explanation: m.form.explanation || null,
                 tags: m.form.tags.split(',').map(x => x.trim()).filter(Boolean),
                 topic_id: m.form.topic_id || null,
@@ -710,7 +724,7 @@ export const CjcIndex = {
             const filtered = questions.value.filter(x => !q || x.subject.toLowerCase().includes(q) || x.prompt.toLowerCase().includes(q) || String(x.topic || '').toLowerCase().includes(q));
             return card([
                 sectionTitle('Banco de questões', 'CRUD, importação e disponibilização por público.', h('div', { class: 'flex gap-2' }, [
-                    btn('Importar JSON', () => modalState.value = { type:'json', title:'Importar questões', mode:'questions', form:{json:''} }, 'ghost'),
+                    btn('Importar por IA / JSON', () => modalState.value = { type:'json', title:'Importar questões', mode:'questions', form:{json:'',targets:[DEFAULT_TARGET()]} }, 'ghost'),
                     btn('Nova questão', () => openQuestion()),
                 ])),
                 h('input', {
@@ -738,8 +752,8 @@ export const CjcIndex = {
 
         function renderFlashcards() {
             return card([
-                sectionTitle('Flashcards', 'Baralhos hierárquicos, quatro tipos de cartão e importação JSON.', h('div', { class: 'flex gap-2' }, [
-                    btn('Importar JSON', () => modalState.value = { type:'json', title:'Importar flashcards', mode:'flashcards', form:{json:''} }, 'ghost'),
+                sectionTitle('Flashcards', 'Flashcards exclusivamente de Certo/Errado, com repetição espaçada e importação por IA.', h('div', { class: 'flex gap-2' }, [
+                    btn('Importar por IA / JSON', () => modalState.value = { type:'json', title:'Importar flashcards Certo/Errado', mode:'flashcards', form:{json:'',targets:[DEFAULT_TARGET()]} }, 'ghost'),
                     btn('Novo baralho', () => openDeck()),
                 ])),
                 decks.value.length ? h('div', { class: 'space-y-3' }, decks.value.map(deck => {
@@ -878,10 +892,27 @@ export const CjcIndex = {
             }
 
             if (m.type === 'json') {
-                return modal(m.title,h('div',{class:'space-y-3'},[
-                    h('p',{class:'text-xs text-zinc-500'},m.mode==='catalog'?'Aceita chaves do CJC original: nome, banca, cargo, dataProva, materias, topicos, subtopicos.':'Cole JSON exportado/gerado por IA.'),
-                    textarea(m.form,'json',{rows:18,placeholder:'{ ... }'}),
-                ]),closeModal,[btn('Importar',()=>submitJson(m),'primary',{disabled:busy.value})],'max-w-4xl');
+                const promptText = promptForMode(m.mode);
+                return modal(m.title,h('div',{class:'space-y-4'},[
+                    h('div',{class:'rounded-xl border border-sky-200 bg-sky-50 p-4 dark:border-sky-900 dark:bg-sky-950'},[
+                        h('div',{class:'flex flex-wrap items-center justify-between gap-3'},[
+                            h('div',[
+                                h('strong',{class:'text-sm'},'1. Copie o prompt para a IA'),
+                                h('p',{class:'mt-1 text-xs text-zinc-500'},'Gere o JSON e depois cole no campo abaixo.'),
+                            ]),
+                            btn('📋 Copiar Prompt',()=>copyImportPrompt(m.mode),'primary'),
+                        ]),
+                        h('details',{class:'mt-3'},[
+                            h('summary',{class:'cursor-pointer text-xs font-semibold'},'Ver prompt'),
+                            h('pre',{class:'mt-2 max-h-72 overflow-auto whitespace-pre-wrap rounded-lg bg-white p-3 text-[11px] dark:bg-zinc-900'},promptText),
+                        ]),
+                    ]),
+                    m.mode!=='catalog'?targetEditor(m.form):null,
+                    h('div',[
+                        h('div',{class:'mb-1 text-xs font-semibold'},'2. Cole o JSON gerado'),
+                        textarea(m.form,'json',{rows:18,placeholder:'{ ... }'}),
+                    ]),
+                ]),closeModal,[btn('Importar JSON',()=>submitJson(m),'primary',{disabled:busy.value})],'max-w-5xl');
             }
 
             if (m.type === 'edict') {
@@ -930,17 +961,12 @@ export const CjcIndex = {
             }
 
             if (m.type === 'card') {
-                return modal(m.item?'Editar flashcard':'Novo flashcard',h('form',{class:'space-y-4',onSubmit:e=>{e.preventDefault();saveCard(m);}},[
-                    field('Tipo',select(m.form,'type',[
-                        {value:'basico',label:'Básico'},{value:'lacuna',label:'Lacuna'},
-                        {value:'multipla_escolha',label:'Múltipla escolha'},{value:'certo_errado',label:'Certo / Errado'},
-                    ])),
-                    field('Frente',textarea(m.form,'front',{rows:4,required:true})),
-                    field('Verso',textarea(m.form,'back',{rows:4})),
-                    field('Dica',textarea(m.form,'hint',{rows:2})),
-                    m.form.type==='multipla_escolha'?field('Alternativas (uma por linha)',textarea(m.form,'alternatives',{rows:5})):null,
-                    ['multipla_escolha','certo_errado'].includes(m.form.type)?field('Resposta correta',input(m.form,'correct_answer',{required:true})):null,
-                    field('Explicação',textarea(m.form,'explanation',{rows:4})),
+                return modal(m.item?'Editar flashcard':'Novo flashcard Certo/Errado',h('form',{class:'space-y-4',onSubmit:e=>{e.preventDefault();saveCard(m);}},[
+                    h('div',{class:'rounded-lg bg-zinc-50 p-3 text-xs text-zinc-500 dark:bg-zinc-800'},'Flashcards do CJC usam somente afirmações de Certo ou Errado. Questões de múltipla escolha ficam no Banco de Questões.'),
+                    field('Afirmação',textarea(m.form,'front',{rows:5,required:true})),
+                    field('Resposta correta',select(m.form,'correct_answer',[{value:'Certo',label:'Certo'},{value:'Errado',label:'Errado'}],{required:true})),
+                    field('Explicação / fundamento',textarea(m.form,'explanation',{rows:5})),
+                    field('Dica (opcional)',textarea(m.form,'hint',{rows:2})),
                     field('Etiquetas (separadas por vírgula)',input(m.form,'tags')),
                     h('div',{class:'flex justify-end'},btn('Salvar',()=>saveCard(m),'primary',{})),
                 ]),closeModal,null,'max-w-4xl');
