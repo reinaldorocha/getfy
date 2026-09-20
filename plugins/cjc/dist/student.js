@@ -50,6 +50,28 @@ export const CjcStudent = {
         const answerDrafts = ref({});
         const questionStats = ref(null);
         const flashcardFeedback = ref({});
+        const questionResults = ref({});
+        const questionHistory = ref({});
+        const questionTopic = ref('');
+        const questionType = ref('');
+        const questionSituation = ref('');
+        const edictQuery = ref('');
+        const materialType = ref('');
+        const materialFolder = ref('');
+        const materialPage = ref(1);
+        const notebookQuery = ref('');
+        const notebookFolder = ref('');
+        const scheduleView = ref('calendar');
+        const scheduleStatus = ref('todos');
+        const scheduleMonthOffset = ref(0);
+        const reviewContestFilter = ref('todos');
+        const metricsPeriod = ref('30d');
+        const metricsYear = ref(new Date().getFullYear());
+        const metricsData = ref({
+            summary: state.value.metrics_summary || {},
+            timeline: state.value.metrics_timeline || [],
+            subjects: state.value.metrics_subjects || [],
+        });
 
         const tenant = computed(() => Number(state.value.tenant_id || 0));
         const base = computed(() => '/cjc-estudos/' + tenant.value);
@@ -73,6 +95,8 @@ export const CjcStudent = {
             running: false,
             elapsed: 0,
             startedAt: null,
+            pomodoro: false,
+            pomodoro_minutes: 25,
             form: {
                 subject_id: '',
                 topic_id: '',
@@ -92,6 +116,11 @@ export const CjcStudent = {
         async function refresh(contestId = activeContestId.value) {
             const url = base.value + '/data' + (contestId ? '?contest_id='+encodeURIComponent(contestId) : '');
             state.value = await api(url);
+            metricsData.value = {
+                summary: state.value.metrics_summary || {},
+                timeline: state.value.metrics_timeline || [],
+                subjects: state.value.metrics_subjects || [],
+            };
             if (!activeContestId.value && state.value.active_contest_id) activeContestId.value = state.value.active_contest_id;
 
             const allowedIds = availableModules(state.value.capabilities || []).map(([id]) => id);
@@ -129,12 +158,26 @@ export const CjcStudent = {
             return h('div',{class:'grid gap-4 '+cols},children);
         }
 
+        function formatTimer(seconds) {
+            const total=Math.max(0,Math.floor(Number(seconds)||0));
+            const hours=Math.floor(total/3600);
+            const minutes=Math.floor((total%3600)/60);
+            const secs=total%60;
+            return (hours?String(hours).padStart(2,'0')+':':'')+String(minutes).padStart(2,'0')+':'+String(secs).padStart(2,'0');
+        }
+
         function startTimer() {
             if (timer.value.running) return;
             timer.value.running = true;
             timer.value.startedAt = Date.now() - timer.value.elapsed * 1000;
             timerInterval = setInterval(() => {
                 timer.value.elapsed = Math.floor((Date.now() - timer.value.startedAt) / 1000);
+                const target = timer.value.pomodoro ? Math.max(1, Number(timer.value.pomodoro_minutes || 25)) * 60 : 0;
+                if (target && timer.value.elapsed >= target) {
+                    timer.value.elapsed = target;
+                    pauseTimer();
+                    success.value = 'Pomodoro concluído. Registre a sessão quando quiser.';
+                }
             }, 1000);
         }
 
@@ -207,8 +250,166 @@ export const CjcStudent = {
             timer.value.form.mark_studied=false;
         }
 
-        function openTimer() {
+        function openTimer(target={}) {
+            const f=timer.value.form;
+            if(target.subject_id!==undefined)f.subject_id=target.subject_id||'';
+            if(target.topic_id!==undefined)f.topic_id=target.topic_id||'';
+            if(target.subtopic_id!==undefined)f.subtopic_id=target.subtopic_id||'';
+            if(target.mode)f.mode=target.mode;
             modalState.value={type:'timer'};
+        }
+
+        function openQuickStudy(subjectId='',topicId='',subtopicId='') {
+            modalState.value={type:'historySession',item:null,form:{
+                contest_id:activeContestId.value||'',
+                subject_id:subjectId||'',
+                topic_id:topicId||'',
+                subtopic_id:subtopicId||'',
+                minutes:30,
+                mode:'estudo',
+                studied_at:new Date().toISOString().slice(0,16),
+                notes:'',
+            }};
+        }
+
+        function itemStats(topicId,subtopicId=null){
+            const sessions=(state.value.recent_sessions||[]).filter(x=>{
+                if(subtopicId)return String(x.subtopic_id||'')===String(subtopicId);
+                return String(x.topic_id||'')===String(topicId);
+            });
+            const logs=(state.value.question_logs||[]).filter(x=>{
+                if(subtopicId)return String(x.subtopic_id||'')===String(subtopicId);
+                return String(x.topic_id||'')===String(topicId);
+            });
+            const seconds=sessions.reduce((n,x)=>n+Number(x.seconds||0),0);
+            const solved=logs.reduce((n,x)=>n+Number(x.solved||0),0);
+            const correct=logs.reduce((n,x)=>n+Number(x.correct||0),0);
+            return {seconds,solved,accuracy:solved?Math.round(correct/solved*100):null};
+        }
+
+        function youtubeEmbed(url){
+            try{
+                const u=new URL(url);
+                const host=u.hostname.replace(/^www\./,'');
+                let id='';
+                if(host==='youtu.be')id=u.pathname.replace(/^\//,'').split('/')[0];
+                else if(host.endsWith('youtube.com')){
+                    id=u.searchParams.get('v')||'';
+                    if(!id&&u.pathname.startsWith('/shorts/'))id=u.pathname.split('/')[2]||'';
+                    if(!id&&u.pathname.startsWith('/embed/'))id=u.pathname.split('/')[2]||'';
+                }
+                return id?'https://www.youtube.com/embed/'+encodeURIComponent(id):'';
+            }catch{return '';}
+        }
+
+        async function postponeReview(review){
+            const current=review.next_date||new Date().toISOString().slice(0,10);
+            const suggested=new Date(current+'T12:00:00');
+            suggested.setDate(suggested.getDate()+1);
+            const next=prompt('Nova data da revisão (AAAA-MM-DD)',suggested.toISOString().slice(0,10));
+            if(!next)return;
+            await run(()=>api(base.value+'/reviews/'+review.id,{method:'PATCH',body:jsonBody({next_date:next,completed:false})}),'Revisão adiada.');
+        }
+
+        async function loadQuestionHistory(question){
+            if(questionHistory.value[question.id]){
+                const next={...questionHistory.value};delete next[question.id];questionHistory.value=next;return;
+            }
+            busy.value=true;
+            try{
+                const data=await api(base.value+'/questions/'+question.id+'/history'+(activeContestId.value?'?contest_id='+encodeURIComponent(activeContestId.value):''));
+                questionHistory.value={...questionHistory.value,[question.id]:data.history||[]};
+            }catch(e){message.value=e.message;}finally{busy.value=false;}
+        }
+
+        function insertNotebookFormatting(form,prefix){
+            const current=String(form.content||'');
+            form.content=current+(current&&!current.endsWith('\n')?'\n':'')+prefix;
+        }
+
+        function periodRange(period){
+            const end=new Date();const start=new Date(end);
+            if(period==='7d')start.setDate(end.getDate()-6);
+            else if(period==='14d')start.setDate(end.getDate()-13);
+            else if(period==='30d')start.setDate(end.getDate()-29);
+            else start.setFullYear(2020,0,1);
+            return {start:start.toISOString().slice(0,10),end:end.toISOString().slice(0,10)};
+        }
+
+        async function loadMetricsPeriod(period){
+            metricsPeriod.value=period;
+            const range=periodRange(period);
+            const qs=new URLSearchParams({contest_id:activeContestId.value||'',start:range.start,end:range.end}).toString();
+            busy.value=true;message.value='';
+            try{
+                const [summary,timelineResponse,subjectsResponse]=await Promise.all([
+                    api(base.value+'/metrics/summary?'+qs),
+                    api(base.value+'/metrics/timeline?'+qs),
+                    activeContestId.value?api(base.value+'/metrics/subjects?'+qs):Promise.resolve({subjects:[]}),
+                ]);
+                metricsData.value={
+                    summary,
+                    timeline:timelineResponse.days||timelineResponse.timeline||timelineResponse||[],
+                    subjects:subjectsResponse.subjects||subjectsResponse||[],
+                };
+            }catch(e){message.value=e.message;}finally{busy.value=false;}
+        }
+
+        function metricReportText(note=''){
+            const m=metricsData.value.summary||{};
+            const subjectLines=(metricsData.value.subjects||[]).slice().sort((a,b)=>Number(b.seconds||0)-Number(a.seconds||0)).slice(0,8)
+                .map(s=>'• '+s.name+': '+fmtHours(s.seconds||0)+' · '+(s.accuracy??'—')+'%').join('\n');
+            return [
+                '📊 *RELATÓRIO DE DESEMPENHO — CJC*',
+                activeContest.value?'🎯 *Concurso:* '+activeContest.value.name:'',
+                '📅 *Período:* '+(m.period?.start?fmtDate(m.period.start)+' a '+fmtDate(m.period.end):metricsPeriod.value),
+                '⏱️ *Tempo estudado:* '+fmtHours(m.seconds_studied||0),
+                '📝 *Questões:* '+(m.questions_solved||0),
+                '✅ *Taxa de acerto:* '+(m.accuracy??0)+'%',
+                '📚 *Edital:* '+(m.edict_percentage||0)+'%',
+                '🔥 *Sequência:* '+(m.current_streak||0)+' dias',
+                '🎯 *Simulados:* média '+(m.mock_average??'—')+'%',
+                subjectLines?'\n*Distribuição por matéria*\n'+subjectLines:'',
+                note.trim()?'\n💬 *Parecer / observações:*\n'+note.trim():'',
+            ].filter(Boolean).join('\n');
+        }
+
+        function printMetricsReport(note=''){
+            const m=metricsData.value.summary||{};
+            const subjects=metricsData.value.subjects||[];
+            const w=window.open('','_blank','width=900,height=1000');
+            if(!w){message.value='O navegador bloqueou a janela do relatório.';return;}
+            const esc=v=>String(v??'').replace(/[&<>"]/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[ch]));
+            const rows=subjects.map(s=>'<tr><td>'+esc(s.name)+'</td><td>'+esc(fmtHours(s.seconds||0))+'</td><td>'+esc(s.questions||0)+'</td><td>'+esc((s.accuracy??'—')+'%')+'</td><td>'+esc((s.coverage||0)+'%')+'</td></tr>').join('');
+            w.document.write('<!doctype html><html><head><meta charset="utf-8"><title>Relatório CJC</title><style>body{font-family:Arial,sans-serif;color:#172033;padding:36px}h1{margin:0 0 6px}.muted{color:#667085}.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:24px 0}.box{border:1px solid #ddd;border-radius:10px;padding:14px}.box b{display:block;font-size:22px;margin-top:6px}table{width:100%;border-collapse:collapse}th,td{padding:9px;border-bottom:1px solid #eee;text-align:left}.note{white-space:pre-wrap;background:#f6f7f9;padding:16px;border-radius:10px;margin-top:24px}</style></head><body>'
+                +'<h1>Relatório de Desempenho — CJC</h1><div class="muted">'+esc(activeContest.value?.name||'Preparação')+' · '+esc(m.period?.start?fmtDate(m.period.start)+' a '+fmtDate(m.period.end):metricsPeriod.value)+'</div>'
+                +'<div class="grid"><div class="box">Tempo<b>'+esc(fmtHours(m.seconds_studied||0))+'</b></div><div class="box">Questões<b>'+esc(m.questions_solved||0)+'</b></div><div class="box">Acerto<b>'+esc((m.accuracy??0)+'%')+'</b></div><div class="box">Edital<b>'+esc((m.edict_percentage||0)+'%')+'</b></div></div>'
+                +'<h2>Desempenho por matéria</h2><table><thead><tr><th>Matéria</th><th>Tempo</th><th>Questões</th><th>Acerto</th><th>Edital</th></tr></thead><tbody>'+rows+'</tbody></table>'
+                +(note.trim()?'<div class="note"><b>Parecer / observações</b><br>'+esc(note).replace(/\n/g,'<br>')+'</div>':'')
+                +'<script>window.onload=()=>window.print()<\/script></body></html>');
+            w.document.close();
+        }
+
+        async function copyMetricsImage(){
+            const m=metricsData.value.summary||{};
+            const canvas=document.createElement('canvas');canvas.width=1080;canvas.height=1350;
+            const x=canvas.getContext('2d');x.fillStyle='#101217';x.fillRect(0,0,1080,1350);
+            x.fillStyle='#fff';x.font='bold 48px Arial';x.fillText('Chega Junto Concurseiro',60,90);
+            x.font='bold 34px Arial';x.fillText(activeContest.value?.name||'Minhas métricas',60,145);
+            const rows=[['Tempo',fmtHours(m.seconds_studied||0)],['Questões',String(m.questions_solved||0)],['Acerto',(m.accuracy??0)+'%'],['Edital',(m.edict_percentage||0)+'%']];
+            rows.forEach((row,i)=>{const y=240+i*130;x.fillStyle='#242832';x.fillRect(60,y,960,95);x.fillStyle='#aaa';x.font='22px Arial';x.fillText(row[0],85,y+32);x.fillStyle='#fff';x.font='bold 38px Arial';x.fillText(row[1],85,y+75);});
+            x.fillStyle='#fff';x.font='bold 28px Arial';x.fillText('Desempenho por matéria',60,800);
+            (metricsData.value.subjects||[]).slice(0,6).forEach((s,i)=>{const y=850+i*70;x.fillStyle='#ccc';x.font='20px Arial';x.fillText(String(s.name).slice(0,42),60,y);x.fillStyle='#fff';x.fillText((s.accuracy??'—')+'%',880,y);});
+            const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/png'));
+            if(!blob)return;
+            try{
+                if(typeof ClipboardItem==='undefined')throw new Error();
+                await navigator.clipboard.write([new ClipboardItem({'image/png':blob})]);
+                success.value='Imagem das métricas copiada.';
+            }catch{
+                const a=document.createElement('a');const url=URL.createObjectURL(blob);a.href=url;a.download='metricas-cjc.png';a.click();URL.revokeObjectURL(url);
+                success.value='Imagem das métricas baixada.';
+            }
         }
 
         async function toggleProgress(type,item,studied) {
@@ -327,19 +528,26 @@ export const CjcStudent = {
         async function answerFlashcard(card, answer) {
             const expected=String(card.correct_answer||'').trim().toLowerCase();
             const chosen=String(answer).trim().toLowerCase();
-            const correct=expected===chosen;
-            const result=await run(()=>api(base.value+'/flashcards/'+card.id+'/review',{
-                method:'POST',body:jsonBody({quality:correct?4:1,contest_id:activeContestId.value||null}),
-            }),'',false);
             flashcardFeedback.value={
                 ...flashcardFeedback.value,
                 [card.id]:{
-                    correct,
+                    correct:expected===chosen,
                     chosen:answer,
                     expected:card.correct_answer,
                     explanation:card.explanation||'',
-                    next_review:result?.next_review||null,
+                    rated:false,
+                    next_review:null,
                 },
+            };
+        }
+
+        async function rateFlashcard(card,quality){
+            const result=await run(()=>api(base.value+'/flashcards/'+card.id+'/review',{
+                method:'POST',body:jsonBody({quality,contest_id:activeContestId.value||null}),
+            }),'Revisão registrada.',false);
+            flashcardFeedback.value={
+                ...flashcardFeedback.value,
+                [card.id]:{...(flashcardFeedback.value[card.id]||{}),rated:true,next_review:result?.next_review||null},
             };
         }
 
@@ -393,8 +601,8 @@ export const CjcStudent = {
             const result=await run(()=>api(base.value+'/questions/'+question.id+'/answer',{
                 method:'POST',body:jsonBody({answer,contest_id:activeContestId.value||question.contest_id||null}),
             }),'',true);
-            success.value=result.correct?'Resposta correta!':'Resposta incorreta. Correta: '+result.correct_answer+(result.explanation?' · '+result.explanation:'');
-            answerDrafts.value[question.id]='';
+            questionResults.value={...questionResults.value,[question.id]:result};
+            success.value=result.correct?'Resposta correta!':'Resposta incorreta.';
         }
 
         async function loadQuestionStats() {
