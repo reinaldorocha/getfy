@@ -1,0 +1,31 @@
+{
+  "slug": "vitrine",
+  "name": "Vitrine",
+  "version": "1.0.0",
+  "description": "Vitrine de produtos e cursos com catálogo interativo, carrinho de compras e checkout integrado ao Getfy.",
+  "type": "commerce",
+  "requires": {
+    "getfy": ">=2.0.0",
+    "plugin_api": 2
+  },
+  "commerce_scopes": [
+    "catalog:read",
+    "cart:write",
+    "checkout:start",
+    "orders:read"
+  ],
+  "menu": [
+    {
+      "label": "Vitrine",
+      "href": "/vitrine/admin",
+      "icon": "Package"
+    }
+  ],
+  "routes": "routes.php",
+  "public_routes": {
+    "prefix": "vitrine",
+    "middleware": ["web"],
+    "file": "routes-public.php"
+  },
+  "migrations": "database/migrations"
+}

@@ -429,19 +429,19 @@ function itemLabel(item) {
                                 <p class="text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">Recorrência</p>
                                 <p class="text-sm text-zinc-900 dark:text-white">{{ venda.subscription_plan_id ? 'Assinatura' : '–' }}</p>
                             </div>
-                            <div class="space-y-2" v-if="(venda.order_items ?? []).length">
+                            <div class="space-y-2" v-if="(venda.order_items ?? []).length || (venda.metadata?.items ?? []).length">
                                 <p class="text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">Itens da compra</p>
                                 <div class="divide-y divide-zinc-100 overflow-hidden rounded-xl border border-zinc-200 bg-white dark:divide-zinc-800 dark:border-zinc-800 dark:bg-zinc-900">
                                     <div
-                                        v-for="(item, idx) in (venda.order_items ?? [])"
+                                        v-for="(item, idx) in ((venda.order_items ?? []).length ? venda.order_items : (venda.metadata?.items ?? []))"
                                         :key="idx"
                                         class="flex items-center justify-between gap-3 px-4 py-3"
                                     >
                                         <p class="text-sm text-zinc-900 dark:text-white">
-                                            {{ itemLabel(item) }}
+                                            {{ item.title ?? itemLabel(item) }}
                                         </p>
                                         <p class="text-sm font-medium text-zinc-900 dark:text-white">
-                                            {{ formatMoney(item.amount, venda.currency) }}
+                                            {{ formatMoney(item.amount ?? item.line_total, venda.currency) }}
                                         </p>
                                     </div>
                                 </div>

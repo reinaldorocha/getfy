@@ -45,6 +45,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'webhooks/inbound/*',
             // Alias documentado por integradores CajuPay (POST sem token CSRF)
             'checkout/cajupay/webhook',
+            'vitrine/api/*',
         ]);
 
         $middleware->prepend(\App\Http\Middleware\BlockSensitivePaths::class);
