@@ -22,10 +22,13 @@ COPY --from=php_extensions_builder \
 
 COPY --from=php_extensions_builder /export-inis/ /usr/local/etc/php/conf.d/
 
+# Alpine's default Nginx MIME table maps .js but omits ES modules (.mjs).
+# The plugin Vue bridge is emitted as getfy-plugin-vue.mjs.
 RUN apk add --no-cache \
     nginx supervisor curl \
     git unzip mysql-client \
-    libzip libpng oniguruma icu-libs icu-data-en libxml2
+    libzip libpng oniguruma icu-libs icu-data-en libxml2 \
+    && sed -i '/application\/javascript/s/js;/js mjs;/' /etc/nginx/mime.types
 
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
