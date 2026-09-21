@@ -1,5 +1,6 @@
 import { h, ref, computed, onMounted } from 'vue';
-import { api, alertBox, badge, btn, card, empty, jsonBody, sectionTitle } from './shared.js';
+import { api, alertBox, badge, btn, card, choiceCard, empty, jsonBody, sectionTitle } from './shared.js';
+import { displayAlternative } from './question-alternatives.js';
 
 function flattenLessons(produto) {
     const rows = [];
@@ -209,30 +210,30 @@ export const MentoriaLessonExercises = {
                 h('div', { class: 'space-y-4' }, questions.value.map((q, index) => {
                     const result = results.value[q.id];
                     const options = q.type === 'certo_errado' ? ['Certo', 'Errado'] : (q.alternatives || []);
-                    return h('article', { class: 'rounded-xl border border-zinc-800 bg-zinc-900/70 p-4' }, [
+                    return h('article', { class: 'mentoria-card p-5' }, [
                         h('div', { class: 'mb-2 flex flex-wrap gap-1' }, [badge('Questão ' + (index + 1), 'sky'), badge(q.subject), q.topic ? badge(q.topic) : null]),
-                        h('p', { class: 'whitespace-pre-wrap text-sm font-medium text-white' }, q.prompt),
+                        h('p', { class: 'whitespace-pre-wrap text-sm font-medium' }, q.prompt),
                         !result ? h('div', { class: 'mt-4 space-y-2' }, options.map((option, optionIndex) => {
-                            const value = q.type === 'certo_errado' ? option : String.fromCharCode(65 + optionIndex);
-                            return h('label', { class: 'flex cursor-pointer items-start gap-2 rounded-lg border border-zinc-700 p-3 text-sm text-zinc-200' }, [
-                                h('input', {
-                                    type: 'radio',
-                                    name: 'mentoria-course-q-' + q.id,
-                                    checked: answers.value[q.id] === value,
-                                    onChange: () => answers.value = { ...answers.value, [q.id]: value },
-                                }),
-                                h('span', q.type === 'certo_errado' ? option : String.fromCharCode(65 + optionIndex) + ') ' + option),
-                            ]);
+                            const letter = q.type === 'certo_errado' ? (option === 'Certo' ? 'C' : 'E') : String.fromCharCode(65 + optionIndex);
+                            const value = q.type === 'certo_errado' ? option : letter;
+                            const isSelected = answers.value[q.id] === value;
+                            return choiceCard({
+                                letter,
+                                text: q.type === 'certo_errado' ? option : displayAlternative(option),
+                                selected: isSelected,
+                                disabled: false,
+                                onClick: () => { answers.value = { ...answers.value, [q.id]: value }; },
+                            });
                         })) : null,
-                        !result ? h('div', { class: 'mt-3' }, btn('Responder', () => answer(q), 'primary', { disabled: !answers.value[q.id] }))
+                        !result ? h('div', { class: 'mt-4' }, btn('Responder', () => answer(q), 'primary', { disabled: !answers.value[q.id] }))
                             : h('div', {
-                                class: 'mt-4 rounded-lg border p-3 text-sm ' + (result.correct
-                                    ? 'border-emerald-800 bg-emerald-950/40 text-emerald-100'
-                                    : 'border-red-800 bg-red-950/40 text-red-100'),
+                                class: 'mentoria-question-feedback ' + (result.correct
+                                    ? 'mentoria-question-feedback--correct'
+                                    : 'mentoria-question-feedback--incorrect'),
                             }, [
-                                h('strong', result.correct ? '✓ Resposta correta' : '✕ Resposta incorreta'),
-                                !result.correct ? h('div', { class: 'mt-1' }, 'Gabarito: ' + result.correct_answer) : null,
-                                result.explanation ? h('p', { class: 'mt-2 whitespace-pre-wrap text-xs opacity-90' }, result.explanation) : null,
+                                h('strong', { class: 'mentoria-question-feedback__title' }, result.correct ? '✓ Resposta correta' : '✕ Resposta incorreta'),
+                                !result.correct ? h('div', { class: 'mentoria-question-feedback__answer' }, 'Gabarito: ' + result.correct_answer) : null,
+                                result.explanation ? h('p', { class: 'mentoria-question-feedback__explanation' }, result.explanation) : null,
                                 h('div', { class: 'mt-3' }, btn('Refazer', () => {
                                     const next = { ...results.value };
                                     delete next[q.id];

@@ -1,24 +1,24 @@
 import { h, ref, computed, onUnmounted } from 'vue';
 import {
-    api, alertBox, badge, btn, card, checkbox, countdown, empty, field, fmtDate, fmtDateTime,
+    api, alertBox, badge, btn, card, checkbox, choiceCard, countdown, empty, field, fmtDate, fmtDateTime,
     fmtHours, input, jsonBody, modal, optionize, progressBar, safeJson, sectionTitle, select,
-    stat, textarea, mentoriaShell, useMentoriaShell,
+    stat, textarea, mentoriaShell, useMentoriaShell, svgIcon, renderIcon,
 } from './shared.js';
 import { displayAlternative } from './question-alternatives.js';
 
 const MODULES = [
-    ['dashboard', 'Dashboard', 'dashboard', '▦'],
-    ['edict', 'Edital verticalizado', 'edital', '☷'],
-    ['materials', 'Materiais', 'materiais', '▣'],
-    ['schedule', 'Cronograma', 'cronograma', '◷'],
-    ['reviews', 'Revisões', 'revisoes', '↻'],
-    ['flashcards', 'Flashcards', 'flashcards', '▤'],
-    ['questions', 'Questões', 'questoes', '?'],
-    ['mocks', 'Simulados', 'simulados', '◉'],
-    ['notebooks', 'Cadernos', 'cadernos', '✎'],
-    ['metrics', 'Métricas', 'metricas', '▥'],
-    ['courses', 'Cursos', 'cursos', '▶'],
-    ['history', 'Histórico', 'metricas', '◷'],
+    ['dashboard', 'Dashboard', 'dashboard', 'dashboard'],
+    ['edict', 'Edital verticalizado', 'edital', 'edicts'],
+    ['materials', 'Materiais', 'materiais', 'materials'],
+    ['schedule', 'Cronograma', 'cronograma', 'schedule'],
+    ['reviews', 'Revisões', 'revisoes', 'reviews'],
+    ['flashcards', 'Flashcards', 'flashcards', 'flashcards'],
+    ['questions', 'Questões', 'questoes', 'questions'],
+    ['mocks', 'Simulados', 'simulados', 'mocks'],
+    ['notebooks', 'Cadernos', 'cadernos', 'notebooks'],
+    ['metrics', 'Métricas', 'metricas', 'metrics'],
+    ['courses', 'Cursos', 'cursos', 'courses'],
+    ['history', 'Histórico', 'metricas', 'history'],
 ];
 
 function availableModules(capabilities = []) {
@@ -298,7 +298,9 @@ export const MentoriaStudent = {
                 'aria-label':label+(hasSession?', '+formatTimer(displaySeconds):''),
                 onClick:()=>openTimer(),
             },[
-                h('span',{class:'mentoria-timer-launcher__icon','aria-hidden':'true'},timer.value.running?'●':'⏱'),
+                h('span',{class:'mentoria-timer-launcher__icon','aria-hidden':'true'},[
+                    timer.value.running ? svgIcon('play', '', 14) : svgIcon('timer', '', 16),
+                ]),
                 h('span',{class:'mentoria-timer-launcher__content'},[
                     h('span',{class:'mentoria-timer-launcher__label'},label),
                     h('span',{class:'mentoria-timer-launcher__time'},hasSession?formatTimer(displaySeconds):(pomodoro?timer.value.pomodoro_minutes+' min':'Abrir timer')),
@@ -868,29 +870,40 @@ export const MentoriaStudent = {
             const contest=activeContest.value;
             const cd=countdown(contest?.exam_date);
             const now=new Date();const day=now.getDay();const monday=new Date(now);monday.setDate(now.getDate()-(day===0?6:day-1));
+            const todayKey=now.toISOString().slice(0,10);
             const week=Array.from({length:7},(_,i)=>{const d=new Date(monday);d.setDate(monday.getDate()+i);const key=d.toISOString().slice(0,10);const sec=(state.value.recent_sessions||[]).filter(s=>String(s.studied_at||'').slice(0,10)===key).reduce((n,s)=>n+Number(s.seconds||0),0);return {key,label:['Seg','Ter','Qua','Qui','Sex','Sáb','Dom'][i],seconds:sec};});
             const subjectRows=(state.value.metrics_subjects||[]).slice(0,10);
             return h('div',{class:'space-y-5'},[
                 contest?card([h('div',{class:'flex flex-wrap items-center justify-between gap-4'},[
-                    h('div',[h('div',{class:'text-xs font-semibold uppercase tracking-wide text-sky-600'},contest.group||'foco'),h('h2',{class:'mt-1 text-xl font-bold'},contest.name),h('p',{class:'text-xs text-zinc-500'},[contest.board,contest.position].filter(Boolean).join(' · '))]),
+                    h('div',[h('div',{class:'text-xs font-semibold uppercase tracking-wide text-sky-500'},contest.group||'foco'),h('h2',{class:'mt-1 text-xl font-bold'},contest.name),h('p',{class:'text-xs text-zinc-400'},[contest.board,contest.position].filter(Boolean).join(' · '))]),
                     cd?h('div',{class:'grid grid-cols-3 gap-2 text-center'},[stat('Dias',cd.days),stat('Horas',cd.hours),stat('Min',cd.minutes)]):contest.pre_notice?badge('Pré-edital','amber'):null,
                 ])]):null,
                 h('div',{class:'grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8'},[
-                    stat('Hoje',fmtHours(m.seconds_today||0)),stat('Questões hoje',m.questions_today||0),stat('30 dias',fmtHours(m.seconds_studied||0)),stat('Acerto',(m.accuracy??0)+'%'),
-                    stat('Sequência',(m.current_streak||0)+' dias'),stat('Edital',(m.edict_percentage||0)+'%'),stat('Simulados',m.mocks_completed||0),stat('Média',m.mock_average===null?'—':m.mock_average+'%'),
+                    stat('Hoje',fmtHours(m.seconds_today||0), '', '', 'history'),
+                    stat('Questões hoje',m.questions_today||0, '', '', 'questions'),
+                    stat('30 dias',fmtHours(m.seconds_studied||0), '', '', 'schedule'),
+                    stat('Acerto',(m.accuracy??0)+'%', '', (m.accuracy>=75?'mentoria-badge--green':''), 'check'),
+                    stat('Sequência',(m.current_streak||0)+' dias', '', '', 'flame'),
+                    stat('Edital',(m.edict_percentage||0)+'%', '', '', 'edicts'),
+                    stat('Simulados',m.mocks_completed||0, '', '', 'mocks'),
+                    stat('Média',m.mock_average===null?'—':m.mock_average+'%', '', '', 'metrics'),
                 ]),
                 card([sectionTitle('Ações rápidas','Registre estudo ou abra os módulos principais.'),h('div',{class:'flex flex-wrap gap-2'},[
-                    btn('⏱ Abrir timer',()=>openTimer(),'primary'),
-                    capabilities.value.includes('cronograma')||capabilities.value.includes('cronograma_inteligente')?btn('Cronograma',()=>activeTab.value='schedule','ghost'):null,
-                    capabilities.value.includes('revisoes')?btn('Revisões',()=>activeTab.value='reviews','ghost'):null,
-                    capabilities.value.includes('questoes')?btn('Questões',()=>activeTab.value='questions','ghost'):null,
-                    capabilities.value.includes('flashcards')?btn('Flashcards',()=>activeTab.value='flashcards','ghost'):null,
+                    btn('Abrir timer',()=>openTimer(),'primary',{icon:'timer'}),
+                    capabilities.value.includes('cronograma')||capabilities.value.includes('cronograma_inteligente')?btn('Cronograma',()=>activeTab.value='schedule','ghost',{icon:'schedule'}):null,
+                    capabilities.value.includes('revisoes')?btn('Revisões',()=>activeTab.value='reviews','ghost',{icon:'reviews'}):null,
+                    capabilities.value.includes('questoes')?btn('Questões',()=>activeTab.value='questions','ghost',{icon:'questions'}):null,
+                    capabilities.value.includes('flashcards')?btn('Flashcards',()=>activeTab.value='flashcards','ghost',{icon:'flashcards'}):null,
                 ])]),
                 card([sectionTitle('Estudo semanal','Tempo registrado de segunda a domingo.'),h('div',{class:'grid grid-cols-7 gap-2'},week.map(d=>{
                     const pct=Math.min(100,d.seconds/7200*100);
-                    return h('div',{class:'rounded-lg bg-zinc-50 p-2 text-center text-xs dark:bg-zinc-800'},[
-                        h('div',{class:'font-semibold'},d.label),h('div',{class:'mt-1 text-zinc-500'},fmtHours(d.seconds)),
-                        h('div',{class:'mx-auto mt-2 flex h-12 w-3 items-end overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-700'},[h('div',{class:'w-full rounded-full bg-sky-500',style:{height:pct+'%'}})]),
+                    const isToday = d.key === todayKey;
+                    return h('div',{class:'mentoria-week-col'+(isToday?' border-sky-500/50 bg-sky-500/5': '')},[
+                        h('div',{class:'font-semibold text-xs'},d.label),
+                        h('div',{class:'mentoria-week-bar-container'},[
+                            h('div',{class:'mentoria-week-bar-fill',style:{height:Math.max(d.seconds > 0 ? 6 : 0, pct)+'%'}}),
+                        ]),
+                        h('div',{class:'text-[11px] text-zinc-400'},fmtHours(d.seconds)),
                     ]);
                 }))]),
                 card([sectionTitle('Matérias do edital','Cobertura e desempenho por disciplina.'),subjectRows.length?h('div',{class:'space-y-2'},subjectRows.map(s=>h('div',{class:'grid gap-2 rounded-lg bg-zinc-50 p-3 text-xs dark:bg-zinc-800 md:grid-cols-[1fr_120px_90px_180px]'},[
@@ -1180,15 +1193,22 @@ export const MentoriaStudent = {
             const currentIndex=Math.min(flashcardIndex.value,Math.max(0,due.length-1));
             const current=due[currentIndex]||null;
             return h('div',{class:'space-y-4'},[
-                card([sectionTitle('Flashcards','Revele, avalie a dificuldade e siga para o próximo cartão.',btn('Meu novo baralho',()=>openOwnDeck())),field('Baralho',h('select',{value:deckFilter.value,class:'w-full max-w-md rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-950',onChange:e=>{deckFilter.value=e.target.value;resetFlashcardSession();}},[h('option',{value:''},'Todos os baralhos'),...decks.map(d=>h('option',{value:d.id},(d.icon||'')+' '+d.name))]))]),
+                card([sectionTitle('Flashcards','Revele, avalie a dificuldade e siga para o próximo cartão.',btn('Meu novo baralho',()=>openOwnDeck(),'primary',{icon:'flashcards'})),field('Baralho',h('select',{value:deckFilter.value,class:'w-full max-w-md rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-950',onChange:e=>{deckFilter.value=e.target.value;resetFlashcardSession();}},[h('option',{value:''},'Todos os baralhos'),...decks.map(d=>h('option',{value:d.id},(d.icon||'')+' '+d.name))]))]),
                 card([sectionTitle('Sessão de revisão',due.length?'Restam '+due.length+' cartão(ões)':'Nenhum cartão pendente'),current?h('div',{class:'mx-auto max-w-2xl'},[
                     h('div',{class:'mb-3 flex items-center justify-between text-xs text-zinc-500'},[h('span',decks.find(d=>d.id===current.deck_id)?.name||'Baralho'),h('span','Cartão '+(currentIndex+1)+' de '+due.length)]),
-                    h('button',{type:'button',class:'w-full rounded-2xl border border-zinc-200 bg-zinc-50 p-7 text-left transition hover:border-sky-400 dark:border-zinc-700 dark:bg-zinc-800',onClick:()=>flashcardRevealed.value=!flashcardRevealed.value},[
-                        h('div',{class:'text-[11px] font-bold uppercase tracking-wide text-sky-500'},flashcardRevealed.value?'Verso':'Frente'),
-                        h('p',{class:'mt-4 whitespace-pre-wrap text-lg font-semibold leading-relaxed'},flashcardRevealed.value?current.back:current.front),
-                        !flashcardRevealed.value&&current.hint?h('p',{class:'mt-4 text-xs text-zinc-500'},'Dica: '+current.hint):null,
+                    h('button',{type:'button',class:'mentoria-flashcard',onClick:()=>flashcardRevealed.value=!flashcardRevealed.value},[
+                        h('div',{class:'mentoria-flashcard__header'},[
+                            h('span',{class:'mentoria-flashcard__tag'},[
+                                renderIcon('flashcards', 'mr-1', 14),
+                                flashcardRevealed.value?'Verso (Resposta)':'Frente (Pergunta)',
+                            ]),
+                            h('span',{class:'text-[11px] text-zinc-400'},flashcardRevealed.value?'Toque para ver a pergunta':'Toque para virar'),
+                        ]),
+                        h('p',{class:'mentoria-flashcard__content'},flashcardRevealed.value?current.back:current.front),
+                        !flashcardRevealed.value&&current.hint?h('p',{class:'mentoria-flashcard__hint'},'💡 Dica: '+current.hint):null,
+                        h('div',{class:'mentoria-flashcard__footer'},flashcardRevealed.value?'Avalie a dificuldade abaixo':'Clique para ver a resposta'),
                     ]),
-                    !flashcardRevealed.value?btn('Revelar resposta',()=>flashcardRevealed.value=true,'primary',{class:'mt-4 w-full'}):h('div',{class:'mt-4'},[h('div',{class:'mb-2 text-center text-[11px] font-semibold'},'Como foi a dificuldade?'),h('div',{class:'grid grid-cols-2 gap-2 sm:grid-cols-4'},[btn('Errei',()=>rateFlashcard(current,1),'danger'),btn('Difícil',()=>rateFlashcard(current,2),'warning'),btn('Bom',()=>rateFlashcard(current,3),'ghost'),btn('Fácil',()=>rateFlashcard(current,4),'success')])]),
+                    !flashcardRevealed.value?btn('Revelar resposta',()=>flashcardRevealed.value=true,'primary',{class:'mt-4 w-full'}):h('div',{class:'mt-4'},[h('div',{class:'mb-2 text-center text-xs font-semibold text-zinc-400'},'Como foi a sua lembrança?'),h('div',{class:'grid grid-cols-2 gap-2 sm:grid-cols-4'},[btn('Errei',()=>rateFlashcard(current,1),'danger'),btn('Difícil',()=>rateFlashcard(current,2),'warning'),btn('Bom',()=>rateFlashcard(current,3),'ghost'),btn('Fácil',()=>rateFlashcard(current,4),'success')])]),
                 ]):empty('Nenhum flashcard pendente agora.')]),
                 card([sectionTitle('Meus baralhos','Você também pode criar flashcards pessoais.'),ownDecks.length?h('div',{class:'space-y-2'},ownDecks.map(d=>h('div',{class:'rounded-lg bg-zinc-50 p-3 dark:bg-zinc-800'},[
                     h('div',{class:'flex flex-wrap items-center justify-between gap-2'},[h('strong',(d.icon||'📚')+' '+d.name),h('div',{class:'flex gap-2'},[btn('+ Cartão',()=>openOwnCard(d),'soft'),btn('Editar',()=>openOwnDeck(d),'ghost'),btn('Excluir',()=>deleteOwnDeck(d),'danger')])]),
@@ -1232,10 +1252,34 @@ export const MentoriaStudent = {
                     return card([
                         h('div',{class:'flex flex-wrap gap-1'},[badge(q.subject,'sky'),q.topic?badge(q.topic):null,badge(q.type==='certo_errado'?'C/E':'Múltipla'),q.answered?badge(q.last_correct?'Última: acerto':'Última: erro',q.last_correct?'green':'red'):badge('Não respondida')]),
                         h('p',{class:'mt-3 whitespace-pre-wrap text-sm font-medium'},number+'. '+q.prompt),
-                        q.type==='multipla_escolha'&&Array.isArray(q.alternatives)&&q.alternatives.length?h('div',{class:'mt-3 space-y-2'},q.alternatives.map((a,i)=>h('label',{class:'flex items-start gap-2 rounded-lg border border-zinc-200 p-2 text-sm dark:border-zinc-700'},[
-                            h('input',{type:'radio',name:'q-'+q.id,value:String.fromCharCode(65+i),checked:answerDrafts.value[q.id]===String.fromCharCode(65+i),onChange:e=>answerDrafts.value[q.id]=e.target.value}),
-                            h('span',String.fromCharCode(65+i)+') '+displayAlternative(a)),
-                        ]))):q.type==='certo_errado'?h('div',{class:'mt-3 flex gap-2'},['Certo','Errado'].map(a=>btn(a,()=>answerDrafts.value[q.id]=a,answerDrafts.value[q.id]===a?'primary':'ghost'))):h('input',{value:answerDrafts.value[q.id]||'',class:'mt-3 w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-950',onInput:e=>answerDrafts.value[q.id]=e.target.value}),
+                        q.type==='multipla_escolha'&&Array.isArray(q.alternatives)&&q.alternatives.length?h('div',{class:'mt-3 space-y-2'},q.alternatives.map((a,i)=>{
+                            const letter=String.fromCharCode(65+i);
+                            const isSelected=answerDrafts.value[q.id]===letter;
+                            const isCorrect=result&&result.correct_answer===letter;
+                            const isWrong=result&&isSelected&&!result.correct;
+                            return choiceCard({
+                                letter,
+                                text:displayAlternative(a),
+                                selected:isSelected,
+                                correct:isCorrect,
+                                wrong:isWrong,
+                                disabled:!!result,
+                                onClick:()=>{if(!result)answerDrafts.value[q.id]=letter;},
+                            });
+                        })):q.type==='certo_errado'?h('div',{class:'mt-3 grid grid-cols-2 gap-3'},['Certo','Errado'].map(a=>{
+                            const isSelected=answerDrafts.value[q.id]===a;
+                            const isCorrect=result&&result.correct_answer===a;
+                            const isWrong=result&&isSelected&&!result.correct;
+                            return choiceCard({
+                                letter:a==='Certo'?'C':'E',
+                                text:a,
+                                selected:isSelected,
+                                correct:isCorrect,
+                                wrong:isWrong,
+                                disabled:!!result,
+                                onClick:()=>{if(!result)answerDrafts.value[q.id]=a;},
+                            });
+                        })):h('input',{value:answerDrafts.value[q.id]||'',class:'mt-3 w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-950',onInput:e=>answerDrafts.value[q.id]=e.target.value}),
                         result?h('div',{class:'mentoria-question-feedback '+(result.correct?'mentoria-question-feedback--correct':'mentoria-question-feedback--incorrect')},[
                             h('strong',{class:'mentoria-question-feedback__title'},result.correct?'✓ Acerto':'✕ Erro'),!result.correct?h('div',{class:'mentoria-question-feedback__answer'},'Resposta correta: '+result.correct_answer):null,result.explanation?h('p',{class:'mentoria-question-feedback__explanation'},result.explanation):null,
                         ]):null,

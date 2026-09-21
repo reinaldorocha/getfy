@@ -7,16 +7,16 @@ import {
 } from './shared.js';
 
 const TAB_ITEMS = [
-    ['dashboard', 'Dashboard', '▦'],
-    ['products', 'Produtos', '◇'],
-    ['students', 'Alunos / Radar', '◉'],
-    ['contests', 'Concursos', '🏆'],
-    ['edicts', 'Editais', '☷'],
-    ['questions', 'Questões', '?'],
-    ['flashcards', 'Flashcards', '▤'],
-    ['materials', 'Materiais', '▣'],
-    ['courses', 'Cursos', '▶'],
-    ['audit', 'Auditoria', '◷'],
+    ['dashboard', 'Dashboard', 'dashboard'],
+    ['products', 'Produtos', 'products'],
+    ['students', 'Alunos / Radar', 'students'],
+    ['contests', 'Concursos', 'contests'],
+    ['edicts', 'Editais', 'edicts'],
+    ['questions', 'Questões', 'questions'],
+    ['flashcards', 'Flashcards', 'flashcards'],
+    ['materials', 'Materiais', 'materials'],
+    ['courses', 'Cursos', 'courses'],
+    ['audit', 'Auditoria', 'audit'],
 ].map(([id, label, icon]) => ({ id, label, icon }));
 
 const DEFAULT_TARGET = () => ({ type: 'global', id: '' });
@@ -628,14 +628,14 @@ export const MentoriaIndex = {
 
             return h('div', { class: 'space-y-5' }, [
                 h('div', { class: 'grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8' }, [
-                    stat('Alunos', summary.students),
-                    stat('Concursos', summary.contests),
-                    stat('Editais', summary.edicts),
-                    stat('Questões', summary.questions),
-                    stat('Baralhos', summary.flashcard_decks),
-                    stat('Materiais', summary.materials),
-                    stat('Horas / 7 dias', summary.study_hours_7d),
-                    stat('Acerto', (summary.accuracy || 0) + '%'),
+                    stat('Alunos', summary.students, '', '', 'students'),
+                    stat('Concursos', summary.contests, '', '', 'contests'),
+                    stat('Editais', summary.edicts, '', '', 'edicts'),
+                    stat('Questões', summary.questions, '', '', 'questions'),
+                    stat('Baralhos', summary.flashcard_decks, '', '', 'flashcards'),
+                    stat('Materiais', summary.materials, '', '', 'materials'),
+                    stat('Horas / 7 dias', summary.study_hours_7d, '', '', 'history'),
+                    stat('Acerto', (summary.accuracy || 0) + '%', '', '', 'check'),
                 ]),
                 card([
                     sectionTitle('Radar da mentoria', 'Alunos que merecem atenção primeiro.'),
