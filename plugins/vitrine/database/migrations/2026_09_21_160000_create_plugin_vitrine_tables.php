@@ -47,7 +47,30 @@ return new class extends Migration
                 $table->string('sectionTitleFontSize', 50)->default('normal');
                 $table->string('buttonStyle', 50)->default('pill');
                 $table->string('priceLabel', 255)->nullable();
+                $table->boolean('is_maintenance')->default(false);
+                $table->string('maintenance_title')->nullable();
+                $table->text('maintenance_message')->nullable();
+                $table->json('excluded_products')->nullable();
+                $table->json('payment_gateways')->nullable();
                 $table->timestamps();
+            });
+        } else {
+            Schema::table('plugin_vitrine_settings', function (Blueprint $table) {
+                if (! Schema::hasColumn('plugin_vitrine_settings', 'is_maintenance')) {
+                    $table->boolean('is_maintenance')->default(false);
+                }
+                if (! Schema::hasColumn('plugin_vitrine_settings', 'maintenance_title')) {
+                    $table->string('maintenance_title')->nullable();
+                }
+                if (! Schema::hasColumn('plugin_vitrine_settings', 'maintenance_message')) {
+                    $table->text('maintenance_message')->nullable();
+                }
+                if (! Schema::hasColumn('plugin_vitrine_settings', 'excluded_products')) {
+                    $table->json('excluded_products')->nullable();
+                }
+                if (! Schema::hasColumn('plugin_vitrine_settings', 'payment_gateways')) {
+                    $table->json('payment_gateways')->nullable();
+                }
             });
         }
 
