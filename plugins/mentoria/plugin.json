@@ -1,0 +1,65 @@
+{
+  "slug": "mentoria",
+  "name": "Mentoria",
+  "version": "1.5.0",
+  "description": "Mentoria e preparação para concursos integrada ao Getfy. Reutiliza usuários, produtos, acesso, pagamentos, SMTP e tenants do core.",
+  "type": "member",
+  "requires": {
+    "plugin_api": 2
+  },
+  "menu": [
+    {
+      "label": "Mentoria",
+      "href": "/mentoria",
+      "icon": "graduation-cap"
+    }
+  ],
+  "routes": "routes.php",
+  "migrations": "migrations",
+  "capabilities": [
+    {
+      "id": "manage",
+      "label": "Gerenciar Mentoria"
+    },
+    {
+      "id": "content",
+      "label": "Gerenciar conteúdo Mentoria"
+    },
+    {
+      "id": "students",
+      "label": "Acompanhar alunos Mentoria"
+    }
+  ],
+  "frontend": {
+    "entry": "dist/plugin-ui.js",
+    "manifest": "dist/ui.manifest.json",
+    "pages": {
+      "Index": {
+        "export": "MentoriaIndex",
+        "layout": "standalone"
+      },
+      "Student": {
+        "export": "MentoriaStudent",
+        "layout": "standalone"
+      }
+    },
+    "exports": {
+      "member_builder": {
+        "mentoria_exercises": "MentoriaCourseBuilder"
+      }
+    }
+  },
+  "member_builder_tabs": [
+    {
+      "id": "mentoria_exercises",
+      "label": "Exercícios Mentoria",
+      "ui_export": "MentoriaCourseBuilder"
+    }
+  ],
+  "render_zones": {
+    "member.lesson.after_content": {
+      "id": "mentoria-lesson-exercises",
+      "export": "MentoriaLessonExercises"
+    }
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "exports": [
+    "MentoriaIndex",
+    "MentoriaStudent",
+    "MentoriaCourseBuilder",
+    "MentoriaLessonExercises"
+  ],
+  "chunks": {
+    "main": "plugin-ui.js"
+  }
+}

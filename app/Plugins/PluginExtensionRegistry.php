@@ -117,7 +117,14 @@ class PluginExtensionRegistry
         if (array_key_exists($page, $pages)) {
             $export = $pages[$page];
 
-            return is_string($export) && $export !== '' ? $export : null;
+            if (is_string($export) && $export !== '') {
+                return $export;
+            }
+            if (is_array($export)) {
+                $name = $export['export'] ?? null;
+
+                return is_string($name) && $name !== '' ? $name : null;
+            }
         }
 
         return null;

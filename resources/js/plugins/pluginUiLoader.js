@@ -1,5 +1,6 @@
 import { defineAsyncComponent, h } from 'vue';
 import LayoutInfoprodutor from '@/Layouts/LayoutInfoprodutor.vue';
+import { resolvePluginPageDefinition } from './pluginPageDefinition';
 
 /** @type {Map<string, Promise<void>>} */
 const scriptLoadPromises = new Map();
@@ -199,13 +200,13 @@ export function resolvePluginPageComponent(componentName, pluginUiPayload) {
     const bySlug = buildPluginUiIndex(pluginUiPayload);
     const meta = bySlug[slug];
     const pages = meta?.frontend_pages ?? {};
-    const exportName = pages[page];
-    if (!exportName || !meta?.entry) {
+    const pageDefinition = resolvePluginPageDefinition(pages, page);
+    if (!pageDefinition || !meta?.entry) {
         return null;
     }
 
     const AsyncContent = defineAsyncComponent({
-        loader: () => ensurePluginUiLoaded(meta, exportName),
+        loader: () => ensurePluginUiLoaded(meta, pageDefinition.exportName),
         errorComponent: PluginUiError(slug, `Erro ao carregar página "${page}" do plugin`),
         timeout: 30000,
     });
@@ -221,7 +222,9 @@ export function resolvePluginPageComponent(componentName, pluginUiPayload) {
             return () => h(AsyncContent, props);
         },
     };
-    Page.layout = LayoutInfoprodutor;
+    if (pageDefinition.layout !== 'standalone') {
+        Page.layout = LayoutInfoprodutor;
+    }
 
     return Page;
 }
