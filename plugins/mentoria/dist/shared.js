@@ -1,4 +1,4 @@
-import { h } from 'vue';
+import { h, ref } from 'vue';
 
 export const csrf = () => document.querySelector('meta[name="csrf-token"]')?.content || '';
 
@@ -29,6 +29,113 @@ export async function api(url, options = {}) {
 }
 
 export const cn = (...values) => values.filter(Boolean).join(' ');
+
+const shellStorage = {
+    get(key, fallback) {
+        if (typeof window === 'undefined') return fallback;
+        try { return window.localStorage.getItem(key) || fallback; } catch { return fallback; }
+    },
+    set(key, value) {
+        if (typeof window === 'undefined') return;
+        try { window.localStorage.setItem(key, value); } catch { /* storage unavailable */ }
+    },
+};
+
+export function useMentoriaShell() {
+    const theme = ref(shellStorage.get('mentoria-theme', shellStorage.get('theme', 'light')) === 'dark' ? 'dark' : 'light');
+    const collapsed = ref(shellStorage.get('mentoria-sidebar-collapsed', 'false') === 'true');
+    const mobileOpen = ref(false);
+
+    function toggleTheme() {
+        theme.value = theme.value === 'dark' ? 'light' : 'dark';
+        shellStorage.set('mentoria-theme', theme.value);
+    }
+
+    function toggleSidebar() {
+        collapsed.value = !collapsed.value;
+        shellStorage.set('mentoria-sidebar-collapsed', String(collapsed.value));
+    }
+
+    function closeMobileMenu() {
+        mobileOpen.value = false;
+    }
+
+    return { theme, collapsed, mobileOpen, toggleTheme, toggleSidebar, closeMobileMenu };
+}
+
+export const mentoriaShell = ({ shell, rootClass = '', items, active, onSelect, eyebrow, title, subtitle, actions = [], notices = [], content, extras = [] }) => {
+    const select = (id) => {
+        onSelect(id);
+        shell.closeMobileMenu();
+    };
+    const isDark = shell.theme.value === 'dark';
+    const iconButton = (label, icon, click, extraClass = '') => h('button', {
+        type: 'button',
+        class: cn('mentoria-shell-icon', extraClass),
+        'aria-label': label,
+        title: label,
+        onClick: click,
+    }, icon);
+    const menu = h('nav', { class: 'mentoria-sidebar__nav', 'aria-label': 'Navegação da Mentoria' }, items.map((item) => h('button', {
+        type: 'button',
+        class: cn('mentoria-sidebar__item', active === item.id && 'mentoria-sidebar__item--active'),
+        'aria-current': active === item.id ? 'page' : undefined,
+        title: shell.collapsed.value ? item.label : undefined,
+        onClick: () => select(item.id),
+    }, [
+        h('span', { class: 'mentoria-sidebar__item-icon', 'aria-hidden': 'true' }, item.icon),
+        h('span', { class: 'mentoria-sidebar__item-label' }, item.label),
+    ])));
+
+    return h('div', {
+        class: cn(
+            'mentoria-app',
+            rootClass,
+            'mentoria-app--theme-' + shell.theme.value,
+            shell.collapsed.value && 'mentoria-app--sidebar-collapsed',
+            shell.mobileOpen.value && 'mentoria-app--mobile-menu-open',
+        ),
+    }, [
+        h('div', { class: 'mentoria-mobile-bar' }, [
+            iconButton('Abrir menu', '☰', () => shell.mobileOpen.value = true),
+            h('span', { class: 'mentoria-mobile-bar__brand' }, 'Mentoria'),
+            iconButton(isDark ? 'Usar tema claro' : 'Usar tema escuro', isDark ? '☀' : '☾', shell.toggleTheme),
+        ]),
+        h('button', {
+            type: 'button',
+            class: 'mentoria-sidebar-backdrop',
+            'aria-label': 'Fechar menu',
+            onClick: shell.closeMobileMenu,
+        }),
+        h('aside', { class: 'mentoria-sidebar' }, [
+            h('div', { class: 'mentoria-sidebar__brand' }, [
+                h('div', { class: 'mentoria-sidebar__brand-copy' }, [
+                    h('span', { class: 'mentoria-sidebar__eyebrow' }, 'Getfy'),
+                    h('strong', {}, 'Mentoria'),
+                ]),
+                h('div', { class: 'mentoria-sidebar__tools' }, [
+                    iconButton(isDark ? 'Usar tema claro' : 'Usar tema escuro', isDark ? '☀' : '☾', shell.toggleTheme),
+                    iconButton(shell.collapsed.value ? 'Expandir menu' : 'Recolher menu', shell.collapsed.value ? '›' : '‹', shell.toggleSidebar, 'mentoria-shell-icon--collapse'),
+                    iconButton('Fechar menu', '×', shell.closeMobileMenu, 'mentoria-shell-icon--close'),
+                ]),
+            ]),
+            menu,
+        ]),
+        h('main', { class: 'mentoria-main' }, [
+            h('div', { class: 'mentoria-page-header' }, [
+                h('div', [
+                    h('span', { class: 'mentoria-page-header__eyebrow' }, eyebrow),
+                    h('h1', {}, title),
+                    h('p', {}, subtitle),
+                ]),
+                h('div', { class: 'mentoria-page-header__actions' }, actions),
+            ]),
+            ...notices,
+            h('div', { class: 'mentoria-workspace-content' }, [content]),
+        ]),
+        ...extras,
+    ]);
+};
 
 export const btn = (label, click, kind = 'primary', extra = {}) => h('button', {
     type: extra.type || 'button',

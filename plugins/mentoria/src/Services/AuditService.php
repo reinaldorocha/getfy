@@ -10,6 +10,14 @@ class AuditService
 {
     public function record(int $tenantId, User $actor, string $action, string $entity, ?string $entityId = null, ?int $studentId = null, array $details = []): void
     {
+        $request = request();
+        if ($request->attributes->get('mentoria.workspace')) {
+            $actor = $request->attributes->get('mentoria.workspace_actor') ?? $actor;
+            $student = $request->attributes->get('mentoria.workspace_student');
+            $studentId ??= $student?->id;
+            $details = ['source' => 'mentor_workspace'] + $details;
+        }
+
         DB::table('mentoria_audit_events')->insert([
             'id' => (string) Str::uuid(),
             'tenant_id' => $tenantId,

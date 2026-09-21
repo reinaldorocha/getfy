@@ -88,6 +88,8 @@
 .mentoria-timer-launcher__time { color: var(--mentoria-muted); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10px; font-weight: 700; line-height: 1.1; }
 
 .mentoria-page-header__actions { align-items: center; display: flex; flex-wrap: wrap; gap: 8px; }
+.mentoria-contest-selector { align-items: center; display: flex; flex-wrap: wrap; gap: 8px; min-width: 0; }
+.mentoria-contest-selector__control { max-width: 100%; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mentoria-return-link, .mentoria-preview-link { align-items: center; border: 1px solid var(--mentoria-border); border-radius: 8px; color: var(--mentoria-soft); display: inline-flex; font-size: 11px; font-weight: 800; min-height: 34px; padding: 9px 12px; text-decoration: none; transition: .16s ease; }
 .mentoria-return-link { background: transparent; }
 .mentoria-preview-link { background: var(--mentoria-raised); }
@@ -150,6 +152,21 @@
 .mentoria-section-title h2 { color: var(--mentoria-text); font-size: 14px; font-weight: 800; line-height: 1.2; }
 .mentoria-section-title p { color: var(--mentoria-muted); font-size: 10px; line-height: 1.45; margin-top: 4px; }
 
+.mentoria-course-grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+.mentoria-course-card { background: var(--mentoria-raised); border: 1px solid var(--mentoria-border); border-radius: 13px; display: flex; flex-direction: column; min-width: 0; overflow: hidden; transition: border-color .16s ease, box-shadow .16s ease, transform .16s ease; }
+.mentoria-course-card:hover { border-color: var(--mentoria-border-strong); box-shadow: 0 12px 26px rgba(12, 24, 45, .12); transform: translateY(-2px); }
+.mentoria-course-card__cover { aspect-ratio: 16 / 9; background: var(--mentoria-hover); display: block; object-fit: cover; width: 100%; }
+.mentoria-course-card__cover--fallback { align-items: center; background: linear-gradient(135deg, color-mix(in srgb, var(--mentoria-blue) 82%, #172033), #172033); color: #fff; display: flex; flex-direction: column; gap: 8px; justify-content: center; }
+.mentoria-course-card__fallback-icon { align-items: center; background: rgba(255,255,255,.14); border: 1px solid rgba(255,255,255,.25); border-radius: 50%; display: inline-flex; font-size: 17px; height: 42px; justify-content: center; padding-left: 2px; width: 42px; }
+.mentoria-course-card__fallback-label { font-size: 10px; font-weight: 850; letter-spacing: .12em; text-transform: uppercase; }
+.mentoria-course-card__content { display: flex; flex: 1; flex-direction: column; min-width: 0; padding: 15px; }
+.mentoria-course-card__title { color: var(--mentoria-text); font-size: 14px; font-weight: 850; letter-spacing: -.015em; line-height: 1.3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mentoria-course-card__description { -webkit-box-orient: vertical; -webkit-line-clamp: 2; color: var(--mentoria-muted); display: -webkit-box; font-size: 11px; line-height: 1.45; margin: 7px 0 16px; min-height: 32px; overflow: hidden; }
+.mentoria-course-card__description--empty { font-style: italic; }
+.mentoria-course-card__action { align-items: center; background: var(--mentoria-blue); border-radius: 8px; color: #fff; display: inline-flex; font-size: 11px; font-weight: 800; gap: 7px; justify-content: center; margin-top: auto; min-height: 35px; padding: 9px 12px; text-decoration: none; transition: filter .16s ease, transform .16s ease; }
+.mentoria-course-card__action:hover { color: #fff; filter: brightness(.94); transform: translateY(-1px); }
+.mentoria-course-card__action:focus-visible { outline: 3px solid color-mix(in srgb, var(--mentoria-blue) 34%, transparent); outline-offset: 3px; }
+
 .mentoria-field { display: block; }
 .mentoria-field__label { color: var(--mentoria-soft); display: block; font-size: 10px; font-weight: 800; margin-bottom: 6px; }
 .mentoria-field__hint { color: var(--mentoria-faint); display: block; font-size: 9px; margin-top: 5px; }
@@ -181,8 +198,7 @@
 .mentoria-tab:hover { background: var(--mentoria-raised); color: var(--mentoria-text); }
 .mentoria-tab--active { background: var(--mentoria-blue-soft); color: #8db7ff; }
 
-.mentoria-preview-notice { background: rgba(79,142,247,.11); border: 1px solid rgba(79,142,247,.32); border-radius: 9px; color: #b8d1ff; font-size: 12px; font-weight: 700; line-height: 1.4; margin-bottom: 14px; padding: 10px 12px; }
-.mentoria-app--read-only :is(button:not(.mentoria-tab), input, textarea, select, a:not(.mentoria-return-link)) { cursor: not-allowed; opacity: .48; pointer-events: none; }
+.mentoria-preview-notice, .mentoria-mentor-workspace-notice { background: rgba(79,142,247,.11); border: 1px solid rgba(79,142,247,.32); border-radius: 9px; color: #b8d1ff; font-size: 12px; font-weight: 700; line-height: 1.4; margin-bottom: 14px; padding: 10px 12px; }
 
 .mentoria-radar-filters { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
 .mentoria-radar-alerts { display: flex; flex-wrap: wrap; gap: 5px; }
@@ -194,6 +210,20 @@
 .mentoria-notice { border: 1px solid; border-radius: 9px; font-size: 11px; line-height: 1.45; margin-bottom: 12px; padding: 10px 12px; }
 .mentoria-notice--success { background: rgba(62,207,142,.11); border-color: rgba(62,207,142,.28); color: #91e9bd; }
 .mentoria-notice--error { background: rgba(245,90,90,.1); border-color: rgba(245,90,90,.28); color: #ffabb2; }
+
+.mentoria-question-feedback {
+    border: 1px solid;
+    border-radius: 10px;
+    font-size: 12px;
+    line-height: 1.5;
+    margin-top: 14px;
+    padding: 12px 13px;
+}
+.mentoria-question-feedback__title { display: block; font-size: 12px; font-weight: 850; letter-spacing: -.01em; }
+.mentoria-question-feedback__answer { border-top: 1px solid currentColor; font-weight: 700; margin-top: 8px; padding-top: 8px; }
+.mentoria-question-feedback__explanation { margin-top: 8px; opacity: .88; }
+.mentoria-question-feedback--correct { background: rgba(62,207,142,.10); border-color: rgba(62,207,142,.30); color: #9be8c0; }
+.mentoria-question-feedback--incorrect { background: rgba(245,90,90,.09); border-color: rgba(245,90,90,.28); color: #ffb0b7; }
 
 .mentoria-modal { align-items: flex-start; background: rgba(3,5,10,.76); backdrop-filter: blur(6px); display: flex; inset: 0; justify-content: center; overflow-y: auto; padding: 28px 16px; position: fixed; z-index: 100000; }
 .mentoria-modal__dialog { background: var(--mentoria-surface); border: 1px solid var(--mentoria-border-strong); border-radius: 14px; box-shadow: 0 20px 44px rgba(0,0,0,.34); color: var(--mentoria-text); margin-bottom: 28px; padding: 18px; width: 100%; }
@@ -231,10 +261,6 @@
     .mentoria-workspace-content { grid-column: 2; min-width: 0; }
 }
 
-@media (max-width: 900px) {
-    .mentoria-tabs { overflow-x: auto; }
-}
-
 @media (max-width: 700px) {
     .mentoria-app { padding: 14px; }
     .mentoria-page-header { gap: 12px; }
@@ -249,4 +275,137 @@
 
 @media (prefers-reduced-motion: reduce) {
     .mentoria-app *, .mentoria-embedded * { scroll-behavior: auto !important; transition-duration: .01ms !important; }
+}
+
+/* Standalone shell: the light theme is the default and dark stays available per user. */
+.mentoria-app--theme-light {
+    --mentoria-bg: #f5f7fb;
+    --mentoria-surface: #ffffff;
+    --mentoria-raised: #f8fafc;
+    --mentoria-hover: #edf2f8;
+    --mentoria-border: #dde5f0;
+    --mentoria-border-strong: #bdcadb;
+    --mentoria-text: #172033;
+    --mentoria-soft: #27364d;
+    --mentoria-muted: #65748a;
+    --mentoria-faint: #8492a6;
+    --mentoria-blue: #2563eb;
+    --mentoria-blue-soft: #e7efff;
+    color-scheme: light;
+}
+
+.mentoria-app--theme-dark {
+    --mentoria-bg: #0d0f14;
+    --mentoria-surface: #13161e;
+    --mentoria-raised: #1a1e2a;
+    --mentoria-hover: #222839;
+    --mentoria-border: #252836;
+    --mentoria-border-strong: #343a51;
+    --mentoria-text: #e8eaf2;
+    --mentoria-soft: #c7cbda;
+    --mentoria-muted: #a1a6c2;
+    --mentoria-faint: #717897;
+    --mentoria-blue: #4f8ef7;
+    --mentoria-blue-soft: rgba(79, 142, 247, .13);
+    color-scheme: dark;
+}
+
+.mentoria-app {
+    background: radial-gradient(circle at 90% 0, color-mix(in srgb, var(--mentoria-blue) 10%, transparent), transparent 32rem), var(--mentoria-bg);
+    display: grid;
+    grid-template-columns: 260px minmax(0, 1fr);
+    min-height: 100vh;
+    padding: 0;
+}
+.mentoria-app--sidebar-collapsed { grid-template-columns: 76px minmax(0, 1fr); }
+.mentoria-main { min-width: 0; padding: 28px 32px 44px; }
+.mentoria-app .mentoria-card, .mentoria-app .mentoria-stat { background: var(--mentoria-surface); box-shadow: 0 1px 0 rgba(255,255,255,.75) inset, 0 8px 24px rgba(31,49,81,.035); }
+.mentoria-app .mentoria-card { transition: border-color .16s ease, box-shadow .16s ease, transform .16s ease; }
+.mentoria-app .mentoria-card:hover { box-shadow: 0 1px 0 rgba(255,255,255,.75) inset, 0 12px 28px rgba(31,49,81,.07); }
+.mentoria-app .mentoria-button { border-radius: 9px; }
+.mentoria-app .mentoria-button--primary { box-shadow: 0 5px 14px color-mix(in srgb, var(--mentoria-blue) 26%, transparent); }
+.mentoria-app .mentoria-control { border-radius: 9px; }
+.mentoria-app .mentoria-section-title { border-bottom: 1px solid var(--mentoria-border); margin-bottom: 18px; padding-bottom: 12px; }
+.mentoria-app .mentoria-section-title h2 { letter-spacing: -.015em; }
+.mentoria-app :is(input, select, textarea):focus-visible { outline: 3px solid color-mix(in srgb, var(--mentoria-blue) 22%, transparent); outline-offset: 1px; }
+.mentoria-app ::-webkit-scrollbar { height: 9px; width: 9px; }
+.mentoria-app ::-webkit-scrollbar-thumb { background: var(--mentoria-border-strong); border: 3px solid var(--mentoria-surface); border-radius: 999px; }
+.mentoria-app--theme-light .mentoria-page-header__eyebrow { color: #3268ca; }
+.mentoria-app--theme-light :is(.mentoria-preview-notice, .mentoria-mentor-workspace-notice) { background: #edf4ff; border-color: #bdd2fb; color: #315a9f; }
+.mentoria-app--theme-light .mentoria-notice--success { background: #eaf9f1; border-color: #b8e7ce; color: #176a43; }
+.mentoria-app--theme-light .mentoria-notice--error { background: #fff0f1; border-color: #f2c4ca; color: #a22a39; }
+.mentoria-app--theme-light .mentoria-radar-alert--red { background: #fff0f1; border-color: #f2c4ca; color: #a22a39; }
+.mentoria-app--theme-light .mentoria-radar-alert--amber { background: #fff7e2; border-color: #f0d9a0; color: #876000; }
+.mentoria-app--theme-light .mentoria-control { background: #fff; border-color: #ccd7e6; }
+.mentoria-app--theme-light .mentoria-progress__track { background: #e5ebf3; }
+.mentoria-app--theme-light .mentoria-badge--sky { border-color: #bdd2fb; color: #2457b7; }
+.mentoria-app--theme-light .mentoria-badge--red { border-color: #f2c4ca; color: #a22a39; }
+.mentoria-app--theme-light .mentoria-badge--amber { border-color: #f0d9a0; color: #876000; }
+.mentoria-app--theme-light .mentoria-badge--violet { border-color: #d8cafa; color: #6543b5; }
+.mentoria-app--theme-light .mentoria-question-feedback--correct { background: #eaf9f1; border-color: #b8e7ce; color: #176a43; }
+.mentoria-app--theme-light .mentoria-question-feedback--incorrect { background: #fff0f1; border-color: #f2c4ca; color: #a22a39; }
+
+.mentoria-sidebar {
+    background: var(--mentoria-surface);
+    border-right: 1px solid var(--mentoria-border);
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    left: 0;
+    overflow: hidden;
+    position: sticky;
+    top: 0;
+    transition: width .22s ease, transform .22s ease;
+    width: 260px;
+    z-index: 30;
+}
+.mentoria-app--sidebar-collapsed .mentoria-sidebar { width: 76px; }
+.mentoria-sidebar__brand { align-items: center; border-bottom: 1px solid var(--mentoria-border); display: flex; gap: 8px; justify-content: space-between; min-height: 76px; padding: 14px 14px 14px 18px; }
+.mentoria-sidebar__brand-copy { display: grid; min-width: 0; }
+.mentoria-sidebar__brand-copy strong { color: var(--mentoria-text); font-size: 19px; letter-spacing: -.04em; line-height: 1; }
+.mentoria-sidebar__eyebrow { color: var(--mentoria-muted); font-size: 9px; font-weight: 800; letter-spacing: .14em; margin-bottom: 5px; text-transform: uppercase; }
+.mentoria-sidebar__tools { align-items: center; display: flex; gap: 2px; }
+.mentoria-shell-icon { align-items: center; background: transparent; border: 0; border-radius: 9px; color: var(--mentoria-muted); cursor: pointer; display: inline-flex; font-size: 18px; height: 32px; justify-content: center; line-height: 1; width: 32px; }
+.mentoria-shell-icon:hover { background: var(--mentoria-hover); color: var(--mentoria-text); }
+.mentoria-shell-icon:focus-visible, .mentoria-sidebar__item:focus-visible { outline: 3px solid color-mix(in srgb, var(--mentoria-blue) 35%, transparent); outline-offset: 2px; }
+.mentoria-shell-icon--close { display: none; }
+.mentoria-sidebar__nav { display: flex; flex: 1; flex-direction: column; gap: 4px; overflow-y: auto; padding: 14px 11px; }
+.mentoria-sidebar__item { align-items: center; background: transparent; border: 0; border-radius: 10px; color: var(--mentoria-muted); cursor: pointer; display: flex; font-family: inherit; font-size: 13px; font-weight: 720; gap: 12px; min-height: 42px; overflow: hidden; padding: 0 11px; text-align: left; transition: background .16s ease, color .16s ease; white-space: nowrap; width: 100%; }
+.mentoria-sidebar__item:hover { background: var(--mentoria-hover); color: var(--mentoria-text); }
+.mentoria-sidebar__item--active { background: var(--mentoria-blue-soft); color: var(--mentoria-blue); }
+.mentoria-sidebar__item-icon { align-items: center; display: inline-flex; flex: 0 0 20px; font-size: 16px; justify-content: center; text-align: center; }
+.mentoria-sidebar__item-label { overflow: hidden; text-overflow: ellipsis; }
+.mentoria-app--sidebar-collapsed .mentoria-sidebar__brand { justify-content: center; padding-inline: 8px; }
+.mentoria-app--sidebar-collapsed .mentoria-sidebar__brand-copy, .mentoria-app--sidebar-collapsed .mentoria-shell-icon:not(.mentoria-shell-icon--collapse), .mentoria-app--sidebar-collapsed .mentoria-sidebar__item-label { display: none; }
+.mentoria-app--sidebar-collapsed .mentoria-sidebar__tools { display: block; }
+.mentoria-app--sidebar-collapsed .mentoria-sidebar__item { justify-content: center; padding: 0; }
+
+.mentoria-mobile-bar, .mentoria-sidebar-backdrop { display: none; }
+
+@media (min-width: 901px) {
+    .mentoria-app { column-gap: 0; grid-template-columns: 260px minmax(0, 1fr); }
+    .mentoria-app--sidebar-collapsed { grid-template-columns: 76px minmax(0, 1fr); }
+    .mentoria-app .mentoria-page-header, .mentoria-app .mentoria-notice { grid-column: auto; }
+    .mentoria-app .mentoria-workspace-content { grid-column: auto; }
+}
+
+@media (max-width: 900px) {
+    .mentoria-app, .mentoria-app--sidebar-collapsed { display: block; padding: 0; }
+    .mentoria-main { padding: 18px 16px 36px; }
+    .mentoria-mobile-bar { align-items: center; background: var(--mentoria-surface); border-bottom: 1px solid var(--mentoria-border); display: flex; height: 58px; justify-content: space-between; padding: 0 12px; position: sticky; top: 0; z-index: 20; }
+    .mentoria-page-header__actions .mentoria-contest-selector { flex: 1 1 100%; width: 100%; }
+    .mentoria-contest-selector__control { width: 100%; }
+    .mentoria-mobile-bar__brand { color: var(--mentoria-text); font-size: 16px; font-weight: 850; letter-spacing: -.03em; }
+    .mentoria-sidebar { box-shadow: 18px 0 42px rgba(12,24,45,.16); position: fixed; transform: translateX(-105%); width: min(286px, calc(100vw - 42px)); z-index: 41; }
+    .mentoria-app--mobile-menu-open .mentoria-sidebar { transform: translateX(0); }
+    .mentoria-sidebar__brand { min-height: 68px; }
+    .mentoria-shell-icon--collapse { display: none; }
+    .mentoria-shell-icon--close { display: inline-flex; }
+    .mentoria-sidebar-backdrop { background: rgba(17,30,53,.42); border: 0; inset: 0; opacity: 0; pointer-events: none; position: fixed; transition: opacity .2s ease; z-index: 40; }
+    .mentoria-app--mobile-menu-open .mentoria-sidebar-backdrop { display: block; opacity: 1; pointer-events: auto; }
+    .mentoria-sidebar__item { font-size: 14px; min-height: 46px; }
+}
+
+@media (max-width: 700px) {
+    .mentoria-main { padding: 16px 14px 32px; }
 }

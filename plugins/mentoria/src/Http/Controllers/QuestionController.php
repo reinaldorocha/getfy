@@ -116,7 +116,7 @@ class QuestionController extends Controller
         if (array_key_exists('alternatives', $data)) {
             $data['alternatives'] = $data['alternatives'] === null
                 ? null
-                : json_encode(array_values($data['alternatives']), JSON_UNESCAPED_UNICODE);
+                : json_encode($this->normalizeAlternatives($data['alternatives']), JSON_UNESCAPED_UNICODE);
         }
 
         if (array_key_exists('subject', $data)) {
@@ -352,6 +352,10 @@ class QuestionController extends Controller
             $this->requireContest($tenantId, $data['contest_id']);
         }
 
+        if (array_key_exists('alternatives', $data) && $data['alternatives'] !== null) {
+            $data['alternatives'] = $this->normalizeAlternatives($data['alternatives']);
+        }
+
         return $data;
     }
 
@@ -367,7 +371,7 @@ class QuestionController extends Controller
             'topic' => ($raw['topic'] ?? $raw['assunto'] ?? null) ?: null,
             'type' => (string) ($raw['type'] ?? $raw['tipo'] ?? 'multipla_escolha'),
             'prompt' => trim((string) ($raw['prompt'] ?? $raw['enunciado'] ?? '')),
-            'alternatives' => array_values(array_filter(array_map('strval', is_array($alternatives) ? $alternatives : []))),
+            'alternatives' => $this->normalizeAlternatives(is_array($alternatives) ? $alternatives : []),
             'correct_answer' => trim((string) ($raw['correct_answer'] ?? $raw['respostaCorreta'] ?? $raw['resposta_correta'] ?? '')),
             'explanation' => ($raw['explanation'] ?? $raw['explicacao'] ?? null) ?: null,
             'scope' => (string) ($raw['scope'] ?? $raw['alcance'] ?? 'global'),
@@ -388,6 +392,14 @@ class QuestionController extends Controller
         if ($data['contest_id']) {
             $this->requireContest($tenantId, (string) $data['contest_id']);
         }
+    }
+
+    private function normalizeAlternatives(array $alternatives): array
+    {
+        return array_values(array_filter(array_map(
+            static fn ($alternative) => preg_replace('/^\s*\(?[A-Z]\)?\s*[\)\.\-:]\s*/iu', '', trim((string) $alternative)),
+            $alternatives,
+        ), static fn ($alternative) => $alternative !== ''));
     }
 
     private function insertQuestion(int $tenantId, int $actorId, array $data): string

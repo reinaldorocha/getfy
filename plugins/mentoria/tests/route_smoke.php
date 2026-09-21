@@ -20,6 +20,7 @@ $checked = 0;
 foreach ([
     $root.'/plugins/mentoria/routes.php',
     $root.'/plugins/mentoria/routes-student.php',
+    $root.'/plugins/mentoria/routes-mentor-workspace.php',
     $root.'/plugins/mentoria/routes-course.php',
 ] as $routesFile) {
     if (! is_file($routesFile)) {

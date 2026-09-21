@@ -63,13 +63,14 @@ test('the verticalized edict and schedule-owned review cards replace virtual cal
     assert.match(student, /item\.scheduled_review_id/);
 });
 
-test('student workspace exposes one global timer launcher outside mentor preview', () => {
+test('student workspace keeps the global timer launcher available to mentors using a student workspace', () => {
     const student = source('frontend/src/student.js');
     const stylesheet = source('frontend/src/plugin-ui.css');
 
     assert.match(student, /function renderTimerLauncher\(\)/);
     assert.match(student, /class:'mentoria-timer-launcher/);
-    assert.match(student, /readOnly\.value\?null:renderTimerLauncher\(\)/);
+    assert.match(student, /renderTimerLauncher\(\)/);
+    assert.doesNotMatch(student, /readOnly\.value\?null:renderTimerLauncher\(\)/);
     assert.match(stylesheet, /\.mentoria-timer-launcher\s*\{/);
 });
 

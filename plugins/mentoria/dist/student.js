@@ -2,8 +2,9 @@ import { h, ref, computed, onUnmounted } from 'vue';
 import {
     api, alertBox, badge, btn, card, checkbox, countdown, empty, field, fmtDate, fmtDateTime,
     fmtHours, input, jsonBody, modal, optionize, progressBar, safeJson, sectionTitle, select,
-    stat, tabs, textarea,
-} from './shared.js?v=b08c6e24f683';
+    stat, textarea, mentoriaShell, useMentoriaShell,
+} from './shared.js?v=b9c6303d02c1';
+import { displayAlternative } from './question-alternatives.js?v=b9c6303d02c1';
 
 const MODULES = [
     ['dashboard', 'Dashboard', 'dashboard', '▦'],
@@ -50,7 +51,6 @@ export const MentoriaStudent = {
         const flashcardRevealed = ref(false);
         const answerDrafts = ref({});
         const questionStats = ref(null);
-        const flashcardFeedback = ref({});
         const questionResults = ref({});
         const questionHistory = ref({});
         const questionTopic = ref('');
@@ -68,6 +68,7 @@ export const MentoriaStudent = {
         const scheduleView = ref('calendar');
         const scheduleStatus = ref('todos');
         const scheduleMonthOffset = ref(0);
+        const shell = useMentoriaShell();
         const reviewContestFilter = ref('todos');
         const metricsPeriod = ref('30d');
         const metricsYear = ref(new Date().getFullYear());
@@ -78,8 +79,8 @@ export const MentoriaStudent = {
         });
 
         const tenant = computed(() => Number(state.value.tenant_id || 0));
-        const base = computed(() => '/mentoria-estudos/' + tenant.value);
-        const readOnly = computed(() => Boolean(state.value.read_only));
+        const base = computed(() => state.value.workspace_base || '/mentoria-estudos/' + tenant.value);
+        const actingAsMentor = computed(() => Boolean(state.value.acting_as_mentor));
         const capabilities = computed(() => state.value.capabilities || []);
         const contests = computed(() => state.value.contests || []);
         const activeContestId = ref(
@@ -120,7 +121,6 @@ export const MentoriaStudent = {
         });
 
         async function refresh(contestId = activeContestId.value) {
-            if (readOnly.value) return;
             const url = base.value + '/data' + (contestId ? '?contest_id='+encodeURIComponent(contestId) : '');
             state.value = await api(url);
             metricsData.value = {
@@ -137,10 +137,6 @@ export const MentoriaStudent = {
         }
 
         async function run(fn, ok = '', doRefresh = true) {
-            if (readOnly.value) {
-                message.value = 'Esta é uma visualização do mentor. As ações do aluno ficam desativadas.';
-                return null;
-            }
             busy.value = true;
             message.value = '';
             success.value = '';
@@ -669,28 +665,11 @@ export const MentoriaStudent = {
             await run(()=>api(base.value+'/reviews/'+review.id,{method:'DELETE'}));
         }
 
-        async function answerFlashcard(card, answer) {
-            const expected=String(card.correct_answer||'').trim().toLowerCase();
-            const chosen=String(answer).trim().toLowerCase();
-            flashcardFeedback.value={
-                ...flashcardFeedback.value,
-                [card.id]:{
-                    correct:expected===chosen,
-                    chosen:answer,
-                    expected:card.correct_answer,
-                    explanation:card.explanation||'',
-                    rated:false,
-                    next_review:null,
-                },
-            };
-        }
-
         async function rateFlashcard(card,quality){
             const result=await run(()=>api(base.value+'/flashcards/'+card.id+'/review',{
                 method:'POST',body:jsonBody({quality,contest_id:activeContestId.value||null}),
             }),'Revisão registrada.',false);
             state.value={...state.value,cards:(state.value.cards||[]).map(item=>item.id===card.id?{...item,next_review:result?.next_review||new Date(Date.now()+86400000).toISOString().slice(0,10)}:item)};
-            flashcardFeedback.value={};
             flashcardRevealed.value=false;
         }
 
@@ -715,8 +694,7 @@ export const MentoriaStudent = {
 
         function openOwnCard(deck,item=null) {
             modalState.value={type:'ownCard',deck,item,form:{
-                type:'certo_errado',front:item?.front||'',hint:item?.hint||'',
-                correct_answer:item?.correct_answer||'Certo',explanation:item?.explanation||'',
+                front:item?.front||'',back:item?.back||'',hint:item?.hint||'',
                 tags:Array.isArray(item?.tags)?item.tags.join(', '):'',
             }};
         }
@@ -724,8 +702,7 @@ export const MentoriaStudent = {
         async function saveOwnCard(m) {
             const f=m.form;
             const payload={
-                type:'certo_errado',front:f.front,hint:f.hint||null,
-                correct_answer:f.correct_answer,explanation:f.explanation||null,
+                front:f.front,back:f.back,hint:f.hint||null,
                 tags:f.tags.split(',').map(x=>x.trim()).filter(Boolean),
             };
             const url=m.item?base.value+'/flashcards/'+m.item.id:base.value+'/flashcard-decks/'+m.deck.id+'/cards';
@@ -745,13 +722,11 @@ export const MentoriaStudent = {
                 method:'POST',body:jsonBody({answer,contest_id:activeContestId.value||question.contest_id||null}),
             }),'',false);
             questionResults.value={...questionResults.value,[question.id]:result};
-            success.value=result.correct?'Resposta correta!':'Resposta incorreta.';
         }
 
         function resetFlashcardSession() {
             flashcardIndex.value=0;
             flashcardRevealed.value=false;
-            flashcardFeedback.value={};
         }
 
         function resetQuestionSession() {
@@ -878,11 +853,11 @@ export const MentoriaStudent = {
 
         function renderContestSelector() {
             if(!contests.value.length)return null;
-            return h('div',{class:'flex flex-wrap items-center gap-2'},[
+            return h('div',{class:'mentoria-contest-selector'},[
                 h('span',{class:'text-xs font-semibold text-zinc-500'},'Concurso ativo:'),
                 h('select',{
                     value:activeContestId.value,
-                    class:'rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-950',
+                    class:'mentoria-contest-selector__control rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-950',
                     onChange:e=>setContest(e.target.value),
                 },contests.value.map(c=>h('option',{value:c.id},c.name))),
             ]);
@@ -1209,10 +1184,9 @@ export const MentoriaStudent = {
                 card([sectionTitle('Sessão de revisão',due.length?'Restam '+due.length+' cartão(ões)':'Nenhum cartão pendente'),current?h('div',{class:'mx-auto max-w-2xl'},[
                     h('div',{class:'mb-3 flex items-center justify-between text-xs text-zinc-500'},[h('span',decks.find(d=>d.id===current.deck_id)?.name||'Baralho'),h('span','Cartão '+(currentIndex+1)+' de '+due.length)]),
                     h('button',{type:'button',class:'w-full rounded-2xl border border-zinc-200 bg-zinc-50 p-7 text-left transition hover:border-sky-400 dark:border-zinc-700 dark:bg-zinc-800',onClick:()=>flashcardRevealed.value=!flashcardRevealed.value},[
-                        h('div',{class:'text-[11px] font-bold uppercase tracking-wide text-sky-500'},flashcardRevealed.value?'Resposta':'Afirmação'),
-                        h('p',{class:'mt-4 whitespace-pre-wrap text-lg font-semibold leading-relaxed'},flashcardRevealed.value?('Gabarito: '+current.correct_answer):current.front),
+                        h('div',{class:'text-[11px] font-bold uppercase tracking-wide text-sky-500'},flashcardRevealed.value?'Verso':'Frente'),
+                        h('p',{class:'mt-4 whitespace-pre-wrap text-lg font-semibold leading-relaxed'},flashcardRevealed.value?current.back:current.front),
                         !flashcardRevealed.value&&current.hint?h('p',{class:'mt-4 text-xs text-zinc-500'},'Dica: '+current.hint):null,
-                        flashcardRevealed.value&&current.explanation?h('p',{class:'mt-4 border-t border-zinc-200 pt-4 text-sm text-zinc-600 dark:border-zinc-700 dark:text-zinc-300'},current.explanation):null,
                     ]),
                     !flashcardRevealed.value?btn('Revelar resposta',()=>flashcardRevealed.value=true,'primary',{class:'mt-4 w-full'}):h('div',{class:'mt-4'},[h('div',{class:'mb-2 text-center text-[11px] font-semibold'},'Como foi a dificuldade?'),h('div',{class:'grid grid-cols-2 gap-2 sm:grid-cols-4'},[btn('Errei',()=>rateFlashcard(current,1),'danger'),btn('Difícil',()=>rateFlashcard(current,2),'warning'),btn('Bom',()=>rateFlashcard(current,3),'ghost'),btn('Fácil',()=>rateFlashcard(current,4),'success')])]),
                 ]):empty('Nenhum flashcard pendente agora.')]),
@@ -1260,10 +1234,10 @@ export const MentoriaStudent = {
                         h('p',{class:'mt-3 whitespace-pre-wrap text-sm font-medium'},number+'. '+q.prompt),
                         q.type==='multipla_escolha'&&Array.isArray(q.alternatives)&&q.alternatives.length?h('div',{class:'mt-3 space-y-2'},q.alternatives.map((a,i)=>h('label',{class:'flex items-start gap-2 rounded-lg border border-zinc-200 p-2 text-sm dark:border-zinc-700'},[
                             h('input',{type:'radio',name:'q-'+q.id,value:String.fromCharCode(65+i),checked:answerDrafts.value[q.id]===String.fromCharCode(65+i),onChange:e=>answerDrafts.value[q.id]=e.target.value}),
-                            h('span',String.fromCharCode(65+i)+') '+a),
+                            h('span',String.fromCharCode(65+i)+') '+displayAlternative(a)),
                         ]))):q.type==='certo_errado'?h('div',{class:'mt-3 flex gap-2'},['Certo','Errado'].map(a=>btn(a,()=>answerDrafts.value[q.id]=a,answerDrafts.value[q.id]===a?'primary':'ghost'))):h('input',{value:answerDrafts.value[q.id]||'',class:'mt-3 w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-950',onInput:e=>answerDrafts.value[q.id]=e.target.value}),
-                        result?h('div',{class:'mt-3 rounded-lg border p-3 text-sm '+(result.correct?'border-emerald-200 bg-emerald-50 dark:border-emerald-900 dark:bg-emerald-950':'border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950')},[
-                            h('strong',result.correct?'✓ Acerto':'✕ Erro'),!result.correct?h('div',{class:'mt-1'},'Resposta correta: '+result.correct_answer):null,result.explanation?h('p',{class:'mt-2 text-xs'},result.explanation):null,
+                        result?h('div',{class:'mentoria-question-feedback '+(result.correct?'mentoria-question-feedback--correct':'mentoria-question-feedback--incorrect')},[
+                            h('strong',{class:'mentoria-question-feedback__title'},result.correct?'✓ Acerto':'✕ Erro'),!result.correct?h('div',{class:'mentoria-question-feedback__answer'},'Resposta correta: '+result.correct_answer):null,result.explanation?h('p',{class:'mentoria-question-feedback__explanation'},result.explanation):null,
                         ]):null,
                         h('div',{class:'mt-3 flex flex-wrap gap-2'},[
                             btn(result?(questionIndex.value+1<filtered.length?'Próxima questão':'Concluir sessão'):'Responder',()=>result?nextQuestion(filtered.length):answerQuestion(q),'primary'),
@@ -1345,9 +1319,18 @@ export const MentoriaStudent = {
             const list=state.value.courses||[];
             return card([
                 sectionTitle('Cursos e aulas','Conteúdo audiovisual servido pela área de membros do Getfy.'),
-                list.length?h('div',{class:'grid gap-3 md:grid-cols-2 xl:grid-cols-3'},list.map(c=>h('div',{class:'rounded-xl border border-zinc-200 p-4 dark:border-zinc-700'},[
-                    h('strong',c.name),c.description?h('p',{class:'mt-2 text-xs text-zinc-500'},c.description):null,
-                    h('a',{href:c.access_url,class:'mt-4 inline-flex rounded-lg bg-sky-600 px-3 py-2 text-xs font-semibold text-white'},'Acessar curso'),
+                list.length?h('div',{class:'mentoria-course-grid'},list.map(c=>h('article',{class:'mentoria-course-card'},[
+                    c.image_url
+                        ?h('img',{class:'mentoria-course-card__cover',src:c.image_url,alt:'Capa do curso '+c.name,loading:'lazy'})
+                        :h('div',{class:'mentoria-course-card__cover mentoria-course-card__cover--fallback',role:'img','aria-label':'Curso sem capa'},[
+                            h('span',{class:'mentoria-course-card__fallback-icon','aria-hidden':'true'},'▶'),
+                            h('span',{class:'mentoria-course-card__fallback-label'},'Curso'),
+                        ]),
+                    h('div',{class:'mentoria-course-card__content'},[
+                        h('h3',{class:'mentoria-course-card__title'},c.name),
+                        c.description?h('p',{class:'mentoria-course-card__description'},c.description):h('p',{class:'mentoria-course-card__description mentoria-course-card__description--empty'},'Aulas e materiais disponíveis na sua área de membros.'),
+                        h('a',{href:c.access_url,class:'mentoria-course-card__action'},['Acessar curso ',h('span',{'aria-hidden':'true'},'→')]),
+                    ]),
                 ]))):empty('Nenhum curso da área de membros está liberado para sua conta neste produtor.'),
             ]);
         }
@@ -1377,7 +1360,7 @@ export const MentoriaStudent = {
             const topics=[
                 {icon:'⏱',title:'Cronômetro e Pomodoro',text:'Use o Timer para registrar tempo, questões, acertos e observações até o nível de subtópico.',items:['Pomodoro com blocos de 15, 25, 45 ou 60 minutos ou duração personalizada.','O alerta sonoro avisa quando o bloco termina.','Os lançamentos alimentam histórico e métricas.']},
                 {icon:'📝',title:'Edital e subtópicos',text:'O edital organiza matérias, tópicos e subtópicos com progresso e desempenho.',items:['Marcar conteúdo como estudado gera revisões conforme os prazos do concurso.','Registre estudo e abra o Timer diretamente no item.','Use a busca para localizar conteúdos.']},
-                {icon:'✨',title:'Importação por IA',text:'Editais, questões e flashcards possuem prompt pronto para copiar e JSON para importar.',items:['Revise o JSON antes de importar.','Flashcards são exclusivamente Certo/Errado.','Questões podem ser vinculadas a produtos específicos.']},
+                {icon:'✨',title:'Importação por IA',text:'Editais, questões e flashcards possuem prompt pronto para copiar e JSON para importar.',items:['Revise o JSON antes de importar.','Flashcards usam frente e verso.','Questões podem ser vinculadas a produtos específicos.']},
                 {icon:'📚',title:'Cronograma',text:'Use agenda por dias ou ciclo inteligente com disponibilidade semanal, afinidade e prioridades.',items:['O calendário reúne atividades e revisões programadas.','Pendências podem ser reprogramadas em cascata.','O ciclo inteligente prioriza cobertura e desempenho.']},
                 {icon:'🔄',title:'Revisões',text:'Acompanhe atrasadas, hoje, futuras e concluídas.',items:['Veja a agenda dos próximos 7 dias.','Matérias com baixo rendimento recebem alerta de prioridade.','Use Timer, adie ou abra o conteúdo no edital.']},
                 {icon:'🎴',title:'Flashcards',text:'Responda Certo ou Errado e avalie a dificuldade para o SM-2.',items:['Errei, Difícil, Bom e Fácil ajustam a próxima revisão.','Você pode criar baralhos pessoais.','O mentor pode importar baralhos por IA/JSON.']},
@@ -1444,7 +1427,7 @@ export const MentoriaStudent = {
                         h('div',[h('strong',itemLabel(item)),h('div',{class:'text-xs text-zinc-500'},(item.duration_minutes||0)+' min · '+item.status)]),
                         h('div',{class:'flex gap-1'},[
                             btn('⏱ Timer',()=>{closeModal();openTimer({subject_id:item.subject_id||'',topic_id:item.topic_id||'',subtopic_id:item.subtopic_id||'',mode:'estudo'});},'ghost'),
-                            btn(item.status==='concluido'?'Reabrir':'Concluir',async()=>{await toggleScheduleItem(item);closeModal();},item.status==='concluido'?'ghost':'success'),
+                            btn(item.status==='concluido'?'Reabrir':'Concluir',async()=>{await toggleScheduleItem(item);if(item.status==='concluido')closeModal();},item.status==='concluido'?'ghost':'success'),
                         ]),
                     ]);
                 })),closeModal);
@@ -1602,11 +1585,10 @@ export const MentoriaStudent = {
 
             if(m.type==='ownCard'){
                 const f=m.form;
-                return modal(m.item?'Editar meu flashcard':'Novo flashcard Certo/Errado',h('div',{class:'space-y-4'},[
-                    h('div',{class:'rounded-lg bg-zinc-50 p-3 text-xs text-zinc-500 dark:bg-zinc-800'},'Crie uma afirmação e defina se ela está certa ou errada.'),
-                    field('Afirmação',textarea(f,'front',{rows:5})),
-                    field('Resposta correta',select(f,'correct_answer',[{value:'Certo',label:'Certo'},{value:'Errado',label:'Errado'}])),
-                    field('Explicação / fundamento',textarea(f,'explanation',{rows:4})),
+                    return modal(m.item?'Editar meu flashcard':'Novo flashcard',h('div',{class:'space-y-4'},[
+                        h('div',{class:'rounded-lg bg-zinc-50 p-3 text-xs text-zinc-500 dark:bg-zinc-800'},'Crie um cartão de frente e verso para sua revisão.'),
+                        field('Frente',textarea(f,'front',{rows:5,required:true})),
+                        field('Verso',textarea(f,'back',{rows:5,required:true})),
                     field('Dica (opcional)',textarea(f,'hint',{rows:2})),
                     field('Etiquetas',input(f,'tags',{placeholder:'lei seca, difícil, revisão'})),
                 ]),closeModal,[btn('Salvar',()=>saveOwnCard(m),'primary')],'max-w-4xl');
@@ -1667,25 +1649,30 @@ export const MentoriaStudent = {
         const availableTabs = computed(() => availableModules(capabilities.value)
             .map(([id,label,,icon])=>({id,label,icon})));
 
-        return () => h('div',{class:'mentoria-app mentoria-app--student'+(readOnly.value?' mentoria-app--read-only':'')},[
-            h('div',{class:'mentoria-page-header'},[
-                h('div',[
-                    h('span',{class:'mentoria-page-header__eyebrow'},readOnly.value?'Visão do mentor':'Minha trilha de estudos'),
-                    h('h1',{},readOnly.value?(state.value.previewed_student_name||'Dashboard do aluno'):'Minha preparação'),
-                    h('p',{},readOnly.value?'Dashboard do aluno em modo somente leitura.':'Mentoria'),
-                ]),
-                h('div',{class:'mentoria-page-header__actions'},[
-                    h('a',{href:readOnly.value?(state.value.preview_return_url||'/mentoria'):'/meus-produtos',class:'mentoria-return-link'},readOnly.value?'Voltar ao painel do produtor':'Meus cursos'),
-                    readOnly.value?null:renderContestSelector(),
-                ]),
-            ]),
-            readOnly.value?h('div',{class:'mentoria-preview-notice'},'Visualização somente leitura: o progresso e as respostas deste aluno não podem ser alterados daqui.'):null,
-            alertBox(message.value),alertBox(success.value,'success'),
-            tabs(availableTabs.value,activeTab.value,id=>activeTab.value=id),
-            h('div',{class:'mentoria-workspace-content'},[renderTab()]),
-            busy.value?h('div',{class:'fixed bottom-5 right-5 z-[100001] rounded-xl bg-zinc-950 px-4 py-3 text-sm font-semibold text-white shadow-xl'},'Atualizando…'):null,
-            readOnly.value?null:renderTimerLauncher(),
-            renderModal(),
-        ]);
+        return () => mentoriaShell({
+            shell,
+            rootClass: 'mentoria-app--student'+(actingAsMentor.value?' mentoria-app--mentor-workspace':''),
+            items: availableTabs.value,
+            active: activeTab.value,
+            onSelect: (id) => activeTab.value = id,
+            eyebrow: actingAsMentor.value ? 'Área do aluno pelo mentor' : 'Minha trilha de estudos',
+            title: actingAsMentor.value ? (state.value.previewed_student_name || 'Área do aluno') : 'Minha preparação',
+            subtitle: actingAsMentor.value ? 'Ações registradas em auditoria.' : 'Mentoria',
+            actions: [
+                h('a',{href:actingAsMentor.value?(state.value.preview_return_url||'/mentoria'):'/meus-produtos',class:'mentoria-return-link'},actingAsMentor.value?'Voltar ao painel do produtor':'Meus cursos'),
+                renderContestSelector(),
+            ],
+            notices: [
+                actingAsMentor.value ? h('div',{class:'mentoria-mentor-workspace-notice'},'Você está na área de '+(state.value.previewed_student_name||'um aluno')+'. As ações ficam registradas para acompanhamento.') : null,
+                alertBox(message.value),
+                alertBox(success.value,'success'),
+            ],
+            content: renderTab(),
+            extras: [
+                busy.value?h('div',{class:'fixed bottom-5 right-5 z-[100001] rounded-xl bg-zinc-950 px-4 py-3 text-sm font-semibold text-white shadow-xl'},'Atualizando…'):null,
+                renderTimerLauncher(),
+                renderModal(),
+            ],
+        });
     },
 };

@@ -75,12 +75,84 @@ test('student flashcards and questions run as one-item study sessions', () => {
     assert.doesNotMatch(student, /due\.slice\(0,100\)\.map/);
 });
 
+test('the active contest selector cannot force horizontal scrolling on mobile', () => {
+    const student = source('src/student.js');
+    const css = source('src/plugin-ui.css');
+
+    assert.match(student, /class:'mentoria-contest-selector'/);
+    assert.match(css, /\.mentoria-contest-selector\s*\{[^}]*min-width:\s*0/s);
+    assert.match(css, /@media \(max-width: 900px\)[\s\S]*\.mentoria-contest-selector\s*\{[^}]*width:\s*100%/);
+});
+
+test('calendar schedule completion opens the study form instead of closing it immediately', () => {
+    const student = source('src/student.js');
+    const calendarStart = student.indexOf("if(m.type==='scheduleDay')");
+    const calendarEnd = student.indexOf("if(m.type==='metricsDetail')", calendarStart);
+    const calendar = student.slice(calendarStart, calendarEnd);
+
+    assert.match(calendar, /btn\(item\.status==='concluido'\?'Reabrir':'Concluir'/);
+    assert.doesNotMatch(calendar, /await toggleScheduleItem\(item\);closeModal\(\);/);
+    assert.match(calendar, /await toggleScheduleItem\(item\);if\(item\.status==='concluido'\)closeModal\(\);/);
+});
+
+test('student course cards use the product cover with a polished fallback', () => {
+    const student = source('src/student.js');
+    const css = source('src/plugin-ui.css');
+    const access = readFileSync(new URL('../src/Services/AccessService.php', root), 'utf8');
+
+    assert.match(access, /use App\\Services\\StorageService;/);
+    assert.match(access, /'image_url'\s*=>\s*\$product->image\s*\?\s*\$storage->url\(\$product->image\)\s*:\s*null/);
+    assert.match(student, /c\.image_url/);
+    assert.match(student, /mentoria-course-card/);
+    assert.match(student, /mentoria-course-card__cover/);
+    assert.match(student, /Curso sem capa/);
+    assert.match(css, /\.mentoria-course-card__cover\s*\{[^}]*aspect-ratio:\s*16\s*\/\s*9/s);
+    assert.match(css, /\.mentoria-course-card__description/);
+});
+
+test('question alternatives render without a duplicated letter prefix', async () => {
+    const { displayAlternative } = await import('../src/question-alternatives.js');
+
+    assert.equal(displayAlternative('A) Atendimento preventivo'), 'Atendimento preventivo');
+    assert.equal(displayAlternative('(B) Atendimento curativo'), 'Atendimento curativo');
+    assert.equal(displayAlternative('C. Atendimento odontológico'), 'Atendimento odontológico');
+    assert.equal(displayAlternative('Texto sem prefixo'), 'Texto sem prefixo');
+});
+
+test('flashcards use a front and back instead of a correct or incorrect answer', () => {
+    const student = source('src/student.js');
+    const admin = source('src/admin.js');
+    const controller = readFileSync(new URL('../src/Http/Controllers/FlashcardController.php', root), 'utf8');
+
+    assert.match(student, /back:item\?\.back\|\|''/);
+    assert.match(student, /Verso/);
+    assert.match(student, /Flashcards usam frente e verso/);
+    assert.match(admin, /back:\s*item\?\.back\s*\|\|\s*''/);
+    assert.match(admin, /field\('Verso'/);
+    assert.match(controller, /'back'\s*=>\s*\[\$prefix\.'required', 'string'\]/);
+    assert.match(controller, /'type'\s*=>\s*'basico'/);
+    assert.doesNotMatch(controller, /O Mentoria aceita somente flashcards do tipo Certo\/Errado/);
+});
+
 test('answering a study question keeps the current session mounted', () => {
     const student = source('src/student.js');
     const start = student.indexOf('async function answerQuestion');
     const end = student.indexOf('function resetFlashcardSession');
 
     assert.match(student.slice(start, end), /\}\),'',false\);/);
+});
+
+test('answering a study question keeps the result feedback in its card', () => {
+    const student = source('src/student.js');
+    const css = source('src/plugin-ui.css');
+    const start = student.indexOf('async function answerQuestion');
+    const end = student.indexOf('function resetFlashcardSession');
+
+    assert.doesNotMatch(student.slice(start, end), /success\.value\s*=/);
+    assert.match(student, /mentoria-question-feedback--correct/);
+    assert.match(student, /mentoria-question-feedback--incorrect/);
+    assert.match(css, /\.mentoria-question-feedback--correct/);
+    assert.match(css, /\.mentoria-question-feedback--incorrect/);
 });
 
 test('radar turns measurable student gaps into actionable alerts', async () => {
@@ -136,19 +208,48 @@ test('Mentoria menus render icons and accessible larger labels', () => {
     assert.match(css, /\.mentoria-tab__icon/);
 });
 
-test('producer can open a read-only preview of a student dashboard', () => {
+test('Mentoria full pages provide a persisted light or dark theme and responsive sidebar navigation', () => {
+    const shared = source('src/shared.js');
+    const css = source('src/plugin-ui.css');
+
+    assert.match(shared, /useMentoriaShell/);
+    assert.match(shared, /mentoria-theme/);
+    assert.match(shared, /mentoria-sidebar/);
+    assert.match(shared, /mentoria-mobile-bar/);
+    assert.match(css, /\.mentoria-app--theme-light/);
+    assert.match(css, /\.mentoria-app--theme-dark/);
+    assert.match(css, /\.mentoria-app--sidebar-collapsed/);
+    assert.match(css, /\.mentoria-sidebar-backdrop/);
+    assert.doesNotMatch(css, /@media \(max-width: 900px\) \{\s*\.mentoria-tabs \{ overflow-x: auto; \}/);
+});
+
+test('producer header does not expose a student-only preview route', () => {
+    const admin = source('src/admin.js');
+
+    assert.doesNotMatch(admin, /state\.value\.student_app_base/);
+});
+
+test('producer opens the complete student workspace through a scoped mentor route', () => {
     const admin = source('src/admin.js');
     const student = source('src/student.js');
     const routes = readFileSync(new URL('../routes.php', root), 'utf8');
+    const workspaceRoutes = readFileSync(new URL('../routes-mentor-workspace.php', root), 'utf8');
     const controller = readFileSync(new URL('../src/Http/Controllers/StudentController.php', root), 'utf8');
+    const middleware = readFileSync(new URL('../src/Http/Middleware/MentorWorkspaceContext.php', root), 'utf8');
 
-    assert.match(admin, /Ver dashboard do aluno/);
+    assert.match(admin, /Abrir área do aluno/);
     assert.match(admin, /\/mentoria\/students\/['"]\s*\+\s*student\.id\s*\+\s*['"]\/preview/);
-    assert.match(student, /read_only/);
-    assert.match(student, /mentoria-app--read-only/);
+    assert.match(student, /workspace_base/);
+    assert.match(student, /acting_as_mentor/);
+    assert.doesNotMatch(student, /readOnly\.value/);
     assert.match(student, /Voltar ao painel do produtor/);
     assert.match(routes, /students\/\{student\}\/preview/);
+    assert.match(workspaceRoutes, /students\/\{student\}\/workspace\/\{tenant\}/);
+    assert.match(routes, /MentorWorkspaceContext::class/);
     assert.match(controller, /function preview\(/);
+    assert.match(middleware, /assertStudentInTenant/);
+    assert.match(middleware, /setUserResolver/);
+    assert.match(middleware, /mentor_workspace/);
 });
 
 test('build versions every Mentoria runtime dependency so a published update bypasses immutable asset caches', () => {
@@ -164,4 +265,6 @@ test('build versions every Mentoria runtime dependency so a published update byp
     for (const chunk of ['admin.js', 'student.js', 'course.js']) {
         assert.match(dist(chunk), new RegExp(`from '\\./shared\\.js${versioned.source}'`));
     }
+    assert.equal(existsSync(new URL('../dist/question-alternatives.js', root)), true);
+    assert.match(dist('student.js'), new RegExp(`from '\\./question-alternatives\\.js${versioned.source}'`));
 });

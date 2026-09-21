@@ -10,11 +10,15 @@ use Plugins\Mentoria\Http\Controllers\PanelController;
 use Plugins\Mentoria\Http\Controllers\QuestionController;
 use Plugins\Mentoria\Http\Controllers\StudyController;
 use Plugins\Mentoria\Http\Controllers\StudentController;
+use Plugins\Mentoria\Http\Middleware\MentorWorkspaceContext;
 
 Route::get('/', [PanelController::class, 'index'])->name('mentoria.index');
 Route::get('/data', [PanelController::class, 'data'])->name('mentoria.data');
 Route::get('/students/{student}', [PanelController::class, 'student'])->whereNumber('student')->name('mentoria.students.show');
 Route::get('/students/{student}/preview', [StudentController::class, 'preview'])->whereNumber('student')->name('mentoria.students.preview');
+
+Route::middleware([MentorWorkspaceContext::class])
+    ->group(__DIR__.DIRECTORY_SEPARATOR.'routes-mentor-workspace.php');
 
 Route::post('/products/{product}/enable', [PanelController::class, 'enableProduct'])->name('mentoria.products.enable');
 Route::delete('/products/{product}', [PanelController::class, 'disableProduct'])->name('mentoria.products.disable');

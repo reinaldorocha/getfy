@@ -1,5 +1,5 @@
 import { h, ref, computed, onMounted } from 'vue';
-import { api, alertBox, badge, btn, card, empty, jsonBody, sectionTitle } from './shared.js?v=b08c6e24f683';
+import { api, alertBox, badge, btn, card, empty, jsonBody, sectionTitle } from './shared.js?v=b9c6303d02c1';
 
 function flattenLessons(produto) {
     const rows = [];

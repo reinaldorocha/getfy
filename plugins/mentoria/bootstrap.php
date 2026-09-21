@@ -16,7 +16,8 @@ return static function (): void {
     ]);
 
     getfy_add_filter('inertia.shared', static function (array $shared, $request): array {
-        if (str_starts_with(trim((string) $request->path(), '/'), 'mentoria-estudos/')) {
+        $path = trim((string) $request->path(), '/');
+        if (str_starts_with($path, 'mentoria-estudos/') || str_starts_with($path, 'mentoria/students/')) {
             $shared['plugin_ui'] = \App\Plugins\PluginExtensionRegistry::inertiaPayload();
             $shared['pageTitle'] = 'Mentoria - Minha preparação';
         }

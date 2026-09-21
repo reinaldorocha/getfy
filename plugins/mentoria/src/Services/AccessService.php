@@ -4,6 +4,7 @@ namespace Plugins\Mentoria\Services;
 
 use App\Models\Product;
 use App\Models\User;
+use App\Services\StorageService;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
@@ -256,6 +257,8 @@ class AccessService
 
     public function studentCourses(User $student, int $tenantId): Collection
     {
+        $storage = new StorageService($tenantId);
+
         return $student->products()
             ->where('products.tenant_id', $tenantId)
             ->where('products.type', Product::TYPE_AREA_MEMBROS)
@@ -268,6 +271,7 @@ class AccessService
                 'slug' => $product->slug,
                 'description' => $product->description,
                 'image' => $product->image,
+                'image_url' => $product->image ? $storage->url($product->image) : null,
                 'access_url' => url('/meus-produtos/produtos/'.$product->id.'/acessar'),
             ]);
     }

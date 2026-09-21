@@ -34,8 +34,18 @@ Regras Obrigatórias:
 Segue o conteúdo programático do edital:
 [COLE AQUI O TEXTO DO SEU EDITAL OU EDITAL EM PDF]`;
 
-export const QUESTIONS_PROMPT = `Crie questões de prova no formato JSON estritamente válido.
-Responda APENAS com o JSON no seguinte formato:
+export const QUESTIONS_PROMPT = `Crie questões de concurso no formato JSON estritamente válido.
+Responda APENAS com JSON puro, sem markdown ou texto externo.
+
+Antes de gerar o JSON, use estas informações:
+- ASSUNTO / TÓPICO PRINCIPAL: [INFORME AQUI]
+- QUANTIDADE DE QUESTÕES: [EX.: 20]
+- BANCA, CARGO E NÍVEL (opcional): [INFORME AQUI]
+- MATERIAL-BASE: cole o texto abaixo OU ANEXE O PDF NESTE CHAT.
+
+Gere exatamente a quantidade solicitada, com disciplina e assunto coerentes com o conteúdo fornecido.
+
+Formato obrigatório:
 
 {
   "questoes": [
@@ -45,50 +55,61 @@ Responda APENAS com o JSON no seguinte formato:
       "tipo": "multipla_escolha",
       "enunciado": "Sobre os direitos individuais inscritos na Constituição Federal, assinale a afirmativa correta:",
       "alternativas": [
-        "A) É livre a manifestação do pensamento, sendo permitido o anonimato.",
-        "B) É assegurado o direito de resposta, proporcional ao agravo, além da indenização.",
-        "C) É inviolável a liberdade de consciência e de crença, sendo vedada a prestação de assistência religiosa nas entidades de internação coletiva.",
-        "D) A casa é asilo inviolável do indivíduo, nela ninguém podendo penetrar sem consentimento do morador, salvo em caso de flagrante delito ou desastre, ou durante a noite, por determinação judicial."
+        "É livre a manifestação do pensamento, sendo permitido o anonimato.",
+        "É assegurado o direito de resposta, proporcional ao agravo, além da indenização.",
+        "É inviolável a liberdade de consciência e de crença.",
+        "A casa é inviolável, salvo nas hipóteses constitucionais."
       ],
       "respostaCorreta": "B",
       "explicacao": "O art. 5º, V da CF/88 estabelece que é assegurado o direito de resposta, proporcional ao agravo, além da indenização por dano material, moral ou à imagem.",
       "alcance": "global"
     }
   ]
-}`;
+}
 
-export const FLASHCARDS_PROMPT = `Crie um baralho de flashcards exclusivamente de CERTO ou ERRADO para revisão rápida de concursos públicos, no formato JSON estritamente válido.
+Regras obrigatórias:
+1. Em múltipla escolha, escreva somente o texto das alternativas: NUNCA inclua A), B), C), D), números, hífens ou marcadores. A plataforma cria as letras automaticamente.
+2. "respostaCorreta" deve conter somente a letra da alternativa correta, como "B".
+3. Para tipo "certo_errado", não envie "alternativas"; use "respostaCorreta" como "Certo" ou "Errado".
+4. Não invente leis, artigos, súmulas, jurisprudência, números ou fatos. Quando houver material-base, use somente ele.
+5. Retorne somente JSON, sem markdown, comentários, saudações ou texto externo.
 
-Responda APENAS com o JSON neste formato:
+`;
+
+export const FLASHCARDS_PROMPT = `Crie um baralho de flashcards de FRENTE E VERSO para revisão de concursos públicos, no formato JSON estritamente válido.
+
+Responda APENAS com JSON puro, sem markdown ou texto externo.
+
+Antes de gerar o JSON, use estas informações:
+- ASSUNTO / TÓPICO PRINCIPAL: [INFORME AQUI]
+- QUANTIDADE DE FLASHCARDS: [EX.: 30]
+- BANCA, CARGO E NÍVEL (opcional): [INFORME AQUI]
+- MATERIAL-BASE: cole o texto abaixo OU ANEXE O PDF NESTE CHAT.
+
+Gere exatamente a quantidade solicitada. Crie cartões diretos, independentes e úteis para revisão espaçada.
+
+Formato obrigatório:
 
 {
   "nome": "Direito Constitucional - Direitos Fundamentais",
   "alcance": "global",
   "cartoes": [
     {
-      "tipo": "certo_errado",
-      "frente": "É livre a manifestação do pensamento, sendo permitido o anonimato.",
-      "respostaCorreta": "Errado",
-      "explicacao": "O art. 5º, IV, da Constituição Federal garante a livre manifestação do pensamento, mas veda o anonimato."
+      "frente": "O anonimato é permitido na manifestação do pensamento?",
+      "verso": "Não. O art. 5º, IV, da Constituição Federal garante a livre manifestação do pensamento, mas veda o anonimato."
     },
     {
-      "tipo": "certo_errado",
-      "frente": "É assegurado o direito de resposta, proporcional ao agravo, além da indenização por dano material, moral ou à imagem.",
-      "respostaCorreta": "Certo",
-      "explicacao": "A afirmação reproduz a regra do art. 5º, V, da Constituição Federal."
+      "frente": "O que o art. 5º, V, da Constituição Federal assegura?",
+      "verso": "Direito de resposta proporcional ao agravo, além de indenização por dano material, moral ou à imagem."
     }
   ]
 }
 
-Regras Obrigatórias:
-1. Gere SOMENTE flashcards do tipo "certo_errado".
-2. Cada cartão deve possuir apenas uma afirmação e duas possibilidades de resposta: Certo ou Errado.
-3. O campo "respostaCorreta" deve conter EXATAMENTE "Certo" ou "Errado".
-4. Não gere flashcards básicos, de lacuna ou de múltipla escolha. Múltipla escolha pertence ao Banco de Questões.
-5. Toda afirmação deve ter uma explicação objetiva, preferencialmente com fundamento legal, conceito, regra ou exceção relevante.
-6. Misture afirmações verdadeiras e falsas quando o conteúdo permitir, evitando que todas tenham a mesma resposta.
-7. Não invente artigos, súmulas, jurisprudência, dados ou regras.
-8. Retorne APENAS JSON puro, sem markdown, comentários, introduções ou texto fora do JSON.
+Regras obrigatórias:
+1. Cada cartão precisa de "frente" e "verso" preenchidos.
+2. A frente deve trazer uma pergunta curta, termo, conceito ou gatilho de memória; o verso deve conter a resposta objetiva e completa.
+3. Não use Certo/Errado, resposta correta, alternativas, letras ou múltipla escolha. Esse formato pertence ao Banco de Questões.
+4. Não invente leis, artigos, súmulas, jurisprudência, números ou fatos. Quando houver material-base, use somente ele.
+5. Retorne somente JSON, sem markdown, comentários, saudações ou texto externo.
 
-Conteúdo-base:
-[COLE AQUI A LEI, RESUMO, AULA, PDF OU CONTEÚDO QUE DEVE VIRAR FLASHCARDS]`;
+`;

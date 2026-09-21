@@ -3,7 +3,7 @@ import { EDITAL_PROMPT, QUESTIONS_PROMPT, FLASHCARDS_PROMPT } from './prompts.js
 import { radarAlerts } from './radar.js';
 import {
     api, alertBox, badge, btn, card, checkbox, empty, field, fmtDate, fmtDateTime, fmtHours, fmtMoney,
-    input, jsonBody, modal, optionize, progressBar, riskBadge, sectionTitle, select, stat, tabs, textarea,
+    input, jsonBody, modal, optionize, progressBar, riskBadge, sectionTitle, select, stat, textarea, mentoriaShell, useMentoriaShell,
 } from './shared.js';
 
 const TAB_ITEMS = [
@@ -36,6 +36,7 @@ export const MentoriaIndex = {
         const studentAlertFilter = ref('todos');
         const expandedDeck = ref('');
         const expandedEdict = ref('');
+        const shell = useMentoriaShell();
 
         const products = computed(() => state.value.products || []);
         const students = computed(() => state.value.students || []);
@@ -432,11 +433,9 @@ export const MentoriaIndex = {
                 deck,
                 item,
                 form: {
-                    type: 'certo_errado',
                     front: item?.front || '',
+                    back: item?.back || '',
                     hint: item?.hint || '',
-                    correct_answer: item?.correct_answer || 'Certo',
-                    explanation: item?.explanation || '',
                     tags: Array.isArray(item?.tags) ? item.tags.join(', ') : '',
                     topic_id: item?.topic_id || '',
                     subtopic_id: item?.subtopic_id || '',
@@ -446,11 +445,9 @@ export const MentoriaIndex = {
 
         async function saveCard(m) {
             const payload = {
-                type: 'certo_errado',
                 front: m.form.front,
+                back: m.form.back,
                 hint: m.form.hint || null,
-                correct_answer: m.form.correct_answer,
-                explanation: m.form.explanation || null,
                 tags: m.form.tags.split(',').map(x => x.trim()).filter(Boolean),
                 topic_id: m.form.topic_id || null,
                 subtopic_id: m.form.subtopic_id || null,
@@ -745,7 +742,7 @@ export const MentoriaIndex = {
                             h('td', { class: 'min-w-32 p-2' }, progressBar(student.metrics?.edict_percentage || 0)),
                             h('td', { class: 'p-2' }, h('div',{class:'mentoria-radar-alerts'},radarAlerts(student.metrics).map(alert=>h('button',{type:'button',class:'mentoria-radar-alert mentoria-radar-alert--'+alert.tone,title:alert.detail,onClick:()=>openStudentDetail(student)},alert.label)))),
                             h('td', { class: 'p-2 text-right' }, h('div',{class:'flex justify-end gap-1'},[
-                                h('a',{href:studentPreviewUrl(student),target:'_blank',rel:'noopener',class:'mentoria-preview-link'},'Ver dashboard do aluno'),
+                                h('a',{href:studentPreviewUrl(student),target:'_blank',rel:'noopener',class:'mentoria-preview-link'},'Abrir área do aluno'),
                                 btn('📱 WhatsApp',()=>openRadarWhatsApp(student),'success'),
                                 btn('Copiar texto',()=>copyRadarMessage(student),'ghost'),
                                 btn('Acompanhar', () => openStudentDetail(student), 'ghost'),
@@ -886,8 +883,8 @@ export const MentoriaIndex = {
 
         function renderFlashcards() {
             return card([
-                sectionTitle('Flashcards', 'Flashcards exclusivamente de Certo/Errado, com repetição espaçada e importação por IA.', h('div', { class: 'flex gap-2' }, [
-                    btn('Importar por IA / JSON', () => modalState.value = { type:'json', title:'Importar flashcards Certo/Errado', mode:'flashcards', form:{json:'',targets:[DEFAULT_TARGET()]} }, 'ghost'),
+                sectionTitle('Flashcards', 'Cartões de frente e verso, com repetição espaçada e importação por IA.', h('div', { class: 'flex gap-2' }, [
+                    btn('Importar por IA / JSON', () => modalState.value = { type:'json', title:'Importar flashcards', mode:'flashcards', form:{json:'',targets:[DEFAULT_TARGET()]} }, 'ghost'),
                     btn('Novo baralho', () => openDeck()),
                 ])),
                 decks.value.length ? h('div', { class: 'space-y-3' }, decks.value.map(deck => {
@@ -1115,11 +1112,10 @@ export const MentoriaIndex = {
             }
 
             if (m.type === 'card') {
-                return modal(m.item?'Editar flashcard':'Novo flashcard Certo/Errado',h('form',{class:'space-y-4',onSubmit:e=>{e.preventDefault();saveCard(m);}},[
-                    h('div',{class:'rounded-lg bg-zinc-50 p-3 text-xs text-zinc-500 dark:bg-zinc-800'},'Flashcards do Mentoria usam somente afirmações de Certo ou Errado. Questões de múltipla escolha ficam no Banco de Questões.'),
-                    field('Afirmação',textarea(m.form,'front',{rows:5,required:true})),
-                    field('Resposta correta',select(m.form,'correct_answer',[{value:'Certo',label:'Certo'},{value:'Errado',label:'Errado'}],{required:true})),
-                    field('Explicação / fundamento',textarea(m.form,'explanation',{rows:5})),
+                return modal(m.item?'Editar flashcard':'Novo flashcard',h('form',{class:'space-y-4',onSubmit:e=>{e.preventDefault();saveCard(m);}},[
+                    h('div',{class:'rounded-lg bg-zinc-50 p-3 text-xs text-zinc-500 dark:bg-zinc-800'},'Flashcards usam frente e verso. Questões de Certo/Errado e múltipla escolha ficam no Banco de Questões.'),
+                    field('Frente',textarea(m.form,'front',{rows:5,required:true})),
+                    field('Verso',textarea(m.form,'back',{rows:5,required:true})),
                     field('Dica (opcional)',textarea(m.form,'hint',{rows:2})),
                     field('Etiquetas (separadas por vírgula)',input(m.form,'tags')),
                     h('div',{class:'flex justify-end'},btn('Salvar',()=>saveCard(m),'primary',{})),
@@ -1148,7 +1144,7 @@ export const MentoriaIndex = {
                 const d=m.detail||{};
                 return modal('Acompanhamento · '+m.item.name,h('div',{class:'space-y-5'},[
                     h('div',{class:'flex flex-wrap justify-end gap-2'},[
-                        h('a',{href:studentPreviewUrl(m.item),target:'_blank',rel:'noopener',class:'mentoria-preview-link'},'Ver dashboard do aluno'),
+                        h('a',{href:studentPreviewUrl(m.item),target:'_blank',rel:'noopener',class:'mentoria-preview-link'},'Abrir área do aluno'),
                         btn('📱 Copiar relatório',async()=>{await navigator.clipboard.writeText(studentReportText(m.item,d,''));success.value='Relatório copiado para enviar no WhatsApp.';},'ghost'),
                         btn('📄 Relatório / PDF',()=>modalState.value={type:'studentReport',student:m.item,detail:d,form:{note:''}},'ghost'),
                     ]),
@@ -1222,22 +1218,24 @@ export const MentoriaIndex = {
             return null;
         }
 
-        return () => h('div', { class: 'mentoria-app mentoria-app--producer' }, [
-            h('div', { class: 'mentoria-page-header' }, [
-                h('div', [
-                    h('span', { class: 'mentoria-page-header__eyebrow' }, 'Área do produtor'),
-                    h('h1', {}, 'Mentoria'),
-                    h('p', {}, 'Mentoria, estudo e acompanhamento integrados ao Getfy.'),
-                ]),
-                h('a', { href: state.value.student_app_base || '#', target: '_blank', class: 'mentoria-preview-link' }, 'Prévia da área do aluno'),
-                h('a', { href: '/dashboard', class: 'mentoria-return-link' }, 'Voltar ao painel'),
-            ]),
-            alertBox(message.value),
-            alertBox(success.value, 'success'),
-            tabs(TAB_ITEMS, activeTab.value, id => { activeTab.value=id; query.value=''; }),
-            h('div', { class: 'mentoria-workspace-content' }, [renderCurrentTab()]),
-            busy.value ? h('div',{class:'fixed bottom-5 right-5 z-[100001] rounded-xl bg-zinc-950 px-4 py-3 text-sm font-semibold text-white shadow-xl'},'Salvando…') : null,
-            renderModal(),
-        ]);
+        return () => mentoriaShell({
+            shell,
+            rootClass: 'mentoria-app--producer',
+            items: TAB_ITEMS,
+            active: activeTab.value,
+            onSelect: (id) => { activeTab.value = id; query.value = ''; },
+            eyebrow: 'Área do produtor',
+                title: 'Mentoria',
+                subtitle: 'Mentoria, estudo e acompanhamento integrados ao Getfy.',
+                actions: [
+                    h('a', { href: '/dashboard', class: 'mentoria-return-link' }, 'Voltar ao painel'),
+                ],
+            notices: [alertBox(message.value), alertBox(success.value, 'success')],
+            content: renderCurrentTab(),
+            extras: [
+                busy.value ? h('div',{class:'fixed bottom-5 right-5 z-[100001] rounded-xl bg-zinc-950 px-4 py-3 text-sm font-semibold text-white shadow-xl'},'Salvando…') : null,
+                renderModal(),
+            ],
+        });
     },
 };

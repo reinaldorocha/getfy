@@ -43,8 +43,17 @@ class StudentController extends Controller
     {
         $student = $request->user();
         $this->access->assertStudentAccess($student, $tenant);
+        $workspaceBase = $request->attributes->get('mentoria.workspace_base');
+        $payload = $this->payload($student, $tenant, $request->query('contest_id'), $workspaceBase);
 
-        return response()->json($this->payload($student, $tenant, $request->query('contest_id')));
+        if ($workspaceBase) {
+            $payload['acting_as_mentor'] = true;
+            $payload['previewed_student_name'] = $student->name;
+            $payload['preview_return_url'] = url('/mentoria');
+            $payload['workspace_base'] = $workspaceBase;
+        }
+
+        return response()->json($payload);
     }
 
     public function preview(Request $request, int $student): Response
@@ -52,10 +61,12 @@ class StudentController extends Controller
         $actor = $request->user();
         $tenantId = $this->access->tenantId($actor);
         $previewedStudent = $this->access->assertStudentInTenant($actor, $student);
-        $payload = $this->payload($previewedStudent, $tenantId, $request->query('contest_id'));
-        $payload['read_only'] = true;
+        $workspaceBase = url('/mentoria/students/'.$previewedStudent->id.'/workspace/'.$tenantId);
+        $payload = $this->payload($previewedStudent, $tenantId, $request->query('contest_id'), $workspaceBase);
+        $payload['acting_as_mentor'] = true;
         $payload['previewed_student_name'] = $previewedStudent->name;
         $payload['preview_return_url'] = url('/mentoria');
+        $payload['workspace_base'] = $workspaceBase;
 
         return Inertia::render('Plugin/mentoria/Student', [
             'pluginSlug' => 'mentoria',
@@ -202,7 +213,7 @@ class StudentController extends Controller
         ]);
     }
 
-    private function payload(User $student, int $tenantId, ?string $requestedContestId = null): array
+    private function payload(User $student, int $tenantId, ?string $requestedContestId = null, ?string $workspaceBase = null): array
     {
         $studentId = (int) $student->id;
         $capabilities = $this->access->studentCapabilities($student, $tenantId);
@@ -278,12 +289,12 @@ class StudentController extends Controller
             ->get()
             ->keyBy('material_id');
 
-        $materials = $materials->map(function ($material) use ($materialProgress, $tenantId) {
+        $materials = $materials->map(function ($material) use ($materialProgress, $tenantId, $workspaceBase) {
             $progress = $materialProgress->get($material->id);
             $material->completed = (bool) ($progress?->completed ?? false);
             $material->completed_at = $progress?->completed_at;
             $material->download_url = $material->type === 'arquivo'
-                ? url('/mentoria-estudos/'.$tenantId.'/materials/'.$material->id.'/download')
+                ? ($workspaceBase ?: url('/mentoria-estudos/'.$tenantId)).'/materials/'.$material->id.'/download'
                 : null;
             return $material;
         });

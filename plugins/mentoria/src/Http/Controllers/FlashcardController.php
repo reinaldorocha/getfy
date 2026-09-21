@@ -480,11 +480,9 @@ class FlashcardController extends Controller
         $prefix = $partial ? 'sometimes|' : '';
 
         return $request->validate([
-            'type' => [$prefix.'in:certo_errado'],
             'front' => [$prefix.'required', 'string'],
+            'back' => [$prefix.'required', 'string'],
             'hint' => ['sometimes', 'nullable', 'string'],
-            'correct_answer' => [$prefix.'required', 'string', 'in:Certo,Errado,certo,errado'],
-            'explanation' => ['sometimes', 'nullable', 'string'],
             'tags' => ['sometimes', 'nullable', 'array'],
             'topic_id' => ['sometimes', 'nullable', 'uuid'],
             'subtopic_id' => ['sometimes', 'nullable', 'uuid'],
@@ -512,11 +510,9 @@ class FlashcardController extends Controller
     private function normalizeCardInput(array $raw): array
     {
         return [
-            'type' => (string) ($raw['type'] ?? $raw['tipo'] ?? 'certo_errado'),
             'front' => trim((string) ($raw['front'] ?? $raw['frente'] ?? '')),
+            'back' => trim((string) ($raw['back'] ?? $raw['verso'] ?? '')),
             'hint' => ($raw['hint'] ?? $raw['dica'] ?? null) ?: null,
-            'correct_answer' => ($raw['correct_answer'] ?? $raw['respostaCorreta'] ?? null) ?: null,
-            'explanation' => ($raw['explanation'] ?? $raw['explicacao'] ?? null) ?: null,
             'tags' => $raw['tags'] ?? $raw['etiquetas'] ?? [],
             'topic_id' => ($raw['topic_id'] ?? $raw['topicoId'] ?? null) ?: null,
             'subtopic_id' => ($raw['subtopic_id'] ?? $raw['subtopicoId'] ?? null) ?: null,
@@ -570,13 +566,13 @@ class FlashcardController extends Controller
             'id' => $id,
             'tenant_id' => $tenantId,
             'deck_id' => $deckId,
-            'type' => 'certo_errado',
+            'type' => 'basico',
             'front' => trim((string) $data['front']),
-            'back' => null,
+            'back' => trim((string) $data['back']),
             'hint' => $data['hint'] ?? null,
             'alternatives' => null,
-            'correct_answer' => $this->normalizeTrueFalseAnswer((string) ($data['correct_answer'] ?? '')),
-            'explanation' => $data['explanation'] ?? null,
+            'correct_answer' => null,
+            'explanation' => null,
             'alternative_explanations' => null,
             'tags' => ! empty($data['tags']) ? json_encode(array_values($data['tags']), JSON_UNESCAPED_UNICODE) : null,
             'topic_id' => $data['topic_id'] ?? null,
@@ -593,14 +589,11 @@ class FlashcardController extends Controller
     private function cardUpdatePayload(array $data): array
     {
         $update = $data;
-        $update['type'] = 'certo_errado';
-        $update['back'] = null;
+        $update['type'] = 'basico';
         $update['alternatives'] = null;
         $update['alternative_explanations'] = null;
-
-        if (array_key_exists('correct_answer', $update)) {
-            $update['correct_answer'] = $this->normalizeTrueFalseAnswer((string) $update['correct_answer']);
-        }
+        $update['correct_answer'] = null;
+        $update['explanation'] = null;
 
         if (array_key_exists('tags', $update)) {
             $update['tags'] = $update['tags'] === null || $update['tags'] === []
@@ -613,26 +606,16 @@ class FlashcardController extends Controller
 
     private function validateCardData(array $data): void
     {
-        $type = (string) ($data['type'] ?? 'certo_errado');
         $front = trim((string) ($data['front'] ?? ''));
+        $back = trim((string) ($data['back'] ?? ''));
 
         if ($front === '') {
             abort(422, 'A afirmação do flashcard é obrigatória.');
         }
 
-        if ($type !== 'certo_errado') {
-            abort(422, 'O Mentoria aceita somente flashcards do tipo Certo/Errado.');
+        if ($back === '') {
+            abort(422, 'O verso do flashcard Ã© obrigatÃ³rio.');
         }
-
-        $answer = mb_strtolower(trim((string) ($data['correct_answer'] ?? '')), 'UTF-8');
-        if (! in_array($answer, ['certo', 'errado'], true)) {
-            abort(422, 'A resposta correta do flashcard deve ser Certo ou Errado.');
-        }
-    }
-
-    private function normalizeTrueFalseAnswer(string $answer): string
-    {
-        return mb_strtolower(trim($answer), 'UTF-8') === 'certo' ? 'Certo' : 'Errado';
     }
 
     private function validateDeckReferences(int $tenantId, array $data, ?string $selfId = null): void

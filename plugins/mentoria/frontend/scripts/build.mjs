@@ -6,7 +6,7 @@ const frontend = fileURLToPath(new URL('..', import.meta.url));
 const dist = fileURLToPath(new URL('../../dist/', import.meta.url));
 
 await mkdir(dist, { recursive: true });
-const files = ['plugin-ui.js', 'admin.js', 'student.js', 'course.js', 'shared.js', 'radar.js', 'prompts.js', 'plugin-ui.css'];
+const files = ['plugin-ui.js', 'admin.js', 'student.js', 'course.js', 'shared.js', 'radar.js', 'prompts.js', 'question-alternatives.js', 'plugin-ui.css'];
 const sourceFiles = await Promise.all(files.map(async (file) => [file, await readFile(`${frontend}/src/${file}`, 'utf8')]));
 const version = createHash('sha256')
   .update(sourceFiles.map(([, content]) => content).join('\0'))
