@@ -90,7 +90,13 @@ class VitrineCheckoutService
 
         $settings = VitrineSetting::forTenant($tenantId);
         $pgConfig = is_array($settings->payment_gateways) ? $settings->payment_gateways : [];
-        $selectedGateway = $pgConfig[$method] ?? ($method === 'pix' ? 'mercadopago' : 'pagarme');
+        $defaultFallback = $method === 'pix' ? 'mercadopago' : ($method === 'boleto' ? 'mercadopago' : 'pagarme');
+        $selectedGateway = array_key_exists($method, $pgConfig) ? ($pgConfig[$method] ?: 'disabled') : $defaultFallback;
+
+        if ($selectedGateway === 'disabled' || empty($selectedGateway)) {
+            $methodName = $method === 'pix' ? 'PIX' : ($method === 'boleto' ? 'Boleto Bancário' : 'Cartão de Crédito');
+            throw new \Exception("A forma de pagamento {$methodName} não está disponível no momento.");
+        }
 
         // Calcular taxas de parcelamento caso o método seja cartão e o gateway seja Pagar.me
         $installments = max(1, min(12, (int) ($data['installments'] ?? 1)));

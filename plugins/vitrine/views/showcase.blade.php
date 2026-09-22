@@ -64,6 +64,14 @@
         ::-webkit-scrollbar-thumb { background: #222222; border-radius: 4px; }
         ::-webkit-scrollbar-thumb:hover { background: var(--color-brand-magenta); }
 
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+
         .glass-card {
             background: rgba(18, 18, 18, 0.75);
             backdrop-filter: blur(16px);
@@ -158,25 +166,8 @@
                 </span>
             </div>
 
-            <!-- Actions: WhatsApp & Cart -->
+            <!-- Actions: Cart -->
             <div class="flex items-center gap-3 sm:gap-4">
-                @if($settings->globalWhatsapp)
-                    @php
-                        $cleanPhone = preg_replace('/[^0-9]/', '', $settings->globalWhatsapp);
-                        $whatsappUrl = "https://wa.me/{$cleanPhone}?text=" . urlencode("Olá! Conheci sua vitrine e gostaria de mais informações.");
-                    @endphp
-
-                    <a 
-                        href="{{ $whatsappUrl }}" 
-                        target="_blank" 
-                        rel="noopener noreferrer"
-                        class="px-3.5 sm:px-4 py-2 rounded-full border border-emerald-500/40 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 hover:border-emerald-500 transition-all flex items-center gap-2 text-xs font-bold uppercase tracking-wider"
-                    >
-                        <i data-lucide="message-square" class="w-4 h-4"></i>
-                        <span class="hidden sm:inline">WhatsApp</span>
-                    </a>
-                @endif
-
                 <!-- Carrinho Button -->
                 <button 
                     id="btn-open-cart"
@@ -526,23 +517,50 @@
                         @endif
                     </div>
 
-                    <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-6">
-                        @foreach($approvals as $approval)
-                            <div 
-                                onclick="openLightbox('{{ $approval->imageUrl }}')"
-                                class="rounded-2xl overflow-hidden border border-white/10 bg-[#121212] aspect-[4/5] relative group cursor-pointer hover:border-brand-magenta/50 hover:-translate-y-1 transition-all duration-300 shadow-xl"
-                            >
-                                <img 
-                                    src="{{ $approval->imageUrl }}" 
-                                    alt="Depoimento / Aprovado" 
-                                    class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                                    onerror="this.src='https://images.unsplash.com/photo-1523240795612-9a054b0db644?q=80&w=350'"
-                                />
-                                <div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                                    <i data-lucide="zoom-in" class="w-8 h-8 text-brand-magenta"></i>
+                    <div class="relative group/approvals">
+                        <!-- Navigation Arrows -->
+                        <button 
+                            type="button" 
+                            onclick="scrollApprovals(-1)"
+                            aria-label="Anterior"
+                            class="absolute -left-2 sm:-left-5 top-1/2 -translate-y-1/2 z-20 w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-[#161616]/90 hover:bg-brand-magenta border border-white/15 hover:border-brand-magenta text-white flex items-center justify-center shadow-2xl backdrop-blur-md transition-all hover:scale-110 cursor-pointer"
+                        >
+                            <i data-lucide="chevron-left" class="w-5 h-5 sm:w-6 sm:h-6"></i>
+                        </button>
+
+                        <button 
+                            type="button" 
+                            onclick="scrollApprovals(1)"
+                            aria-label="Próximo"
+                            class="absolute -right-2 sm:-right-5 top-1/2 -translate-y-1/2 z-20 w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-[#161616]/90 hover:bg-brand-magenta border border-white/15 hover:border-brand-magenta text-white flex items-center justify-center shadow-2xl backdrop-blur-md transition-all hover:scale-110 cursor-pointer"
+                        >
+                            <i data-lucide="chevron-right" class="w-5 h-5 sm:w-6 sm:h-6"></i>
+                        </button>
+
+                        <!-- Scrollable Track -->
+                        <div 
+                            id="approvals-scroll-track" 
+                            class="flex gap-4 sm:gap-6 overflow-x-auto pb-4 pt-2 px-1 snap-x snap-mandatory scroll-smooth no-scrollbar"
+                            style="scrollbar-width: none; -ms-overflow-style: none;"
+                        >
+                            @foreach($approvals as $approval)
+                                <div 
+                                    onclick="openLightbox('{{ $approval->imageUrl }}')"
+                                    class="w-[200px] sm:w-[240px] md:w-[260px] shrink-0 snap-start rounded-2xl overflow-hidden border border-white/10 bg-[#121212] aspect-[4/5] relative group cursor-pointer hover:border-brand-magenta/50 hover:-translate-y-1 transition-all duration-300 shadow-xl"
+                                >
+                                    <img 
+                                        src="{{ $approval->imageUrl }}" 
+                                        alt="Depoimento / Aprovado" 
+                                        loading="lazy"
+                                        class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                                        onerror="this.src='https://images.unsplash.com/photo-1523240795612-9a054b0db644?q=80&w=350'"
+                                    />
+                                    <div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                        <i data-lucide="zoom-in" class="w-8 h-8 text-brand-magenta"></i>
+                                    </div>
                                 </div>
-                            </div>
-                        @endforeach
+                            @endforeach
+                        </div>
                     </div>
 
                 </div>
@@ -762,28 +780,51 @@
                             <i data-lucide="credit-card" class="w-4 h-4 text-brand-magenta"></i> 2. Forma de Pagamento
                         </h4>
 
-                        <div class="grid grid-cols-3 gap-2">
-                            <button type="button" onclick="selectPaymentMethod('pix', this)" class="pay-method-btn active py-3 px-2 rounded-xl border border-brand-magenta bg-brand-magenta/15 text-white text-center transition-all cursor-pointer">
-                                <i data-lucide="zap" class="w-5 h-5 text-brand-magenta mx-auto mb-1"></i>
-                                <span class="text-[11px] font-black uppercase tracking-wider block">PIX</span>
-                                <span class="text-[9px] text-emerald-400 font-bold block">Imediato</span>
-                            </button>
+                        @php
+                            $savedGateways = is_array($settings->payment_gateways) ? $settings->payment_gateways : [];
+                            $isPixEnabled = ($savedGateways['pix'] ?? 'mercadopago') !== 'disabled' && !empty($savedGateways['pix'] ?? 'mercadopago');
+                            $isCardEnabled = ($savedGateways['card'] ?? 'pagarme') !== 'disabled' && !empty($savedGateways['card'] ?? 'pagarme');
+                            $isBoletoEnabled = ($savedGateways['boleto'] ?? 'mercadopago') !== 'disabled' && !empty($savedGateways['boleto'] ?? 'mercadopago');
 
-                            <button type="button" onclick="selectPaymentMethod('card', this)" class="pay-method-btn py-3 px-2 rounded-xl border border-white/10 bg-[#1c1c1c] text-white/70 text-center transition-all cursor-pointer hover:border-brand-magenta/40">
-                                <i data-lucide="credit-card" class="w-5 h-5 text-white/60 mx-auto mb-1"></i>
-                                <span class="text-[11px] font-black uppercase tracking-wider block">Cartão</span>
-                                <span class="text-[9px] text-white/40 block">Até 12x</span>
-                            </button>
+                            $defaultMethod = $isPixEnabled ? 'pix' : ($isCardEnabled ? 'card' : ($isBoletoEnabled ? 'boleto' : ''));
+                            $colCount = ($isPixEnabled ? 1 : 0) + ($isCardEnabled ? 1 : 0) + ($isBoletoEnabled ? 1 : 0);
+                            $gridColsClass = $colCount === 3 ? 'grid-cols-3' : ($colCount === 2 ? 'grid-cols-2' : 'grid-cols-1');
+                        @endphp
 
-                            <button type="button" onclick="selectPaymentMethod('boleto', this)" class="pay-method-btn py-3 px-2 rounded-xl border border-white/10 bg-[#1c1c1c] text-white/70 text-center transition-all cursor-pointer hover:border-brand-magenta/40">
-                                <i data-lucide="file-text" class="w-5 h-5 text-white/60 mx-auto mb-1"></i>
-                                <span class="text-[11px] font-black uppercase tracking-wider block">Boleto</span>
-                                <span class="text-[9px] text-white/40 block">Até 72h</span>
-                            </button>
-                        </div>
+                        @if($colCount > 0)
+                            <div class="grid {{ $gridColsClass }} gap-2">
+                                @if($isPixEnabled)
+                                    <button type="button" onclick="selectPaymentMethod('pix', this)" class="pay-method-btn {{ $defaultMethod === 'pix' ? 'active border-brand-magenta bg-brand-magenta/15 text-white' : 'border-white/10 bg-[#1c1c1c] text-white/70' }} py-3 px-2 rounded-xl border text-center transition-all cursor-pointer">
+                                        <i data-lucide="zap" class="w-5 h-5 {{ $defaultMethod === 'pix' ? 'text-brand-magenta' : 'text-white/60' }} mx-auto mb-1"></i>
+                                        <span class="text-[11px] font-black uppercase tracking-wider block">PIX</span>
+                                        <span class="text-[9px] text-emerald-400 font-bold block">Imediato</span>
+                                    </button>
+                                @endif
+
+                                @if($isCardEnabled)
+                                    <button type="button" onclick="selectPaymentMethod('card', this)" class="pay-method-btn {{ $defaultMethod === 'card' ? 'active border-brand-magenta bg-brand-magenta/15 text-white' : 'border-white/10 bg-[#1c1c1c] text-white/70' }} py-3 px-2 rounded-xl border text-center transition-all cursor-pointer hover:border-brand-magenta/40">
+                                        <i data-lucide="credit-card" class="w-5 h-5 {{ $defaultMethod === 'card' ? 'text-brand-magenta' : 'text-white/60' }} mx-auto mb-1"></i>
+                                        <span class="text-[11px] font-black uppercase tracking-wider block">Cartão</span>
+                                        <span class="text-[9px] text-white/40 block">Até 12x</span>
+                                    </button>
+                                @endif
+
+                                @if($isBoletoEnabled)
+                                    <button type="button" onclick="selectPaymentMethod('boleto', this)" class="pay-method-btn {{ $defaultMethod === 'boleto' ? 'active border-brand-magenta bg-brand-magenta/15 text-white' : 'border-white/10 bg-[#1c1c1c] text-white/70' }} py-3 px-2 rounded-xl border text-center transition-all cursor-pointer hover:border-brand-magenta/40">
+                                        <i data-lucide="file-text" class="w-5 h-5 {{ $defaultMethod === 'boleto' ? 'text-brand-magenta' : 'text-white/60' }} mx-auto mb-1"></i>
+                                        <span class="text-[11px] font-black uppercase tracking-wider block">Boleto</span>
+                                        <span class="text-[9px] text-white/40 block">Até 72h</span>
+                                    </button>
+                                @endif
+                            </div>
+                        @else
+                            <div class="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs text-amber-300">
+                                Nenhum método de pagamento está ativado no momento.
+                            </div>
+                        @endif
 
                         <!-- Pix description -->
-                        <div id="payment-pix-details" class="p-3.5 rounded-lg bg-[#1c1c1c] border border-white/5 text-xs text-brand-gray-light/70 space-y-1.5">
+                        <div id="payment-pix-details" class="{{ $defaultMethod === 'pix' ? '' : 'hidden' }} p-3.5 rounded-lg bg-[#1c1c1c] border border-white/5 text-xs text-brand-gray-light/70 space-y-1.5">
                             <p class="font-bold text-white flex items-center gap-1.5">
                                 <i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-400"></i> Liberação Imediata
                             </p>
@@ -791,7 +832,7 @@
                         </div>
 
                         <!-- Card details (if card selected) -->
-                        <div id="payment-card-details" class="hidden space-y-3">
+                        <div id="payment-card-details" class="{{ $defaultMethod === 'card' ? '' : 'hidden' }} space-y-3">
                             <div>
                                 <label class="block text-[11px] font-bold uppercase text-white/70 mb-1">Número do Cartão *</label>
                                 <input type="text" id="chk-card-number" placeholder="0000 0000 0000 0000" maxlength="19" class="w-full bg-[#1c1c1c] border border-white/10 rounded-lg px-3.5 py-2.5 text-xs text-white placeholder-white/20 focus:border-brand-magenta outline-none" />
@@ -819,7 +860,7 @@
                         </div>
 
                         <!-- Boleto details (if boleto selected) -->
-                        <div id="payment-boleto-details" class="hidden p-3.5 rounded-lg bg-[#1c1c1c] border border-white/5 text-xs text-brand-gray-light/70 space-y-1">
+                        <div id="payment-boleto-details" class="{{ $defaultMethod === 'boleto' ? '' : 'hidden' }} p-3.5 rounded-lg bg-[#1c1c1c] border border-white/5 text-xs text-brand-gray-light/70 space-y-1">
                             <p class="font-bold text-white">Boleto Bancário</p>
                             <p class="text-[11px]">Compensação em até 72 horas úteis. O comprovante é enviado no seu e-mail.</p>
                         </div>
@@ -915,6 +956,28 @@
         <img id="lightbox-image" src="" alt="Ampliado" class="max-w-full max-h-[85vh] rounded-2xl object-contain shadow-2xl border border-brand-magenta/30" />
     </div>
 
+    <!-- 5. FLOATING WHATSAPP BUTTON -->
+    @if($settings->globalWhatsapp)
+        @php
+            $cleanPhone = preg_replace('/[^0-9]/', '', $settings->globalWhatsapp);
+            $whatsappUrl = "https://wa.me/{$cleanPhone}?text=" . urlencode("Olá! Conheci sua vitrine e gostaria de mais informações.");
+        @endphp
+        <aside aria-label="WhatsApp">
+            <a 
+                href="{{ $whatsappUrl }}" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                class="fixed bottom-6 right-6 z-40 bg-[#25D366] hover:bg-[#20ba59] text-white p-3.5 sm:p-4 rounded-full shadow-[0_4px_25px_rgba(37,211,102,0.5)] hover:shadow-[0_6px_30px_rgba(37,211,102,0.7)] flex items-center justify-center transition-all duration-300 hover:scale-110 group cursor-pointer"
+                title="Fale conosco no WhatsApp"
+                aria-label="Fale conosco no WhatsApp"
+            >
+                <svg class="w-7 h-7 fill-current" viewBox="0 0 24 24">
+                    <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z"/>
+                </svg>
+            </a>
+        </aside>
+    @endif
+
     <!-- ============================================== -->
     <!-- JAVASCRIPT STATE MANAGEMENT & ACTIONS          -->
     <!-- ============================================== -->
@@ -924,7 +987,7 @@
 
         // Carrinho State
         let cart = JSON.parse(localStorage.getItem('vitrine_cart') || '[]');
-        let selectedPaymentMethod = 'pix';
+        let selectedPaymentMethod = '{{ $defaultMethod ?? "pix" }}';
 
         function updateCartBadge() {
             const badge = document.getElementById('cart-counter-badge');
@@ -1203,15 +1266,28 @@
         function selectPaymentMethod(method, btn) {
             selectedPaymentMethod = method;
             document.querySelectorAll('.pay-method-btn').forEach(b => {
-                b.classList.remove('active', 'border-brand-magenta', 'bg-brand-magenta/15');
-                b.classList.add('border-white/10', 'bg-[#1c1c1c]');
+                b.classList.remove('active', 'border-brand-magenta', 'bg-brand-magenta/15', 'text-white');
+                b.classList.add('border-white/10', 'bg-[#1c1c1c]', 'text-white/70');
+                const icon = b.querySelector('svg, i');
+                if (icon) {
+                    icon.classList.remove('text-brand-magenta');
+                    icon.classList.add('text-white/60');
+                }
             });
-            btn.classList.add('active', 'border-brand-magenta', 'bg-brand-magenta/15');
-            btn.classList.remove('border-white/10', 'bg-[#1c1c1c]');
+            btn.classList.add('active', 'border-brand-magenta', 'bg-brand-magenta/15', 'text-white');
+            btn.classList.remove('border-white/10', 'bg-[#1c1c1c]', 'text-white/70');
+            const activeIcon = btn.querySelector('svg, i');
+            if (activeIcon) {
+                activeIcon.classList.add('text-brand-magenta');
+                activeIcon.classList.remove('text-white/60');
+            }
 
-            document.getElementById('payment-pix-details').classList.toggle('hidden', method !== 'pix');
-            document.getElementById('payment-card-details').classList.toggle('hidden', method !== 'card');
-            document.getElementById('payment-boleto-details').classList.toggle('hidden', method !== 'boleto');
+            const pixEl = document.getElementById('payment-pix-details');
+            const cardEl = document.getElementById('payment-card-details');
+            const boletoEl = document.getElementById('payment-boleto-details');
+            if (pixEl) pixEl.classList.toggle('hidden', method !== 'pix');
+            if (cardEl) cardEl.classList.toggle('hidden', method !== 'card');
+            if (boletoEl) boletoEl.classList.toggle('hidden', method !== 'boleto');
 
             updateCheckoutTotalPrice();
         }
@@ -1579,6 +1655,14 @@
             const modal = document.getElementById('lightbox-modal');
             modal.classList.add('hidden');
             modal.classList.remove('flex');
+        }
+
+        // SCROLL APPROVALS HORIZONTALLY
+        function scrollApprovals(direction) {
+            const track = document.getElementById('approvals-scroll-track');
+            if (!track) return;
+            const scrollAmount = track.clientWidth * 0.75;
+            track.scrollBy({ left: direction * scrollAmount, behavior: 'smooth' });
         }
 
         // Initial setup

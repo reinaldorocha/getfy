@@ -398,9 +398,14 @@
                                 <h5 class="text-xs font-bold text-white">{{ $f->question }}</h5>
                                 <p class="text-xs text-white/60 font-light leading-relaxed whitespace-pre-line">{{ $f->answer }}</p>
                             </div>
-                            <button onclick="deleteFaq({{ $f->id }})" class="p-1.5 text-white/40 hover:text-red-400 transition-colors">
-                                <i data-lucide="trash-2" class="w-4 h-4"></i>
-                            </button>
+                            <div class="flex items-center gap-1 shrink-0">
+                                <button type="button" onclick="openEditFaqModal({{ $f->id }}, {{ json_encode($f->question) }}, {{ json_encode($f->answer) }})" class="p-1.5 text-white/40 hover:text-brand-light-magenta transition-colors" title="Editar Pergunta">
+                                    <i data-lucide="pencil" class="w-4 h-4"></i>
+                                </button>
+                                <button type="button" onclick="deleteFaq({{ $f->id }})" class="p-1.5 text-white/40 hover:text-red-400 transition-colors" title="Excluir Pergunta">
+                                    <i data-lucide="trash-2" class="w-4 h-4"></i>
+                                </button>
+                            </div>
                         </div>
                     @endforeach
                 </div>
@@ -423,9 +428,9 @@
 
                 @php
                     $savedGateways = is_array($settings->payment_gateways) ? $settings->payment_gateways : [];
-                    $pixGateway = $savedGateways['pix'] ?? 'mercadopago';
-                    $cardGateway = $savedGateways['card'] ?? 'pagarme';
-                    $boletoGateway = $savedGateways['boleto'] ?? 'mercadopago';
+                    $pixGateway = array_key_exists('pix', $savedGateways) ? ($savedGateways['pix'] ?: 'disabled') : 'mercadopago';
+                    $cardGateway = array_key_exists('card', $savedGateways) ? ($savedGateways['card'] ?: 'disabled') : 'pagarme';
+                    $boletoGateway = array_key_exists('boleto', $savedGateways) ? ($savedGateways['boleto'] ?: 'disabled') : 'mercadopago';
                 @endphp
 
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -445,7 +450,7 @@
                             <div>
                                 <label class="block text-[11px] font-bold uppercase text-white/70 mb-1.5">Gateway PIX</label>
                                 <select id="cfg-gateway-pix" class="w-full bg-[#1c1c1c] border border-[#2d2d2d] focus:border-brand-magenta rounded-lg px-3.5 py-2.5 text-xs text-white outline-none">
-                                    <option value="">(Nenhum / Desativado)</option>
+                                    <option value="disabled" {{ ($pixGateway === 'disabled' || empty($pixGateway)) ? 'selected' : '' }}>(Nenhum / Desativado)</option>
                                     <option value="pix_direct" {{ $pixGateway === 'pix_direct' ? 'selected' : '' }}>PIX Nativo Getfy (Chave Pix)</option>
                                     @foreach($gateways_by_method['pix'] ?? [] as $g)
                                         <option value="{{ $g['slug'] }}" {{ $pixGateway === $g['slug'] ? 'selected' : '' }}>
@@ -477,7 +482,7 @@
                             <div>
                                 <label class="block text-[11px] font-bold uppercase text-white/70 mb-1.5">Gateway Cartão</label>
                                 <select id="cfg-gateway-card" class="w-full bg-[#1c1c1c] border border-[#2d2d2d] focus:border-brand-magenta rounded-lg px-3.5 py-2.5 text-xs text-white outline-none">
-                                    <option value="">(Nenhum / Desativado)</option>
+                                    <option value="disabled" {{ ($cardGateway === 'disabled' || empty($cardGateway)) ? 'selected' : '' }}>(Nenhum / Desativado)</option>
                                     @foreach($gateways_by_method['card'] ?? [] as $g)
                                         <option value="{{ $g['slug'] }}" {{ $cardGateway === $g['slug'] ? 'selected' : '' }}>
                                             {{ $g['name'] }}
@@ -508,7 +513,7 @@
                             <div>
                                 <label class="block text-[11px] font-bold uppercase text-white/70 mb-1.5">Gateway Boleto</label>
                                 <select id="cfg-gateway-boleto" class="w-full bg-[#1c1c1c] border border-[#2d2d2d] focus:border-brand-magenta rounded-lg px-3.5 py-2.5 text-xs text-white outline-none">
-                                    <option value="">(Nenhum / Desativado)</option>
+                                    <option value="disabled" {{ ($boletoGateway === 'disabled' || empty($boletoGateway)) ? 'selected' : '' }}>(Nenhum / Desativado)</option>
                                     @foreach($gateways_by_method['boleto'] ?? [] as $g)
                                         <option value="{{ $g['slug'] }}" {{ $boletoGateway === $g['slug'] ? 'selected' : '' }}>
                                             {{ $g['name'] }}
@@ -846,6 +851,44 @@
     </div>
 
     <!-- ============================================== -->
+    <!-- MODAL: EDITAR FAQ                              -->
+    <!-- ============================================== -->
+    <div id="modal-edit-faq" class="fixed inset-0 z-50 hidden bg-black/80 backdrop-blur-sm items-center justify-center p-4 overflow-y-auto">
+        <div class="bg-[#121212] border border-brand-magenta/30 rounded-2xl w-full max-w-lg shadow-2xl p-6 relative my-auto space-y-4">
+            <button type="button" onclick="closeEditFaqModal()" class="absolute top-4 right-4 p-1.5 rounded-lg text-white/60 hover:text-white">
+                <i data-lucide="x" class="w-5 h-5"></i>
+            </button>
+
+            <h3 class="text-base font-black text-white flex items-center gap-2">
+                <i data-lucide="help-circle" class="w-5 h-5 text-brand-magenta"></i>
+                Editar Pergunta do FAQ
+            </h3>
+
+            <input type="hidden" id="edit-faq-id" />
+
+            <div class="space-y-3">
+                <div>
+                    <label class="block text-[11px] font-bold uppercase text-white/70 mb-1">Pergunta *</label>
+                    <input type="text" id="edit-faq-question" class="w-full bg-[#1c1c1c] border border-[#2d2d2d] focus:border-brand-magenta rounded-lg px-3.5 py-2.5 text-xs text-white outline-none" required />
+                </div>
+                <div>
+                    <label class="block text-[11px] font-bold uppercase text-white/70 mb-1">Resposta *</label>
+                    <textarea id="edit-faq-answer" rows="4" class="w-full bg-[#1c1c1c] border border-[#2d2d2d] focus:border-brand-magenta rounded-lg p-3 text-xs text-white outline-none" required></textarea>
+                </div>
+            </div>
+
+            <div class="flex justify-end gap-3 pt-3 border-t border-white/5">
+                <button type="button" onclick="closeEditFaqModal()" class="px-4 py-2 text-xs font-bold text-white/60 hover:text-white">
+                    Cancelar
+                </button>
+                <button type="button" onclick="saveEditFaq()" class="btn-magenta px-5 py-2 rounded-lg text-xs font-black uppercase tracking-wider">
+                    Salvar Alterações
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============================================== -->
     <!-- JAVASCRIPT LOGIC                               -->
     <!-- ============================================== -->
     <script>
@@ -1007,6 +1050,53 @@
                 }
             } catch (e) {
                 alert('Erro ao excluir FAQ.');
+            }
+        }
+
+        function openEditFaqModal(id, question, answer) {
+            document.getElementById('edit-faq-id').value = id;
+            document.getElementById('edit-faq-question').value = question;
+            document.getElementById('edit-faq-answer').value = answer;
+
+            const modal = document.getElementById('modal-edit-faq');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            if (window.lucide) lucide.createIcons();
+        }
+
+        function closeEditFaqModal() {
+            const modal = document.getElementById('modal-edit-faq');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+        }
+
+        async function saveEditFaq() {
+            const id = document.getElementById('edit-faq-id').value;
+            const q = document.getElementById('edit-faq-question').value.trim();
+            const a = document.getElementById('edit-faq-answer').value.trim();
+
+            if (!q || !a) {
+                alert('Preencha a pergunta e a resposta.');
+                return;
+            }
+
+            try {
+                const res = await fetch('{{ url("/vitrine/admin/faqs") }}/' + id, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                    },
+                    body: JSON.stringify({ question: q, answer: a })
+                });
+                if (res.ok) {
+                    showToast('Pergunta atualizada com sucesso!');
+                    window.location.reload();
+                } else {
+                    alert('Erro ao atualizar FAQ.');
+                }
+            } catch (e) {
+                alert('Erro de conexão ao atualizar FAQ.');
             }
         }
 
@@ -1216,9 +1306,9 @@
 
         async function savePaymentGateways() {
             const payment_gateways = {
-                pix: document.getElementById('cfg-gateway-pix').value,
-                card: document.getElementById('cfg-gateway-card').value,
-                boleto: document.getElementById('cfg-gateway-boleto').value,
+                pix: document.getElementById('cfg-gateway-pix').value || 'disabled',
+                card: document.getElementById('cfg-gateway-card').value || 'disabled',
+                boleto: document.getElementById('cfg-gateway-boleto').value || 'disabled',
             };
 
             try {
