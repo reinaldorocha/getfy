@@ -718,7 +718,6 @@
                     </div>
                     <div>
                         <h2 class="text-base sm:text-lg font-black text-white">Checkout Seguro</h2>
-                        <p class="text-[11px] text-white/50">Ambiente criptografado com SSL 256-bit</p>
                     </div>
                 </div>
                 <button onclick="closeCheckoutModal()" class="text-white/60 hover:text-white p-2 rounded-lg hover:bg-white/5 transition-colors">
@@ -867,7 +866,7 @@
                                 <i data-lucide="check" class="w-3.5 h-3.5 text-emerald-400"></i> Garantia de 7 dias ou seu dinheiro de volta
                             </p>
                             <p class="flex items-center justify-center gap-1.5">
-                                <i data-lucide="shield" class="w-3.5 h-3.5 text-brand-magenta"></i> Pagamento seguro com checkout Getfy
+                                <i data-lucide="shield" class="w-3.5 h-3.5 text-brand-magenta"></i> Pagamento Seguro
                             </p>
                         </div>
                     </div>
