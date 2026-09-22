@@ -523,7 +523,7 @@
                             type="button" 
                             onclick="scrollApprovals(-1)"
                             aria-label="Anterior"
-                            class="absolute -left-2 sm:-left-5 top-1/2 -translate-y-1/2 z-20 w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-[#161616]/90 hover:bg-brand-magenta border border-white/15 hover:border-brand-magenta text-white flex items-center justify-center shadow-2xl backdrop-blur-md transition-all hover:scale-110 cursor-pointer"
+                            class="absolute -left-2 sm:-left-6 top-1/2 -translate-y-1/2 z-20 w-11 h-11 sm:w-12 sm:h-12 rounded-full bg-[#161616]/95 hover:bg-brand-magenta border border-white/20 hover:border-brand-magenta text-white flex items-center justify-center shadow-2xl backdrop-blur-md transition-all hover:scale-110 cursor-pointer"
                         >
                             <i data-lucide="chevron-left" class="w-5 h-5 sm:w-6 sm:h-6"></i>
                         </button>
@@ -532,30 +532,30 @@
                             type="button" 
                             onclick="scrollApprovals(1)"
                             aria-label="Próximo"
-                            class="absolute -right-2 sm:-right-5 top-1/2 -translate-y-1/2 z-20 w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-[#161616]/90 hover:bg-brand-magenta border border-white/15 hover:border-brand-magenta text-white flex items-center justify-center shadow-2xl backdrop-blur-md transition-all hover:scale-110 cursor-pointer"
+                            class="absolute -right-2 sm:-right-6 top-1/2 -translate-y-1/2 z-20 w-11 h-11 sm:w-12 sm:h-12 rounded-full bg-[#161616]/95 hover:bg-brand-magenta border border-white/20 hover:border-brand-magenta text-white flex items-center justify-center shadow-2xl backdrop-blur-md transition-all hover:scale-110 cursor-pointer"
                         >
                             <i data-lucide="chevron-right" class="w-5 h-5 sm:w-6 sm:h-6"></i>
                         </button>
 
-                        <!-- Scrollable Track -->
+                        <!-- Scrollable Track with safe vertical and horizontal padding -->
                         <div 
                             id="approvals-scroll-track" 
-                            class="flex gap-4 sm:gap-6 overflow-x-auto pb-4 pt-2 px-1 snap-x snap-mandatory scroll-smooth no-scrollbar"
+                            class="flex gap-4 sm:gap-6 overflow-x-auto py-5 px-3 sm:px-6 snap-x snap-mandatory scroll-smooth no-scrollbar"
                             style="scrollbar-width: none; -ms-overflow-style: none;"
                         >
                             @foreach($approvals as $approval)
                                 <div 
                                     onclick="openLightbox('{{ $approval->imageUrl }}')"
-                                    class="w-[200px] sm:w-[240px] md:w-[260px] shrink-0 snap-start rounded-2xl overflow-hidden border border-white/10 bg-[#121212] aspect-[4/5] relative group cursor-pointer hover:border-brand-magenta/50 hover:-translate-y-1 transition-all duration-300 shadow-xl"
+                                    class="w-[240px] sm:w-[280px] md:w-[300px] h-[350px] sm:h-[410px] md:h-[430px] shrink-0 snap-start rounded-2xl overflow-hidden border border-white/10 bg-[#121212] relative group cursor-pointer hover:border-brand-magenta/50 hover:-translate-y-1.5 transition-all duration-300 shadow-xl flex items-center justify-center"
                                 >
                                     <img 
                                         src="{{ $approval->imageUrl }}" 
                                         alt="Depoimento / Aprovado" 
                                         loading="lazy"
-                                        class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                                        class="w-full h-full object-contain p-2 rounded-2xl group-hover:scale-105 transition-transform duration-500"
                                         onerror="this.src='https://images.unsplash.com/photo-1523240795612-9a054b0db644?q=80&w=350'"
                                     />
-                                    <div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                    <div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center rounded-2xl pointer-events-none">
                                         <i data-lucide="zoom-in" class="w-8 h-8 text-brand-magenta"></i>
                                     </div>
                                 </div>
