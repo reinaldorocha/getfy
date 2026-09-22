@@ -31,6 +31,8 @@ class VitrineSetting extends Model
 
     protected $casts = [
         'is_maintenance' => 'boolean',
+        'approvals_autoplay' => 'boolean',
+        'approvals_speed' => 'integer',
         'excluded_products' => 'array',
         'payment_gateways' => 'array',
     ];
@@ -87,6 +89,8 @@ class VitrineSetting extends Model
             'priceLabel' => 'Investimento',
             'globalWhatsapp' => null,
             'whatsappMessage' => 'Olá! Conheci sua vitrine e gostaria de mais informações.',
+            'approvals_autoplay' => true,
+            'approvals_speed' => 4,
             'seoTitle' => $appName . ' | Vitrine de Cursos',
             'seoDescription' => null,
         ];
@@ -99,12 +103,22 @@ class VitrineSetting extends Model
 
     public static function forTenant(int $tenantId = 1): self
     {
-        if (Schema::hasTable('plugin_vitrine_settings') && ! Schema::hasColumn('plugin_vitrine_settings', 'whatsappMessage')) {
-            try {
-                Schema::table('plugin_vitrine_settings', function (\Illuminate\Database\Schema\Blueprint $table) {
-                    $table->text('whatsappMessage')->nullable();
-                });
-            } catch (\Throwable) {}
+        if (Schema::hasTable('plugin_vitrine_settings')) {
+            if (! Schema::hasColumn('plugin_vitrine_settings', 'whatsappMessage')) {
+                try {
+                    Schema::table('plugin_vitrine_settings', function (\Illuminate\Database\Schema\Blueprint $table) {
+                        $table->text('whatsappMessage')->nullable();
+                    });
+                } catch (\Throwable) {}
+            }
+            if (! Schema::hasColumn('plugin_vitrine_settings', 'approvals_autoplay')) {
+                try {
+                    Schema::table('plugin_vitrine_settings', function (\Illuminate\Database\Schema\Blueprint $table) {
+                        $table->boolean('approvals_autoplay')->default(true);
+                        $table->integer('approvals_speed')->default(4);
+                    });
+                } catch (\Throwable) {}
+            }
         }
 
         $setting = static::where('tenant_id', $tenantId)->first();

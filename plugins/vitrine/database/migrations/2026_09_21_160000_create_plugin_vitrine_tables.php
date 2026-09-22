@@ -53,6 +53,8 @@ return new class extends Migration
                 $table->text('maintenance_message')->nullable();
                 $table->json('excluded_products')->nullable();
                 $table->json('payment_gateways')->nullable();
+                $table->boolean('approvals_autoplay')->default(true);
+                $table->integer('approvals_speed')->default(4);
                 $table->timestamps();
             });
         } else {
@@ -74,6 +76,12 @@ return new class extends Migration
                 }
                 if (! Schema::hasColumn('plugin_vitrine_settings', 'whatsappMessage')) {
                     $table->text('whatsappMessage')->nullable();
+                }
+                if (! Schema::hasColumn('plugin_vitrine_settings', 'approvals_autoplay')) {
+                    $table->boolean('approvals_autoplay')->default(true);
+                }
+                if (! Schema::hasColumn('plugin_vitrine_settings', 'approvals_speed')) {
+                    $table->integer('approvals_speed')->default(4);
                 }
             });
 

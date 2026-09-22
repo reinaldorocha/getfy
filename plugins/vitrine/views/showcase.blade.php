@@ -1655,24 +1655,76 @@
             const modal = document.getElementById('lightbox-modal');
             modal.classList.remove('hidden');
             modal.classList.add('flex');
+            isApprovalsPaused = true;
         }
 
         function closeLightbox() {
             const modal = document.getElementById('lightbox-modal');
             modal.classList.add('hidden');
             modal.classList.remove('flex');
+            isApprovalsPaused = false;
         }
 
-        // SCROLL APPROVALS HORIZONTALLY
+        // SCROLL APPROVALS HORIZONTALLY & AUTOPLAY
+        const approvalsAutoplay = @json((bool) ($settings->approvals_autoplay ?? true));
+        const approvalsSpeed = @json((int) ($settings->approvals_speed ?? 4));
+        let approvalsInterval = null;
+        let isApprovalsPaused = false;
+        let approvalsResumeTimeout = null;
+
         function scrollApprovals(direction) {
             const track = document.getElementById('approvals-scroll-track');
             if (!track) return;
-            const scrollAmount = track.clientWidth * 0.75;
-            track.scrollBy({ left: direction * scrollAmount, behavior: 'smooth' });
+
+            // Temporarily pause auto-scroll when user manually clicks arrows
+            isApprovalsPaused = true;
+            clearTimeout(approvalsResumeTimeout);
+            approvalsResumeTimeout = setTimeout(() => {
+                isApprovalsPaused = false;
+            }, (approvalsSpeed + 2) * 1000);
+
+            const card = track.querySelector('div');
+            const step = card ? (card.clientWidth + 24) : (track.clientWidth * 0.75);
+            track.scrollBy({ left: direction * step, behavior: 'smooth' });
+        }
+
+        function initApprovalsAutoplay() {
+            if (!approvalsAutoplay) return;
+
+            const track = document.getElementById('approvals-scroll-track');
+            if (!track) return;
+
+            // Pause on hover or touch interaction
+            track.addEventListener('mouseenter', () => { isApprovalsPaused = true; });
+            track.addEventListener('mouseleave', () => { isApprovalsPaused = false; });
+            track.addEventListener('touchstart', () => { isApprovalsPaused = true; }, { passive: true });
+            track.addEventListener('touchend', () => { 
+                clearTimeout(approvalsResumeTimeout);
+                approvalsResumeTimeout = setTimeout(() => { isApprovalsPaused = false; }, 3000);
+            }, { passive: true });
+
+            const intervalMs = Math.max(1000, approvalsSpeed * 1000);
+            clearInterval(approvalsInterval);
+            approvalsInterval = setInterval(() => {
+                if (isApprovalsPaused) return;
+
+                const maxScrollLeft = track.scrollWidth - track.clientWidth;
+                if (maxScrollLeft <= 0) return;
+
+                // Loop back to start if reached the end, otherwise advance to next card
+                if (track.scrollLeft >= maxScrollLeft - 20) {
+                    track.scrollTo({ left: 0, behavior: 'smooth' });
+                } else {
+                    const card = track.querySelector('div');
+                    const step = card ? (card.clientWidth + 24) : (track.clientWidth * 0.75);
+                    track.scrollBy({ left: step, behavior: 'smooth' });
+                }
+            }, intervalMs);
         }
 
         // Initial setup
         updateCartBadge();
+        initApprovalsAutoplay();
     </script>
 </body>
 </html>
