@@ -34,7 +34,7 @@ return new class extends Migration
                 $table->text('approvalsTitle')->nullable();
                 $table->text('approvalsSubtitle')->nullable();
                 $table->string('primaryColor', 50)->default('#ff00ff');
-                $table->string('approvalsBadge', 255)->default('Resultados Reais');
+                $table->string('approvalsBadge', 255)->nullable()->default('Resultados Reais');
                 $table->text('faqTitle')->nullable();
                 $table->text('faqSubtitle')->nullable();
                 $table->text('heroImageUrl')->nullable();
@@ -72,6 +72,10 @@ return new class extends Migration
                     $table->json('payment_gateways')->nullable();
                 }
             });
+
+            try {
+                \Illuminate\Support\Facades\DB::statement('ALTER TABLE plugin_vitrine_settings MODIFY approvalsBadge VARCHAR(255) NULL DEFAULT "Resultados Reais"');
+            } catch (\Throwable) {}
         }
 
         if (! Schema::hasTable('plugin_vitrine_products')) {

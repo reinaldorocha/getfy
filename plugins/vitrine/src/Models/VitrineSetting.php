@@ -73,7 +73,7 @@ class VitrineSetting extends Model
             'catalogSubtitle' => null,
             'approvalsTitle' => null,
             'approvalsSubtitle' => null,
-            'approvalsBadge' => null,
+            'approvalsBadge' => 'Resultados Reais',
             'faqTitle' => null,
             'faqSubtitle' => null,
             'primaryColor' => '#dc2626', // Vermelho elegante
@@ -91,12 +91,31 @@ class VitrineSetting extends Model
         ];
     }
 
+    public function setApprovalsBadgeAttribute($value): void
+    {
+        $this->attributes['approvalsBadge'] = $value ?? 'Resultados Reais';
+    }
+
     public static function forTenant(int $tenantId = 1): self
     {
         $setting = static::where('tenant_id', $tenantId)->first();
 
         if (! $setting) {
-            return static::create(static::defaultSettings($tenantId));
+            $defaults = static::defaultSettings($tenantId);
+            if (empty($defaults['approvalsBadge'])) {
+                $defaults['approvalsBadge'] = 'Resultados Reais';
+            }
+
+            try {
+                return static::create($defaults);
+            } catch (\Throwable $e) {
+                try {
+                    \Illuminate\Support\Facades\DB::statement('ALTER TABLE plugin_vitrine_settings MODIFY approvalsBadge VARCHAR(255) NULL DEFAULT "Resultados Reais"');
+                    return static::create($defaults);
+                } catch (\Throwable) {
+                    throw $e;
+                }
+            }
         }
 
         return $setting;
