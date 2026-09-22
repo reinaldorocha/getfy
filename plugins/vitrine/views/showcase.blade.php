@@ -614,7 +614,12 @@
 
             <div class="flex flex-wrap justify-center gap-6 text-brand-gray-light/50 font-semibold tracking-wider uppercase items-center">
                 @if($settings->globalWhatsapp)
-                    <a href="https://wa.me/{{ preg_replace('/[^0-9]/', '', $settings->globalWhatsapp) }}" target="_blank" rel="noopener noreferrer" class="px-3.5 py-1.5 rounded-full border border-emerald-500 text-emerald-400 hover:bg-emerald-500/10 transition-all flex items-center gap-1.5 text-xs font-bold">
+                    @php
+                        $cleanFooterPhone = preg_replace('/[^0-9]/', '', $settings->globalWhatsapp);
+                        $whatsappMsg = $settings->whatsappMessage ?: 'Olá! Conheci sua vitrine e gostaria de mais informações.';
+                        $footerWhatsappUrl = "https://wa.me/{$cleanFooterPhone}?text=" . urlencode($whatsappMsg);
+                    @endphp
+                    <a href="{{ $footerWhatsappUrl }}" target="_blank" rel="noopener noreferrer" class="px-3.5 py-1.5 rounded-full border border-emerald-500 text-emerald-400 hover:bg-emerald-500/10 transition-all flex items-center gap-1.5 text-xs font-bold">
                         <i data-lucide="message-square" class="w-3.5 h-3.5"></i> CONTATO
                     </a>
                 @endif
@@ -960,7 +965,8 @@
     @if($settings->globalWhatsapp)
         @php
             $cleanPhone = preg_replace('/[^0-9]/', '', $settings->globalWhatsapp);
-            $whatsappUrl = "https://wa.me/{$cleanPhone}?text=" . urlencode("Olá! Conheci sua vitrine e gostaria de mais informações.");
+            $whatsappMsg = $settings->whatsappMessage ?: 'Olá! Conheci sua vitrine e gostaria de mais informações.';
+            $whatsappUrl = "https://wa.me/{$cleanPhone}?text=" . urlencode($whatsappMsg);
         @endphp
         <aside aria-label="WhatsApp">
             <a 

@@ -86,6 +86,7 @@ class VitrineSetting extends Model
             'buttonStyle' => 'pill',
             'priceLabel' => 'Investimento',
             'globalWhatsapp' => null,
+            'whatsappMessage' => 'Olá! Conheci sua vitrine e gostaria de mais informações.',
             'seoTitle' => $appName . ' | Vitrine de Cursos',
             'seoDescription' => null,
         ];
@@ -98,6 +99,14 @@ class VitrineSetting extends Model
 
     public static function forTenant(int $tenantId = 1): self
     {
+        if (Schema::hasTable('plugin_vitrine_settings') && ! Schema::hasColumn('plugin_vitrine_settings', 'whatsappMessage')) {
+            try {
+                Schema::table('plugin_vitrine_settings', function (\Illuminate\Database\Schema\Blueprint $table) {
+                    $table->text('whatsappMessage')->nullable();
+                });
+            } catch (\Throwable) {}
+        }
+
         $setting = static::where('tenant_id', $tenantId)->first();
 
         if (! $setting) {

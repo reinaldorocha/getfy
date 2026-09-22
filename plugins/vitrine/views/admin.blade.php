@@ -646,6 +646,11 @@
                         </div>
 
                         <div>
+                            <label class="block text-[11px] font-bold uppercase text-white/70 mb-1">Mensagem Padrão do WhatsApp</label>
+                            <input type="text" id="cfg-whatsappMessage" value="{{ $settings->whatsappMessage ?: 'Olá! Conheci sua vitrine e gostaria de mais informações.' }}" placeholder="Ex: Olá! Conheci sua vitrine e gostaria de mais informações." class="w-full bg-[#1c1c1c] border border-[#2d2d2d] rounded-lg px-3.5 py-2 text-xs text-white" />
+                        </div>
+
+                        <div>
                             <label class="block text-[11px] font-bold uppercase text-white/70 mb-1">Favicon (Ícone da aba)</label>
                             <input type="url" id="cfg-faviconUrl" value="{{ $settings->faviconUrl }}" placeholder="https://..." class="w-full bg-[#1c1c1c] border border-[#2d2d2d] rounded-lg px-3.5 py-2 text-xs text-white" />
                         </div>
@@ -1132,6 +1137,7 @@
                 siteName: document.getElementById('cfg-siteName').value.trim(),
                 logoUrl: document.getElementById('cfg-logoUrl').value.trim(),
                 globalWhatsapp: document.getElementById('cfg-globalWhatsapp').value.trim(),
+                whatsappMessage: document.getElementById('cfg-whatsappMessage').value.trim(),
                 faviconUrl: document.getElementById('cfg-faviconUrl').value.trim(),
                 heroTitle: document.getElementById('cfg-heroTitle').value.trim(),
                 heroSubtitle: document.getElementById('cfg-heroSubtitle').value.trim(),

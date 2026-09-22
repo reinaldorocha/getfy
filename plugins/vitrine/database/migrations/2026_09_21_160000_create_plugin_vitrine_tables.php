@@ -20,6 +20,7 @@ return new class extends Migration
                 $table->text('adminSubtitle')->nullable();
                 $table->text('footerText')->nullable();
                 $table->string('globalWhatsapp', 50)->nullable();
+                $table->text('whatsappMessage')->nullable();
                 $table->text('siteName')->nullable();
                 $table->text('heroTitle')->nullable();
                 $table->text('heroSubtitle')->nullable();
@@ -70,6 +71,9 @@ return new class extends Migration
                 }
                 if (! Schema::hasColumn('plugin_vitrine_settings', 'payment_gateways')) {
                     $table->json('payment_gateways')->nullable();
+                }
+                if (! Schema::hasColumn('plugin_vitrine_settings', 'whatsappMessage')) {
+                    $table->text('whatsappMessage')->nullable();
                 }
             });
 
