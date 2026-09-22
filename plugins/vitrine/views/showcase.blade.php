@@ -748,11 +748,11 @@
                             </div>
                             <div>
                                 <label class="block text-[11px] font-bold uppercase text-white/70 mb-1">WhatsApp / Celular *</label>
-                                <input type="tel" id="chk-phone" placeholder="(99) 99999-9999" class="w-full bg-[#1c1c1c] border border-white/10 rounded-lg px-3.5 py-2.5 text-xs text-white placeholder-white/20 focus:border-brand-magenta outline-none" />
+                                <input type="tel" id="chk-phone" placeholder="(99) 99999-9999" maxlength="15" class="w-full bg-[#1c1c1c] border border-white/10 rounded-lg px-3.5 py-2.5 text-xs text-white placeholder-white/20 focus:border-brand-magenta outline-none" required />
                             </div>
                             <div class="sm:col-span-2">
-                                <label class="block text-[11px] font-bold uppercase text-white/70 mb-1">CPF (opcional para nota)</label>
-                                <input type="text" id="chk-cpf" placeholder="000.000.000-00" class="w-full bg-[#1c1c1c] border border-white/10 rounded-lg px-3.5 py-2.5 text-xs text-white placeholder-white/20 focus:border-brand-magenta outline-none" />
+                                <label class="block text-[11px] font-bold uppercase text-white/70 mb-1">CPF *</label>
+                                <input type="text" id="chk-cpf" placeholder="000.000.000-00" maxlength="14" class="w-full bg-[#1c1c1c] border border-white/10 rounded-lg px-3.5 py-2.5 text-xs text-white placeholder-white/20 focus:border-brand-magenta outline-none" required />
                             </div>
                         </div>
                     </div>
@@ -794,26 +794,26 @@
                         <!-- Card details (if card selected) -->
                         <div id="payment-card-details" class="hidden space-y-3">
                             <div>
-                                <label class="block text-[11px] font-bold uppercase text-white/70 mb-1">Número do Cartão</label>
-                                <input type="text" placeholder="0000 0000 0000 0000" class="w-full bg-[#1c1c1c] border border-white/10 rounded-lg px-3.5 py-2.5 text-xs text-white" />
+                                <label class="block text-[11px] font-bold uppercase text-white/70 mb-1">Número do Cartão *</label>
+                                <input type="text" id="chk-card-number" placeholder="0000 0000 0000 0000" maxlength="19" class="w-full bg-[#1c1c1c] border border-white/10 rounded-lg px-3.5 py-2.5 text-xs text-white placeholder-white/20 focus:border-brand-magenta outline-none" />
                             </div>
                             <div class="grid grid-cols-2 gap-3">
                                 <div>
-                                    <label class="block text-[11px] font-bold uppercase text-white/70 mb-1">Validade (MM/AA)</label>
-                                    <input type="text" placeholder="MM/AA" class="w-full bg-[#1c1c1c] border border-white/10 rounded-lg px-3.5 py-2.5 text-xs text-white" />
+                                    <label class="block text-[11px] font-bold uppercase text-white/70 mb-1">Validade (MM/AA) *</label>
+                                    <input type="text" id="chk-card-expiry" placeholder="MM/AA" maxlength="5" class="w-full bg-[#1c1c1c] border border-white/10 rounded-lg px-3.5 py-2.5 text-xs text-white placeholder-white/20 focus:border-brand-magenta outline-none" />
                                 </div>
                                 <div>
-                                    <label class="block text-[11px] font-bold uppercase text-white/70 mb-1">CVV</label>
-                                    <input type="text" placeholder="123" class="w-full bg-[#1c1c1c] border border-white/10 rounded-lg px-3.5 py-2.5 text-xs text-white" />
+                                    <label class="block text-[11px] font-bold uppercase text-white/70 mb-1">CVV *</label>
+                                    <input type="text" id="chk-card-cvv" placeholder="123" maxlength="4" class="w-full bg-[#1c1c1c] border border-white/10 rounded-lg px-3.5 py-2.5 text-xs text-white placeholder-white/20 focus:border-brand-magenta outline-none" />
                                 </div>
                             </div>
                             <div>
-                                <label class="block text-[11px] font-bold uppercase text-white/70 mb-1">Nome no Cartão</label>
-                                <input type="text" placeholder="NOME IMPRESSO NO CARTÃO" class="w-full bg-[#1c1c1c] border border-white/10 rounded-lg px-3.5 py-2.5 text-xs text-white" />
+                                <label class="block text-[11px] font-bold uppercase text-white/70 mb-1">Nome no Cartão *</label>
+                                <input type="text" id="chk-card-holder" placeholder="NOME IMPRESSO NO CARTÃO" class="w-full bg-[#1c1c1c] border border-white/10 rounded-lg px-3.5 py-2.5 text-xs text-white placeholder-white/20 focus:border-brand-magenta outline-none" />
                             </div>
                             <div>
-                                <label class="block text-[11px] font-bold uppercase text-white/70 mb-1">Parcelas</label>
-                                <select id="chk-card-installments" class="w-full bg-[#1c1c1c] border border-white/10 rounded-lg px-3.5 py-2.5 text-xs text-white">
+                                <label class="block text-[11px] font-bold uppercase text-white/70 mb-1">Opções de Parcelamento *</label>
+                                <select id="chk-card-installments" onchange="onInstallmentChanged()" class="w-full bg-[#1c1c1c] border border-white/10 rounded-lg px-3.5 py-2.5 text-xs text-white focus:border-brand-magenta outline-none cursor-pointer">
                                     <option value="1">1x à vista (sem juros)</option>
                                 </select>
                             </div>
@@ -1057,6 +1057,69 @@
             if (drawer) drawer.classList.add('hidden');
         }
 
+        window.__PAGARME_INSTALLMENTS__ = @json($pagarmeInstallments ?? []);
+        window.__CARD_GATEWAY__ = "{{ $settings->payment_gateways['card'] ?? 'pagarme' }}";
+
+        function getPagarmeInstallmentRate(n) {
+            const cfg = window.__PAGARME_INSTALLMENTS__;
+            const rates = cfg?.rates && typeof cfg.rates === 'object' ? cfg.rates : {};
+            return Math.min(99.9999, Math.max(0, Number(rates[n] ?? rates[String(n)] ?? 0) || 0));
+        }
+
+        function isPagarmeFeePassedToCustomer(n) {
+            const cfg = window.__PAGARME_INSTALLMENTS__;
+            return Number(n) === 1
+                ? Boolean(cfg?.pass_1x_fee_to_customer)
+                : Boolean(cfg?.enabled);
+        }
+
+        function getPagarmeProducerAssumption() {
+            const cfg = window.__PAGARME_INSTALLMENTS__;
+            return Math.min(100, Math.max(0, Number(cfg?.producer_fee_assumption_percent) || 0));
+        }
+
+        function getPagarmeSaleFeeAmount(n) {
+            if (Number(n) < 2) return 0;
+            const cfg = window.__PAGARME_INSTALLMENTS__;
+            return Math.max(0, Number(cfg?.sale_fee_amount) || 0);
+        }
+
+        function calculateInstallmentTotal(n, base) {
+            const isPagarme = (window.__CARD_GATEWAY__ || 'pagarme') === 'pagarme';
+            if (!isPagarme) {
+                return base;
+            }
+            const rate = getPagarmeInstallmentRate(n);
+            const passFee = isPagarmeFeePassedToCustomer(n);
+            const fixedFee = getPagarmeSaleFeeAmount(n);
+            const assumption = getPagarmeProducerAssumption();
+            const grossedUp = (passFee && rate > 0)
+                ? (base * (1 - (assumption / 100))) / (1 - (rate / 100))
+                : base;
+            return Math.round((grossedUp + fixedFee) * 100) / 100;
+        }
+
+        function getCartSubtotal() {
+            return cart.reduce((acc, item) => acc + ((item.price || 0) * (item.quantity || 1)), 0);
+        }
+
+        function updateCheckoutTotalPrice() {
+            const totalEl = document.getElementById('checkout-total-price');
+            if (!totalEl) return;
+            const baseTotal = getCartSubtotal();
+            if (selectedPaymentMethod === 'card') {
+                const n = parseInt(document.getElementById('chk-card-installments')?.value) || 1;
+                const finalTotal = calculateInstallmentTotal(n, baseTotal);
+                totalEl.innerText = formatCurrency(finalTotal);
+            } else {
+                totalEl.innerText = formatCurrency(baseTotal);
+            }
+        }
+
+        function onInstallmentChanged() {
+            updateCheckoutTotalPrice();
+        }
+
         // DIRECT BUY (Single Product)
         function directBuy(product) {
             addToCart(product);
@@ -1075,7 +1138,6 @@
             // Populate checkout items preview
             const previewContainer = document.getElementById('checkout-items-preview');
             const subtotalEl = document.getElementById('checkout-subtotal');
-            const totalEl = document.getElementById('checkout-total-price');
 
             let total = 0;
             let previewHtml = '';
@@ -1096,18 +1158,33 @@
 
             if (previewContainer) previewContainer.innerHTML = previewHtml;
             if (subtotalEl) subtotalEl.innerText = formatCurrency(total);
-            if (totalEl) totalEl.innerText = formatCurrency(total);
 
-            // Populate installment options (1x - 12x)
+            // Populate installment options (1x - 12x) with Pagar.me settings
             const installmentsSelect = document.getElementById('chk-card-installments');
             if (installmentsSelect) {
                 let optionsHtml = '';
+                const minInstallmentAmount = Number(window.__PAGARME_INSTALLMENTS__?.minimum_installment_amount) || 2;
+
                 for (let i = 1; i <= 12; i++) {
-                    const installmentVal = total / i;
-                    optionsHtml += `<option value="${i}">${i}x de ${formatCurrency(installmentVal)} ${i === 1 ? '(à vista)' : ''}</option>`;
+                    const installmentTotal = calculateInstallmentTotal(i, total);
+                    const installmentVal = installmentTotal / i;
+
+                    if (i > 1 && installmentVal < minInstallmentAmount) {
+                        break;
+                    }
+
+                    const hasInterest = installmentTotal > (total + 0.005);
+                    const interestLabel = hasInterest 
+                        ? `(Total: ${formatCurrency(installmentTotal)})` 
+                        : (i === 1 ? '(à vista)' : 'sem juros');
+
+                    optionsHtml += `<option value="${i}">${i}x de ${formatCurrency(installmentVal)} ${interestLabel}</option>`;
                 }
                 installmentsSelect.innerHTML = optionsHtml;
+                installmentsSelect.value = "1";
             }
+
+            updateCheckoutTotalPrice();
 
             const modal = document.getElementById('checkout-modal');
             if (modal) {
@@ -1136,17 +1213,49 @@
             document.getElementById('payment-pix-details').classList.toggle('hidden', method !== 'pix');
             document.getElementById('payment-card-details').classList.toggle('hidden', method !== 'card');
             document.getElementById('payment-boleto-details').classList.toggle('hidden', method !== 'boleto');
+
+            updateCheckoutTotalPrice();
         }
 
         async function submitOrder() {
             const name = document.getElementById('chk-name').value.trim();
             const email = document.getElementById('chk-email').value.trim();
             const phone = document.getElementById('chk-phone').value.trim();
-            const cpf = document.getElementById('chk-cpf').value.trim();
+            const cpfRaw = document.getElementById('chk-cpf').value.trim();
+            const cleanCpf = cpfRaw.replace(/\D/g, '');
 
-            if (!email || !name) {
-                alert('Por favor, preencha o seu nome e e-mail.');
+            if (!name) {
+                alert('Por favor, informe seu nome completo.');
+                document.getElementById('chk-name').focus();
                 return;
+            }
+
+            if (!email || !email.includes('@')) {
+                alert('Por favor, informe um e-mail válido para receber o acesso.');
+                document.getElementById('chk-email').focus();
+                return;
+            }
+
+            if (!cleanCpf || cleanCpf.length !== 11) {
+                alert('O CPF é obrigatório. Por favor, digite um CPF válido com 11 dígitos.');
+                document.getElementById('chk-cpf').focus();
+                return;
+            }
+
+            const installments = selectedPaymentMethod === 'card'
+                ? (parseInt(document.getElementById('chk-card-installments')?.value) || 1)
+                : 1;
+
+            if (selectedPaymentMethod === 'card') {
+                const cardNum = (document.getElementById('chk-card-number')?.value || '').replace(/\D/g, '');
+                const cardExp = (document.getElementById('chk-card-expiry')?.value || '').trim();
+                const cardCvv = (document.getElementById('chk-card-cvv')?.value || '').trim();
+                const cardHolder = (document.getElementById('chk-card-holder')?.value || '').trim();
+
+                if (cardNum.length < 13 || cardExp.length < 5 || cardCvv.length < 3 || !cardHolder) {
+                    alert('Por favor, preencha todos os dados do cartão de crédito.');
+                    return;
+                }
             }
 
             const btn = document.getElementById('btn-submit-order');
@@ -1161,9 +1270,10 @@
                         'X-CSRF-TOKEN': '{{ csrf_token() }}'
                     },
                     body: JSON.stringify({
-                        customer: { name, email, phone, cpf },
+                        customer: { name, email, phone, cpf: cleanCpf },
                         items: cart,
-                        payment_method: selectedPaymentMethod
+                        payment_method: selectedPaymentMethod,
+                        installments: installments
                     })
                 });
 
@@ -1198,6 +1308,65 @@
                 lucide.createIcons();
             }
         }
+
+        // Máscaras de entrada (CPF, Telefone, Cartão)
+        document.addEventListener('DOMContentLoaded', () => {
+            const cpfInput = document.getElementById('chk-cpf');
+            if (cpfInput) {
+                cpfInput.addEventListener('input', function(e) {
+                    let v = e.target.value.replace(/\D/g, '').slice(0, 11);
+                    if (v.length > 9) {
+                        v = v.replace(/(\d{3})(\d{3})(\d{3})(\d{1,2})/, '$1.$2.$3-$4');
+                    } else if (v.length > 6) {
+                        v = v.replace(/(\d{3})(\d{3})(\d{1,3})/, '$1.$2.$3');
+                    } else if (v.length > 3) {
+                        v = v.replace(/(\d{3})(\d{1,3})/, '$1.$2');
+                    }
+                    e.target.value = v;
+                });
+            }
+
+            const phoneInput = document.getElementById('chk-phone');
+            if (phoneInput) {
+                phoneInput.addEventListener('input', function(e) {
+                    let v = e.target.value.replace(/\D/g, '').slice(0, 11);
+                    if (v.length > 10) {
+                        v = v.replace(/(\d{2})(\d{5})(\d{4})/, '($1) $2-$3');
+                    } else if (v.length > 6) {
+                        v = v.replace(/(\d{2})(\d{4})(\d{0,4})/, '($1) $2-$3');
+                    } else if (v.length > 2) {
+                        v = v.replace(/(\d{2})(\d{0,5})/, '($1) $2');
+                    }
+                    e.target.value = v;
+                });
+            }
+
+            const cardNumInput = document.getElementById('chk-card-number');
+            if (cardNumInput) {
+                cardNumInput.addEventListener('input', function(e) {
+                    let v = e.target.value.replace(/\D/g, '').slice(0, 16);
+                    e.target.value = v.replace(/(\d{4})(?=\d)/g, '$1 ');
+                });
+            }
+
+            const cardExpInput = document.getElementById('chk-card-expiry');
+            if (cardExpInput) {
+                cardExpInput.addEventListener('input', function(e) {
+                    let v = e.target.value.replace(/\D/g, '').slice(0, 4);
+                    if (v.length > 2) {
+                        v = v.replace(/(\d{2})(\d{1,2})/, '$1/$2');
+                    }
+                    e.target.value = v;
+                });
+            }
+
+            const cardCvvInput = document.getElementById('chk-card-cvv');
+            if (cardCvvInput) {
+                cardCvvInput.addEventListener('input', function(e) {
+                    e.target.value = e.target.value.replace(/\D/g, '').slice(0, 4);
+                });
+            }
+        });
 
         function copyPixCode() {
             const input = document.getElementById('result-pix-code');

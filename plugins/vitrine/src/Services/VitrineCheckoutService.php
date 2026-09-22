@@ -8,6 +8,7 @@ use App\PluginSdk\Getfy;
 use Illuminate\Support\Str;
 use Plugins\Vitrine\Models\VitrineOrder;
 use Plugins\Vitrine\Models\VitrineProduct;
+use Plugins\Vitrine\Models\VitrineSetting;
 
 class VitrineCheckoutService
 {
@@ -23,6 +24,10 @@ class VitrineCheckoutService
 
         if (empty($email) || ! filter_var($email, FILTER_VALIDATE_EMAIL)) {
             return ['success' => false, 'error' => 'Informe um e-mail válido para receber o acesso.'];
+        }
+
+        if (empty($cpf) || strlen($cpf) !== 11) {
+            return ['success' => false, 'error' => 'O CPF é obrigatório e deve conter 11 dígitos.'];
         }
 
         if (empty($items)) {
@@ -87,27 +92,62 @@ class VitrineCheckoutService
         $pgConfig = is_array($settings->payment_gateways) ? $settings->payment_gateways : [];
         $selectedGateway = $pgConfig[$method] ?? ($method === 'pix' ? 'mercadopago' : 'pagarme');
 
+        // Calcular taxas de parcelamento caso o método seja cartão e o gateway seja Pagar.me
+        $installments = max(1, min(12, (int) ($data['installments'] ?? 1)));
+        $chargedAmount = $totalAmount;
+        $cardMetadata = [];
+
+        if ($method === 'card' && $selectedGateway === 'pagarme') {
+            $pagarmeRaw = \App\Models\Setting::get('pagarme_installments', null, $tenantId);
+            $pagarmeConfig = is_string($pagarmeRaw) ? json_decode($pagarmeRaw, true) : $pagarmeRaw;
+            $pagarmeConfig = is_array($pagarmeConfig) ? $pagarmeConfig : [];
+            $rates = is_array($pagarmeConfig['rates'] ?? null) ? $pagarmeConfig['rates'] : [];
+            $rate = min(99.9999, max(0, (float) ($rates[$installments] ?? $rates[(string) $installments] ?? 0)));
+            $passFeeToCustomer = $installments === 1
+                ? ! empty($pagarmeConfig['pass_1x_fee_to_customer'])
+                : ! empty($pagarmeConfig['enabled']);
+            $producerFeeAssumptionPercent = min(100, max(0, (float) ($pagarmeConfig['producer_fee_assumption_percent'] ?? 0)));
+            $saleFee = $installments > 1
+                ? max(0, (float) ($pagarmeConfig['sale_fee_amount'] ?? 0))
+                : 0.0;
+
+            $chargedAmount = $passFeeToCustomer && $rate > 0
+                ? round((round($totalAmount * (1 - ($producerFeeAssumptionPercent / 100)), 2) / (1 - ($rate / 100))) + $saleFee, 2)
+                : round($totalAmount + $saleFee, 2);
+
+            $cardMetadata = [
+                'card_installments' => $installments,
+                'pagarme_fee_rate_percent' => $rate,
+                'pagarme_fee_passed_to_customer' => $passFeeToCustomer,
+                'pagarme_fee_assumption_percent' => $producerFeeAssumptionPercent,
+                'base_amount' => $totalAmount,
+                'charged_amount' => $chargedAmount,
+                'sale_fee_amount' => $saleFee,
+            ];
+        }
+
         $getfyOrder = null;
         try {
             $getfyOrder = Order::create([
                 'tenant_id' => $tenantId,
                 'user_id' => $user->id,
                 'product_id' => $firstGetfyProductId ?: (string) Str::uuid(),
-                'amount' => $totalAmount,
+                'amount' => $chargedAmount,
                 'currency' => 'BRL',
                 'gateway' => $selectedGateway,
                 'email' => $email,
                 'cpf' => $cpf ?: null,
                 'phone' => $phone ?: null,
                 'status' => 'pending',
-                'metadata' => [
+                'metadata' => array_merge([
                     'source' => 'vitrine_plugin_cart',
                     'checkout_payment_method' => $method,
                     'gateway' => $selectedGateway,
                     'items_count' => count($normalizedItems),
                     'items' => $normalizedItems,
                     'customer_name' => $name,
-                ],
+                    'customer_cpf' => $cpf,
+                ], $cardMetadata),
             ]);
 
             // Criar registros individuais de OrderItem para aparecer na aba de vendas do Getfy
@@ -147,7 +187,7 @@ class VitrineCheckoutService
             'customer_email' => $email,
             'customer_phone' => $phone,
             'customer_cpf' => $cpf,
-            'total_amount' => $totalAmount,
+            'total_amount' => $chargedAmount,
             'payment_method' => $method,
             'status' => 'pending',
             'items' => $normalizedItems,
@@ -159,8 +199,9 @@ class VitrineCheckoutService
             'success' => true,
             'order_id' => $vitrineOrder->id,
             'getfy_order_id' => $getfyOrder?->id,
-            'total_amount' => $totalAmount,
-            'formatted_total' => 'R$ ' . number_format($totalAmount, 2, ',', '.'),
+            'total_amount' => $chargedAmount,
+            'formatted_total' => 'R$ ' . number_format($chargedAmount, 2, ',', '.'),
+            'installments' => $installments,
             'payment_method' => $method,
             'items' => $normalizedItems,
             'pix' => $pixPayload,

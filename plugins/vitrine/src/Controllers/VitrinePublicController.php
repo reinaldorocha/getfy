@@ -53,7 +53,21 @@ class VitrinePublicController extends Controller
         $approvals = VitrineApproval::where('tenant_id', $tenantId)->orderBy('order_position')->get();
         $faqs = VitrineFaq::where('tenant_id', $tenantId)->orderBy('order_position')->get();
 
-        return view('vitrine::showcase', compact('settings', 'products', 'categories', 'approvals', 'faqs', 'isMaintenancePreview'));
+        $pagarmeRaw = \App\Models\Setting::get('pagarme_installments', null, $tenantId);
+        if (is_string($pagarmeRaw)) {
+            $pagarmeRaw = json_decode($pagarmeRaw, true);
+        }
+        $pagarmeInstallments = is_array($pagarmeRaw) ? $pagarmeRaw : [];
+
+        return view('vitrine::showcase', compact(
+            'settings',
+            'products',
+            'categories',
+            'approvals',
+            'faqs',
+            'isMaintenancePreview',
+            'pagarmeInstallments'
+        ));
     }
 
     public function products(Request $request): JsonResponse
