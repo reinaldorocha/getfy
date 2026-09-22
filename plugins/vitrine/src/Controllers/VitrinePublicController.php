@@ -49,9 +49,10 @@ class VitrinePublicController extends Controller
             ->orderBy('order_position')
             ->orderByDesc('created_at')
             ->get();
+        VitrineApproval::ensureSchema();
         $categories = VitrineCategory::where('tenant_id', $tenantId)->pluck('name');
-        $approvals = VitrineApproval::where('tenant_id', $tenantId)->orderBy('order_position')->get();
-        $faqs = VitrineFaq::where('tenant_id', $tenantId)->orderBy('order_position')->get();
+        $approvals = VitrineApproval::where('tenant_id', $tenantId)->orderBy('order_position')->orderBy('id')->get();
+        $faqs = VitrineFaq::where('tenant_id', $tenantId)->orderBy('order_position')->orderBy('id')->get();
 
         $pagarmeRaw = \App\Models\Setting::get('pagarme_installments', null, $tenantId);
         if (is_string($pagarmeRaw)) {
@@ -101,7 +102,8 @@ class VitrinePublicController extends Controller
     public function approvals(Request $request): JsonResponse
     {
         $tenantId = 1;
-        $approvals = VitrineApproval::where('tenant_id', $tenantId)->orderBy('order_position')->get();
+        VitrineApproval::ensureSchema();
+        $approvals = VitrineApproval::where('tenant_id', $tenantId)->orderBy('order_position')->orderBy('id')->get();
 
         return response()->json($approvals);
     }
@@ -109,7 +111,8 @@ class VitrinePublicController extends Controller
     public function faqs(Request $request): JsonResponse
     {
         $tenantId = 1;
-        $faqs = VitrineFaq::where('tenant_id', $tenantId)->orderBy('order_position')->get();
+        VitrineApproval::ensureSchema();
+        $faqs = VitrineFaq::where('tenant_id', $tenantId)->orderBy('order_position')->orderBy('id')->get();
 
         return response()->json($faqs);
     }

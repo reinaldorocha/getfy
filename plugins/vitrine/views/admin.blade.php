@@ -403,26 +403,114 @@
                 </div>
 
                 <!-- Add Approval Form -->
-                <div class="space-y-2">
-                    <h4 class="text-xs font-bold text-white uppercase tracking-wider">Adicionar Nova Foto de Depoimento</h4>
-                    <div class="flex flex-col sm:flex-row gap-2 max-w-lg">
-                        <input type="url" id="new-approval-url" placeholder="URL da imagem (Ex: https://...)" class="flex-grow bg-[#1c1c1c] border border-[#2d2d2d] focus:border-brand-magenta rounded-lg px-4 py-2.5 text-xs text-white outline-none" />
-                        <button onclick="addApproval()" class="btn-magenta px-5 py-2.5 rounded-lg text-xs font-black uppercase tracking-wider cursor-pointer shrink-0">
-                            Adicionar Foto
+                <div class="space-y-4 p-5 bg-[#161616] rounded-xl border border-white/5">
+                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-white/5 pb-3">
+                        <h4 class="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                            <i data-lucide="plus-circle" class="w-4 h-4 text-brand-magenta"></i> Adicionar Novo Depoimento
+                        </h4>
+                        <div class="inline-flex rounded-lg bg-[#1f1f1f] p-1 border border-white/10 gap-1 text-xs">
+                            <button type="button" id="tab-approval-type-image" onclick="setApprovalType('image')" class="px-3 py-1.5 rounded-md font-bold transition-all bg-brand-magenta text-white flex items-center gap-1.5 cursor-pointer">
+                                <i data-lucide="image" class="w-3.5 h-3.5"></i> Foto / Print
+                            </button>
+                            <button type="button" id="tab-approval-type-video" onclick="setApprovalType('video')" class="px-3 py-1.5 rounded-md font-bold transition-all text-white/60 hover:text-white flex items-center gap-1.5 cursor-pointer">
+                                <i data-lucide="video" class="w-3.5 h-3.5"></i> Vídeo (YouTube, Shorts, Vimeo, MP4)
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Image input mode -->
+                    <div id="box-approval-image" class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div class="sm:col-span-2">
+                            <label class="block text-[11px] font-bold uppercase text-white/70 mb-1">URL da Imagem / Print *</label>
+                            <input type="url" id="new-approval-url" placeholder="https://exemplo.com/depoimento.jpg" class="w-full bg-[#1c1c1c] border border-[#2d2d2d] focus:border-brand-magenta rounded-lg px-4 py-2.5 text-xs text-white outline-none" />
+                        </div>
+                        <div class="sm:col-span-2">
+                            <label class="block text-[11px] font-bold uppercase text-white/70 mb-1">Nome / Aluno (Opcional)</label>
+                            <input type="text" id="new-approval-title" placeholder="Ex: Aluno Lucas - Aprovado em 1º Lugar" class="w-full bg-[#1c1c1c] border border-[#2d2d2d] focus:border-brand-magenta rounded-lg px-4 py-2.5 text-xs text-white outline-none" />
+                        </div>
+                    </div>
+
+                    <!-- Video input mode -->
+                    <div id="box-approval-video" class="hidden grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div class="sm:col-span-2">
+                            <label class="block text-[11px] font-bold uppercase text-white/70 mb-1">URL do Vídeo * (YouTube, YouTube Shorts, Vimeo ou link direto MP4)</label>
+                            <input type="url" id="new-approval-video-url" placeholder="Ex: https://www.youtube.com/watch?v=... ou https://youtu.be/... ou https://youtube.com/shorts/..." class="w-full bg-[#1c1c1c] border border-[#2d2d2d] focus:border-brand-magenta rounded-lg px-4 py-2.5 text-xs text-white outline-none" />
+                            <p class="text-[10px] text-white/40 mt-1">Suporta vídeos normais do YouTube, YouTube Shorts, Vimeo e links diretos (.mp4).</p>
+                        </div>
+                        <div>
+                            <label class="block text-[11px] font-bold uppercase text-white/70 mb-1">Capa / Thumbnail (Opcional)</label>
+                            <input type="url" id="new-approval-video-thumb" placeholder="Deixe em branco para capa automática do YouTube" class="w-full bg-[#1c1c1c] border border-[#2d2d2d] focus:border-brand-magenta rounded-lg px-4 py-2.5 text-xs text-white outline-none" />
+                        </div>
+                        <div>
+                            <label class="block text-[11px] font-bold uppercase text-white/70 mb-1">Nome / Aluno (Opcional)</label>
+                            <input type="text" id="new-approval-video-title" placeholder="Ex: Mariana - Depoimento em Vídeo" class="w-full bg-[#1c1c1c] border border-[#2d2d2d] focus:border-brand-magenta rounded-lg px-4 py-2.5 text-xs text-white outline-none" />
+                        </div>
+                    </div>
+
+                    <div>
+                        <button type="button" onclick="addApproval()" class="btn-magenta px-6 py-2.5 rounded-lg text-xs font-black uppercase tracking-wider cursor-pointer flex items-center gap-2">
+                            <i data-lucide="plus" class="w-4 h-4"></i> Adicionar Depoimento
                         </button>
                     </div>
                 </div>
 
-                <!-- Approvals List -->
-                <div class="space-y-2">
-                    <h4 class="text-xs font-bold text-white uppercase tracking-wider">Depoimentos Cadastrados ({{ count($approvals) }})</h4>
+                <!-- Approvals List with Reordering -->
+                <div class="space-y-3">
+                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                        <h4 class="text-xs font-bold text-white uppercase tracking-wider">
+                            Depoimentos Cadastrados (<span id="approvals-count">{{ count($approvals) }}</span>)
+                        </h4>
+                        <span class="text-[11px] text-white/40 flex items-center gap-1.5">
+                            <i data-lucide="arrow-left-right" class="w-3.5 h-3.5 text-brand-magenta"></i> Use as setas ◀ ▶ para reorganizar a ordem de exibição
+                        </span>
+                    </div>
+
                     <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4" id="approvals-admin-grid">
                         @foreach($approvals as $app)
-                            <div class="relative group rounded-xl overflow-hidden aspect-[4/5] bg-[#1c1c1c] border border-white/5">
-                                <img src="{{ $app->imageUrl }}" alt="Aprovação" class="w-full h-full object-cover" />
-                                <button onclick="deleteApproval({{ $app->id }})" class="absolute top-2 right-2 p-1.5 rounded-full bg-red-600/80 hover:bg-red-600 text-white transition-colors" title="Excluir">
-                                    <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
-                                </button>
+                            <div data-id="{{ $app->id }}" class="approval-admin-card relative group rounded-xl overflow-hidden aspect-[4/5] bg-[#1c1c1c] border border-white/10 shadow-lg flex flex-col justify-between">
+                                <img src="{{ $app->display_thumbnail }}" alt="{{ $app->title ?: 'Depoimento' }}" class="absolute inset-0 w-full h-full object-cover" />
+                                <div class="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-black/60 pointer-events-none"></div>
+
+                                <!-- Top bar: Order badge, type, delete -->
+                                <div class="relative z-10 p-2 flex justify-between items-start gap-1">
+                                    <span class="approval-order-badge px-2 py-0.5 rounded-md bg-black/85 border border-white/20 text-[10px] font-black text-brand-light-magenta shadow">
+                                        #{{ $loop->iteration }}
+                                    </span>
+                                    <div class="flex items-center gap-1">
+                                        @if($app->is_video)
+                                            <span class="px-1.5 py-0.5 rounded bg-red-600/90 text-[9px] font-black uppercase text-white flex items-center gap-1 shadow">
+                                                <i data-lucide="play" class="w-2.5 h-2.5 fill-white"></i> Vídeo
+                                            </span>
+                                        @endif
+                                        <button type="button" onclick="deleteApproval({{ $app->id }})" class="p-1.5 rounded-full bg-red-600/80 hover:bg-red-600 text-white transition-colors cursor-pointer" title="Excluir">
+                                            <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <!-- Center Play for video -->
+                                @if($app->is_video)
+                                    <div class="relative z-10 flex items-center justify-center my-auto pointer-events-none">
+                                        <div class="w-9 h-9 rounded-full bg-brand-magenta text-white flex items-center justify-center shadow-lg">
+                                            <i data-lucide="play" class="w-4 h-4 fill-white ml-0.5"></i>
+                                        </div>
+                                    </div>
+                                @endif
+
+                                <!-- Bottom: Title + Reorder buttons -->
+                                <div class="relative z-10 p-2 space-y-1.5 bg-black/80 backdrop-blur-xs border-t border-white/10">
+                                    @if($app->title)
+                                        <p class="text-[10px] font-bold text-white truncate text-center">{{ $app->title }}</p>
+                                    @endif
+                                    <div class="flex items-center gap-1">
+                                        <button type="button" onclick="moveApproval({{ $app->id }}, -1)" class="flex-1 py-1 rounded bg-[#252525] hover:bg-brand-magenta text-white/80 hover:text-white text-[11px] font-bold flex items-center justify-center gap-1 transition-colors cursor-pointer" title="Mover para a esquerda (anterior)">
+                                            <i data-lucide="chevron-left" class="w-3.5 h-3.5"></i>
+                                        </button>
+                                        <button type="button" onclick="moveApproval({{ $app->id }}, 1)" class="flex-1 py-1 rounded bg-[#252525] hover:bg-brand-magenta text-white/80 hover:text-white text-[11px] font-bold flex items-center justify-center gap-1 transition-colors cursor-pointer" title="Mover para a direita (próximo)">
+                                            <i data-lucide="chevron-right" class="w-3.5 h-3.5"></i>
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
                         @endforeach
                     </div>
@@ -449,24 +537,46 @@
                     </button>
                 </div>
 
-                <!-- Existing FAQs List -->
-                <div class="space-y-3" id="admin-faqs-list">
-                    @foreach($faqs as $f)
-                        <div class="p-4 bg-[#181818] rounded-xl border border-white/5 flex justify-between items-start gap-4">
-                            <div class="space-y-1 flex-grow">
-                                <h5 class="text-xs font-bold text-white">{{ $f->question }}</h5>
-                                <p class="text-xs text-white/60 font-light leading-relaxed whitespace-pre-line">{{ $f->answer }}</p>
+                <!-- Existing FAQs List with Reordering -->
+                <div class="space-y-3">
+                    <div class="flex justify-between items-center">
+                        <h4 class="text-xs font-bold text-white uppercase tracking-wider">
+                            Perguntas Cadastradas ({{ count($faqs) }})
+                        </h4>
+                        <span class="text-[11px] text-white/40 flex items-center gap-1.5">
+                            <i data-lucide="arrow-up-down" class="w-3.5 h-3.5 text-brand-magenta"></i> Use ▲ ▼ para reorganizar as perguntas
+                        </span>
+                    </div>
+
+                    <div class="space-y-3" id="admin-faqs-list">
+                        @foreach($faqs as $f)
+                            <div data-id="{{ $f->id }}" class="faq-admin-item p-4 bg-[#181818] rounded-xl border border-white/5 flex justify-between items-start gap-4">
+                                <div class="flex items-start gap-3 flex-grow">
+                                    <span class="faq-order-badge px-2.5 py-1 rounded-md bg-[#252525] border border-white/10 text-xs font-black text-brand-light-magenta shrink-0 mt-0.5">
+                                        #{{ $loop->iteration }}
+                                    </span>
+                                    <div class="space-y-1 flex-grow">
+                                        <h5 class="text-xs font-bold text-white">{{ $f->question }}</h5>
+                                        <p class="text-xs text-white/60 font-light leading-relaxed whitespace-pre-line">{{ $f->answer }}</p>
+                                    </div>
+                                </div>
+                                <div class="flex items-center gap-1 shrink-0">
+                                    <button type="button" onclick="moveFaq({{ $f->id }}, -1)" class="p-1.5 rounded bg-[#252525] hover:bg-brand-magenta text-white/70 hover:text-white transition-colors cursor-pointer" title="Subir pergunta">
+                                        <i data-lucide="arrow-up" class="w-4 h-4"></i>
+                                    </button>
+                                    <button type="button" onclick="moveFaq({{ $f->id }}, 1)" class="p-1.5 rounded bg-[#252525] hover:bg-brand-magenta text-white/70 hover:text-white transition-colors cursor-pointer" title="Descer pergunta">
+                                        <i data-lucide="arrow-down" class="w-4 h-4"></i>
+                                    </button>
+                                    <button type="button" onclick="openEditFaqModal({{ $f->id }}, {{ json_encode($f->question) }}, {{ json_encode($f->answer) }})" class="p-1.5 text-white/40 hover:text-brand-light-magenta transition-colors cursor-pointer" title="Editar Pergunta">
+                                        <i data-lucide="pencil" class="w-4 h-4"></i>
+                                    </button>
+                                    <button type="button" onclick="deleteFaq({{ $f->id }})" class="p-1.5 text-white/40 hover:text-red-400 transition-colors cursor-pointer" title="Excluir Pergunta">
+                                        <i data-lucide="trash-2" class="w-4 h-4"></i>
+                                    </button>
+                                </div>
                             </div>
-                            <div class="flex items-center gap-1 shrink-0">
-                                <button type="button" onclick="openEditFaqModal({{ $f->id }}, {{ json_encode($f->question) }}, {{ json_encode($f->answer) }})" class="p-1.5 text-white/40 hover:text-brand-light-magenta transition-colors" title="Editar Pergunta">
-                                    <i data-lucide="pencil" class="w-4 h-4"></i>
-                                </button>
-                                <button type="button" onclick="deleteFaq({{ $f->id }})" class="p-1.5 text-white/40 hover:text-red-400 transition-colors" title="Excluir Pergunta">
-                                    <i data-lucide="trash-2" class="w-4 h-4"></i>
-                                </button>
-                            </div>
-                        </div>
-                    @endforeach
+                        @endforeach
+                    </div>
                 </div>
             </div>
         </section>
@@ -1039,41 +1149,130 @@
             }
         }
 
-        // Approvals
+        // Approvals (Fotos e Vídeos)
+        let currentApprovalType = 'image';
+
+        function setApprovalType(type) {
+            currentApprovalType = type;
+            const btnImg = document.getElementById('tab-approval-type-image');
+            const btnVid = document.getElementById('tab-approval-type-video');
+            const boxImg = document.getElementById('box-approval-image');
+            const boxVid = document.getElementById('box-approval-video');
+
+            if (type === 'image') {
+                btnImg.classList.add('bg-brand-magenta', 'text-white');
+                btnImg.classList.remove('text-white/60');
+                btnVid.classList.remove('bg-brand-magenta', 'text-white');
+                btnVid.classList.add('text-white/60');
+
+                boxImg.classList.remove('hidden');
+                boxVid.classList.add('hidden');
+            } else {
+                btnVid.classList.add('bg-brand-magenta', 'text-white');
+                btnVid.classList.remove('text-white/60');
+                btnImg.classList.remove('bg-brand-magenta', 'text-white');
+                btnImg.classList.add('text-white/60');
+
+                boxVid.classList.remove('hidden');
+                boxImg.classList.add('hidden');
+            }
+            lucide.createIcons();
+        }
+
         async function addApproval() {
-            const input = document.getElementById('new-approval-url');
-            const imageUrl = input.value.trim();
-            if (!imageUrl) return;
+            let payload = { media_type: currentApprovalType };
+
+            if (currentApprovalType === 'image') {
+                const imgUrl = document.getElementById('new-approval-url').value.trim();
+                const title = document.getElementById('new-approval-title').value.trim();
+                if (!imgUrl) {
+                    alert('Por favor, informe a URL da imagem/print.');
+                    return;
+                }
+                payload.imageUrl = imgUrl;
+                payload.title = title;
+            } else {
+                const videoUrl = document.getElementById('new-approval-video-url').value.trim();
+                const thumb = document.getElementById('new-approval-video-thumb').value.trim();
+                const title = document.getElementById('new-approval-video-title').value.trim();
+                if (!videoUrl) {
+                    alert('Por favor, informe a URL do vídeo.');
+                    return;
+                }
+                payload.video_url = videoUrl;
+                payload.imageUrl = thumb;
+                payload.title = title;
+            }
 
             try {
                 const res = await fetch('{{ url("/vitrine/admin/approvals") }}', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
-                    body: JSON.stringify({ imageUrl })
+                    body: JSON.stringify(payload)
                 });
-                if (res.ok) {
-                    showToast('Foto de aprovado adicionada!');
-                    input.value = '';
+                const data = await res.json();
+                if (res.ok && data.success) {
+                    showToast(currentApprovalType === 'video' ? 'Depoimento em vídeo adicionado!' : 'Depoimento adicionado!');
                     window.location.reload();
+                } else {
+                    alert(data.error || 'Erro ao adicionar depoimento.');
                 }
             } catch (e) {
-                alert('Erro ao adicionar aprovação.');
+                alert('Erro de conexão ao adicionar depoimento.');
             }
         }
 
         async function deleteApproval(id) {
-            if (!confirm('Deseja excluir esta foto de depoimento?')) return;
+            if (!confirm('Deseja excluir este depoimento?')) return;
             try {
                 const res = await fetch('{{ url("/vitrine/admin/approvals") }}/' + id, {
                     method: 'DELETE',
                     headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}' }
                 });
                 if (res.ok) {
-                    showToast('Foto excluída.');
+                    showToast('Depoimento excluído.');
                     window.location.reload();
                 }
             } catch (e) {
-                alert('Erro ao excluir foto.');
+                alert('Erro ao excluir depoimento.');
+            }
+        }
+
+        async function moveApproval(id, direction) {
+            const grid = document.getElementById('approvals-admin-grid');
+            if (!grid) return;
+
+            const card = grid.querySelector(`.approval-admin-card[data-id="${id}"]`);
+            if (!card) return;
+
+            if (direction === -1 && card.previousElementSibling) {
+                grid.insertBefore(card, card.previousElementSibling);
+            } else if (direction === 1 && card.nextElementSibling) {
+                grid.insertBefore(card.nextElementSibling, card);
+            } else {
+                return; // Already at the edge
+            }
+
+            // Update badge numbers in UI
+            const allCards = Array.from(grid.querySelectorAll('.approval-admin-card'));
+            allCards.forEach((c, idx) => {
+                const badge = c.querySelector('.approval-order-badge');
+                if (badge) badge.innerText = '#' + (idx + 1);
+            });
+
+            // Send new order to server
+            const order = allCards.map(c => c.getAttribute('data-id'));
+            try {
+                const res = await fetch('{{ url("/vitrine/admin/approvals/reorder") }}', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
+                    body: JSON.stringify({ order })
+                });
+                if (res.ok) {
+                    showToast('Ordem dos depoimentos atualizada!');
+                }
+            } catch (e) {
+                console.error('Erro ao salvar nova ordem de depoimentos:', e);
             }
         }
 
@@ -1118,6 +1317,44 @@
                 }
             } catch (e) {
                 alert('Erro ao adicionar FAQ.');
+            }
+        }
+
+        async function moveFaq(id, direction) {
+            const list = document.getElementById('admin-faqs-list');
+            if (!list) return;
+
+            const item = list.querySelector(`.faq-admin-item[data-id="${id}"]`);
+            if (!item) return;
+
+            if (direction === -1 && item.previousElementSibling) {
+                list.insertBefore(item, item.previousElementSibling);
+            } else if (direction === 1 && item.nextElementSibling) {
+                list.insertBefore(item.nextElementSibling, item);
+            } else {
+                return;
+            }
+
+            // Update badge numbers in UI
+            const allItems = Array.from(list.querySelectorAll('.faq-admin-item'));
+            allItems.forEach((it, idx) => {
+                const badge = it.querySelector('.faq-order-badge');
+                if (badge) badge.innerText = '#' + (idx + 1);
+            });
+
+            // Send new order to server
+            const order = allItems.map(it => it.getAttribute('data-id'));
+            try {
+                const res = await fetch('{{ url("/vitrine/admin/faqs/reorder") }}', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
+                    body: JSON.stringify({ order })
+                });
+                if (res.ok) {
+                    showToast('Ordem do FAQ atualizada!');
+                }
+            } catch (e) {
+                console.error('Erro ao salvar nova ordem do FAQ:', e);
             }
         }
 

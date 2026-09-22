@@ -544,21 +544,50 @@
                             style="scrollbar-width: none; -ms-overflow-style: none;"
                         >
                             @foreach($approvals as $approval)
-                                <div 
-                                    onclick="openLightbox('{{ $approval->imageUrl }}')"
-                                    class="w-[240px] sm:w-[280px] md:w-[300px] h-[350px] sm:h-[410px] md:h-[430px] shrink-0 snap-start rounded-2xl overflow-hidden border border-white/10 bg-[#121212] relative group cursor-pointer hover:border-brand-magenta/50 hover:-translate-y-1.5 transition-all duration-300 shadow-xl flex items-center justify-center"
-                                >
-                                    <img 
-                                        src="{{ $approval->imageUrl }}" 
-                                        alt="Depoimento / Aprovado" 
-                                        loading="lazy"
-                                        class="w-full h-full object-contain p-2 rounded-2xl group-hover:scale-105 transition-transform duration-500"
-                                        onerror="this.src='https://images.unsplash.com/photo-1523240795612-9a054b0db644?q=80&w=350'"
-                                    />
-                                    <div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center rounded-2xl pointer-events-none">
-                                        <i data-lucide="zoom-in" class="w-8 h-8 text-brand-magenta"></i>
+                                @if($approval->is_video)
+                                    <div 
+                                        onclick="openVideoModal('{{ $approval->video_url }}', '{{ addslashes($approval->title ?? '') }}')"
+                                        class="w-[240px] sm:w-[280px] md:w-[300px] h-[350px] sm:h-[410px] md:h-[430px] shrink-0 snap-start rounded-2xl overflow-hidden border border-white/10 bg-[#121212] relative group cursor-pointer hover:border-brand-magenta hover:-translate-y-1.5 transition-all duration-300 shadow-xl flex items-center justify-center"
+                                    >
+                                        <img 
+                                            src="{{ $approval->display_thumbnail }}" 
+                                            alt="{{ $approval->title ?: 'Depoimento em Vídeo' }}" 
+                                            loading="lazy"
+                                            class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                                            onerror="this.src='https://images.unsplash.com/photo-1523240795612-9a054b0db644?q=80&w=350'"
+                                        />
+                                        <span class="absolute top-3 left-3 bg-red-600/90 text-white text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full flex items-center gap-1.5 shadow-lg z-10">
+                                            <i data-lucide="play" class="w-3 h-3 fill-white"></i> Vídeo
+                                        </span>
+                                        <div class="absolute inset-0 bg-gradient-to-t from-black/85 via-black/20 to-black/30 group-hover:from-black/95 transition-all flex flex-col items-center justify-center p-4">
+                                            <div class="w-14 h-14 rounded-full bg-brand-magenta text-white flex items-center justify-center shadow-[0_0_25px_rgba(220,38,38,0.5)] group-hover:scale-110 transition-transform">
+                                                <i data-lucide="play" class="w-6 h-6 fill-white ml-0.5"></i>
+                                            </div>
+                                            @if($approval->title)
+                                                <span class="mt-3 text-xs font-bold text-white text-center line-clamp-2 px-2">{{ $approval->title }}</span>
+                                            @endif
+                                        </div>
                                     </div>
-                                </div>
+                                @else
+                                    <div 
+                                        onclick="openLightbox('{{ $approval->imageUrl }}')"
+                                        class="w-[240px] sm:w-[280px] md:w-[300px] h-[350px] sm:h-[410px] md:h-[430px] shrink-0 snap-start rounded-2xl overflow-hidden border border-white/10 bg-[#121212] relative group cursor-pointer hover:border-brand-magenta/50 hover:-translate-y-1.5 transition-all duration-300 shadow-xl flex items-center justify-center"
+                                    >
+                                        <img 
+                                            src="{{ $approval->imageUrl }}" 
+                                            alt="{{ $approval->title ?: 'Depoimento / Aprovado' }}" 
+                                            loading="lazy"
+                                            class="w-full h-full object-contain p-2 rounded-2xl group-hover:scale-105 transition-transform duration-500"
+                                            onerror="this.src='https://images.unsplash.com/photo-1523240795612-9a054b0db644?q=80&w=350'"
+                                        />
+                                        <div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center rounded-2xl pointer-events-none p-4">
+                                            <i data-lucide="zoom-in" class="w-8 h-8 text-brand-magenta mb-2"></i>
+                                            @if($approval->title)
+                                                <span class="text-xs font-bold text-white text-center line-clamp-2">{{ $approval->title }}</span>
+                                            @endif
+                                        </div>
+                                    </div>
+                                @endif
                             @endforeach
                         </div>
                     </div>
@@ -959,6 +988,19 @@
     <!-- 4. LIGHTBOX IMAGE PREVIEW -->
     <div id="lightbox-modal" class="fixed inset-0 z-50 hidden bg-black/90 backdrop-blur-md items-center justify-center p-4" onclick="closeLightbox()">
         <img id="lightbox-image" src="" alt="Ampliado" class="max-w-full max-h-[85vh] rounded-2xl object-contain shadow-2xl border border-brand-magenta/30" />
+    </div>
+
+    <!-- 4.1 VIDEO APPROVAL MODAL -->
+    <div id="video-approval-modal" class="fixed inset-0 z-50 hidden bg-black/90 backdrop-blur-md items-center justify-center p-4" onclick="closeVideoModal()">
+        <div class="relative w-full max-w-4xl bg-[#0d0d0d] rounded-2xl overflow-hidden border border-brand-magenta/40 shadow-2xl" onclick="event.stopPropagation()">
+            <button type="button" onclick="closeVideoModal()" class="absolute top-3 right-3 z-30 p-2 rounded-full bg-black/75 hover:bg-brand-magenta text-white transition-all cursor-pointer shadow-lg" title="Fechar Vídeo">
+                <i data-lucide="x" class="w-5 h-5"></i>
+            </button>
+            <div id="video-modal-player-container" class="w-full aspect-video bg-black flex items-center justify-center">
+                <!-- Video or Iframe player -->
+            </div>
+            <div id="video-modal-title" class="hidden p-4 bg-[#141414] border-t border-white/5 text-white font-bold text-sm"></div>
+        </div>
     </div>
 
     <!-- 5. FLOATING WHATSAPP BUTTON -->
@@ -1662,6 +1704,54 @@
             const modal = document.getElementById('lightbox-modal');
             modal.classList.add('hidden');
             modal.classList.remove('flex');
+            isApprovalsPaused = false;
+        }
+
+        // VIDEO MODAL
+        function openVideoModal(videoUrl, title) {
+            const modal = document.getElementById('video-approval-modal');
+            const container = document.getElementById('video-modal-player-container');
+            const titleEl = document.getElementById('video-modal-title');
+            if (!modal || !container) return;
+
+            isApprovalsPaused = true;
+
+            if (title && title.trim()) {
+                titleEl.textContent = title;
+                titleEl.classList.remove('hidden');
+            } else {
+                titleEl.classList.add('hidden');
+            }
+
+            // Determine video type: YouTube / Vimeo / Direct
+            const ytMatch = videoUrl.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|shorts\/|live\/|watch\?.+&v=))([\w-]{11})/);
+            const vimeoMatch = videoUrl.match(/vimeo\.com\/(?:video\/)?([0-9]+)/);
+
+            if (ytMatch && ytMatch[1]) {
+                const embedUrl = `https://www.youtube.com/embed/${ytMatch[1]}?autoplay=1&rel=0`;
+                container.innerHTML = `<iframe src="${embedUrl}" class="w-full h-full border-0 rounded-2xl" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>`;
+            } else if (vimeoMatch && vimeoMatch[1]) {
+                const embedUrl = `https://player.vimeo.com/video/${vimeoMatch[1]}?autoplay=1`;
+                container.innerHTML = `<iframe src="${embedUrl}" class="w-full h-full border-0 rounded-2xl" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen></iframe>`;
+            } else {
+                container.innerHTML = `<video controls autoplay class="w-full h-full object-contain rounded-2xl"><source src="${videoUrl}" type="video/mp4">Seu navegador não suporta este vídeo.</video>`;
+            }
+
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            lucide.createIcons();
+        }
+
+        function closeVideoModal() {
+            const modal = document.getElementById('video-approval-modal');
+            const container = document.getElementById('video-modal-player-container');
+            if (modal) {
+                modal.classList.add('hidden');
+                modal.classList.remove('flex');
+            }
+            if (container) {
+                container.innerHTML = '';
+            }
             isApprovalsPaused = false;
         }
 

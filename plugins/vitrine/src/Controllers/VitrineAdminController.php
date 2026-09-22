@@ -41,14 +41,15 @@ class VitrineAdminController extends Controller
 
     private function getAdminDataPayload(int $tenantId): array
     {
+        VitrineApproval::ensureSchema();
         $settings = VitrineSetting::forTenant($tenantId);
         $products = VitrineProduct::where('tenant_id', $tenantId)
             ->orderBy('order_position')
             ->orderByDesc('created_at')
             ->get();
         $categories = VitrineCategory::where('tenant_id', $tenantId)->pluck('name');
-        $approvals = VitrineApproval::where('tenant_id', $tenantId)->orderBy('order_position')->get();
-        $faqs = VitrineFaq::where('tenant_id', $tenantId)->orderBy('order_position')->get();
+        $approvals = VitrineApproval::where('tenant_id', $tenantId)->orderBy('order_position')->orderBy('id')->get();
+        $faqs = VitrineFaq::where('tenant_id', $tenantId)->orderBy('order_position')->orderBy('id')->get();
         $ordersCount = VitrineOrder::where('tenant_id', $tenantId)->count();
 
         $connectedSlugs = \App\Models\GatewayCredential::forTenant($tenantId)
@@ -238,19 +239,57 @@ class VitrineAdminController extends Controller
 
     public function storeApproval(Request $request): JsonResponse
     {
+        VitrineApproval::ensureSchema();
         $tenantId = 1;
-        $imageUrl = trim((string) $request->input('imageUrl'));
+        $mediaType = $request->input('media_type', 'image');
+        $imageUrl = trim((string) $request->input('imageUrl', ''));
+        $videoUrl = trim((string) $request->input('video_url', ''));
+        $title = trim((string) $request->input('title', ''));
 
-        if ($imageUrl !== '') {
-            $approval = VitrineApproval::create([
-                'tenant_id' => $tenantId,
-                'imageUrl' => $imageUrl,
-            ]);
-
-            return response()->json(['success' => true, 'approval' => $approval]);
+        if ($mediaType === 'video') {
+            if ($videoUrl === '') {
+                return response()->json(['success' => false, 'error' => 'URL do vídeo é obrigatória'], 422);
+            }
+            if ($imageUrl === '') {
+                $ytId = VitrineApproval::extractYoutubeId($videoUrl);
+                if ($ytId) {
+                    $imageUrl = "https://img.youtube.com/vi/{$ytId}/hqdefault.jpg";
+                }
+            }
+        } else {
+            if ($imageUrl === '') {
+                return response()->json(['success' => false, 'error' => 'URL da imagem é obrigatória'], 422);
+            }
         }
 
-        return response()->json(['success' => false, 'error' => 'URL inválida'], 422);
+        $nextPos = (int) VitrineApproval::where('tenant_id', $tenantId)->max('order_position') + 1;
+
+        $approval = VitrineApproval::create([
+            'tenant_id' => $tenantId,
+            'media_type' => $mediaType,
+            'imageUrl' => $imageUrl,
+            'video_url' => $videoUrl ?: null,
+            'title' => $title ?: null,
+            'order_position' => $nextPos,
+        ]);
+
+        return response()->json(['success' => true, 'approval' => $approval]);
+    }
+
+    public function reorderApprovals(Request $request): JsonResponse
+    {
+        VitrineApproval::ensureSchema();
+        $tenantId = 1;
+        $order = $request->input('order', []);
+        if (is_array($order)) {
+            foreach ($order as $position => $id) {
+                VitrineApproval::where('tenant_id', $tenantId)
+                    ->where('id', $id)
+                    ->update(['order_position' => (int) $position]);
+            }
+        }
+
+        return response()->json(['success' => true]);
     }
 
     public function destroyApproval(Request $request, $id): JsonResponse
@@ -262,14 +301,34 @@ class VitrineAdminController extends Controller
 
     public function storeFaq(Request $request): JsonResponse
     {
+        VitrineApproval::ensureSchema();
         $tenantId = 1;
+        $nextPos = (int) VitrineFaq::where('tenant_id', $tenantId)->max('order_position') + 1;
+
         $faq = VitrineFaq::create([
             'tenant_id' => $tenantId,
             'question' => $request->input('question'),
             'answer' => $request->input('answer'),
+            'order_position' => $nextPos,
         ]);
 
         return response()->json(['success' => true, 'faq' => $faq]);
+    }
+
+    public function reorderFaqs(Request $request): JsonResponse
+    {
+        VitrineApproval::ensureSchema();
+        $tenantId = 1;
+        $order = $request->input('order', []);
+        if (is_array($order)) {
+            foreach ($order as $position => $id) {
+                VitrineFaq::where('tenant_id', $tenantId)
+                    ->where('id', $id)
+                    ->update(['order_position' => (int) $position]);
+            }
+        }
+
+        return response()->json(['success' => true]);
     }
 
     public function updateFaq(Request $request, $id): JsonResponse

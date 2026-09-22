@@ -127,10 +127,31 @@ return new class extends Migration
             Schema::create('plugin_vitrine_approvals', function (Blueprint $table) {
                 $table->id();
                 $table->unsignedBigInteger('tenant_id')->default(1)->index();
-                $table->text('imageUrl');
+                $table->text('imageUrl')->nullable();
+                $table->string('media_type', 50)->default('image');
+                $table->text('video_url')->nullable();
+                $table->string('title', 255)->nullable();
                 $table->integer('order_position')->default(0);
                 $table->timestamps();
             });
+        } else {
+            Schema::table('plugin_vitrine_approvals', function (Blueprint $table) {
+                if (! Schema::hasColumn('plugin_vitrine_approvals', 'media_type')) {
+                    $table->string('media_type', 50)->default('image');
+                }
+                if (! Schema::hasColumn('plugin_vitrine_approvals', 'video_url')) {
+                    $table->text('video_url')->nullable();
+                }
+                if (! Schema::hasColumn('plugin_vitrine_approvals', 'title')) {
+                    $table->string('title', 255)->nullable();
+                }
+                if (! Schema::hasColumn('plugin_vitrine_approvals', 'order_position')) {
+                    $table->integer('order_position')->default(0);
+                }
+            });
+            try {
+                \Illuminate\Support\Facades\DB::statement('ALTER TABLE plugin_vitrine_approvals MODIFY imageUrl TEXT NULL');
+            } catch (\Throwable) {}
         }
 
         if (! Schema::hasTable('plugin_vitrine_faqs')) {
@@ -141,6 +162,12 @@ return new class extends Migration
                 $table->text('answer');
                 $table->integer('order_position')->default(0);
                 $table->timestamps();
+            });
+        } else {
+            Schema::table('plugin_vitrine_faqs', function (Blueprint $table) {
+                if (! Schema::hasColumn('plugin_vitrine_faqs', 'order_position')) {
+                    $table->integer('order_position')->default(0);
+                }
             });
         }
 
