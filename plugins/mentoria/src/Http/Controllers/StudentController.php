@@ -519,6 +519,69 @@ class StudentController extends Controller
                 )
                 : [],
             'courses' => $this->access->studentCourses($student, $tenantId)->values(),
+            'ai_widget' => $this->aiWidgetPayload($student, $tenantId),
+        ];
+    }
+
+    private function aiWidgetPayload(User $student, int $tenantId): array
+    {
+        if (! class_exists(\Plugins\AiMember\Models\AiMemberConnection::class)) {
+            return ['enabled' => false];
+        }
+
+        $conn = \Plugins\AiMember\Models\AiMemberConnection::forTenant($tenantId)->first();
+        if (! $conn?->isConfigured() || ! $conn->is_active) {
+            return ['enabled' => false];
+        }
+
+        // Busca o produto mentoria do tenant com ai_enabled ativo
+        $mentoriaProducts = DB::table('mentoria_products')
+            ->where('tenant_id', $tenantId)
+            ->where('is_active', true)
+            ->get();
+
+        $activeMentoriaProduct = null;
+        foreach ($mentoriaProducts as $mp) {
+            $settings = json_decode($mp->settings ?? '[]', true) ?: [];
+            if (! empty($settings['ai_enabled'])) {
+                $activeMentoriaProduct = $mp;
+                break;
+            }
+        }
+
+        if (! $activeMentoriaProduct) {
+            return ['enabled' => false];
+        }
+
+        $agent = \Plugins\AiMember\Models\AiMemberAgent::query()
+            ->where('product_id', $activeMentoriaProduct->product_id)
+            ->first();
+
+        // Se o agente ainda não existe, cria um padrão
+        if (! $agent) {
+            $agent = \Plugins\AiMember\Models\AiMemberAgent::query()->create([
+                'product_id' => $activeMentoriaProduct->product_id,
+                'tenant_id' => $tenantId,
+                'enabled' => true,
+                'name' => 'Mentor IA',
+                'gender' => 'neutral',
+                'temperature' => 0.7,
+                'max_tokens' => 2000,
+                'system_instructions' => 'Você é o Mentor IA oficial deste curso e mentoria para concursos. Ajude o aluno tirando dúvidas sobre matérias e orientando os estudos.',
+                'welcome_message' => 'Olá! Sou o seu Mentor IA. Como posso te ajudar nos estudos hoje?',
+            ]);
+        }
+
+        if (! $agent->enabled) {
+            return ['enabled' => false];
+        }
+
+        return [
+            'enabled' => true,
+            'product_id' => (string) $activeMentoriaProduct->product_id,
+            'agent_name' => $agent->name ?: 'Mentor IA',
+            'widget_color' => $agent->widget_color ?: '#0ea5e9',
+            'welcome_message' => $agent->welcome_message ?: 'Olá! Sou seu Mentor IA. Como posso ajudar nos estudos hoje?',
         ];
     }
 

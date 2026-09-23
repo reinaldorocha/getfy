@@ -4,6 +4,7 @@ namespace Plugins\AiMember\Services;
 
 use App\Models\Product;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Plugins\AiMember\Models\AiMemberAgent;
 use Plugins\AiMember\Models\AiMemberKnowledgeChunk;
 
@@ -30,6 +31,7 @@ class LlmOrchestrator
         array $attachments = [],
         ?string $studentName = null,
         bool $isFirstMessage = false,
+        ?int $studentId = null,
     ): array {
         $tenantId = (int) $agent->tenant_id;
         $client = $this->client->forTenant($tenantId);
@@ -75,12 +77,16 @@ class LlmOrchestrator
             $context = $this->retriever->formatContext($results);
         }
 
+        $isMentoria = DB::getSchemaBuilder()->hasTable('mentoria_products')
+            && DB::table('mentoria_products')->where('product_id', $product->id)->exists();
+
         $systemPrompt = $this->buildSystemPrompt(
             $agent,
             $product,
             $context,
             $studentName,
             $isFirstMessage,
+            $isMentoria,
         );
         $model = $this->classifier->modelForIntent($intent);
         $maxTokens = min(
@@ -105,6 +111,42 @@ class LlmOrchestrator
             'temperature' => (float) $agent->temperature,
         ];
 
+        if ($isMentoria && $studentId && class_exists(\Plugins\Mentoria\Services\MentoriaAiService::class)) {
+            $payload['tools'] = [
+                [
+                    'type' => 'function',
+                    'function' => [
+                        'name' => 'consultar_dados_mentoria',
+                        'description' => 'Consulta histórico de questões (quantas fez, acertos, erros), progresso do edital verticalizado, cronograma de estudos ou radar de deficiências deste aluno.',
+                        'parameters' => [
+                            'type' => 'object',
+                            'properties' => [
+                                'tipo' => [
+                                    'type' => 'string',
+                                    'enum' => ['questoes', 'edital', 'cronograma', 'radar', 'geral'],
+                                    'description' => 'Tipo da consulta: questoes, edital, cronograma, radar ou geral.',
+                                ],
+                                'data' => [
+                                    'type' => 'string',
+                                    'description' => 'Data específica no formato YYYY-MM-DD ou "hoje", "ontem".',
+                                ],
+                                'periodo' => [
+                                    'type' => 'string',
+                                    'enum' => ['ultimos_7_dias', 'ultimos_30_dias', 'este_mes'],
+                                    'description' => 'Período caso a pergunta seja semanal, mensal, etc.',
+                                ],
+                                'disciplina' => [
+                                    'type' => 'string',
+                                    'description' => 'Nome da matéria caso o aluno filtre por uma disciplina.',
+                                ],
+                            ],
+                            'required' => ['tipo'],
+                        ],
+                    ],
+                ],
+            ];
+        }
+
         try {
             $response = $client->chatCompletions($payload);
         } catch (\Throwable $e) {
@@ -117,8 +159,50 @@ class LlmOrchestrator
             }
         }
 
-        $content = trim((string) ($response['choices'][0]['message']['content'] ?? ''));
+        $choiceMessage = $response['choices'][0]['message'] ?? [];
         $usage = $response['usage'] ?? [];
+
+        // Trata chamada de ferramenta (Function Calling / Tool)
+        if (! empty($choiceMessage['tool_calls']) && $isMentoria && $studentId && class_exists(\Plugins\Mentoria\Services\MentoriaAiService::class)) {
+            foreach ($choiceMessage['tool_calls'] as $toolCall) {
+                if (($toolCall['function']['name'] ?? '') === 'consultar_dados_mentoria') {
+                    $args = json_decode($toolCall['function']['arguments'] ?? '{}', true) ?: [];
+                    $aiService = app(\Plugins\Mentoria\Services\MentoriaAiService::class);
+                    $toolResult = $aiService->consultarDados(
+                        $studentId,
+                        $tenantId,
+                        $args['tipo'] ?? 'geral',
+                        $args['data'] ?? null,
+                        $args['periodo'] ?? null,
+                        $args['disciplina'] ?? null
+                    );
+
+                    $messages[] = $choiceMessage;
+                    $messages[] = [
+                        'role' => 'tool',
+                        'tool_call_id' => $toolCall['id'],
+                        'content' => json_encode($toolResult, JSON_UNESCAPED_UNICODE),
+                    ];
+
+                    $payload['messages'] = $messages;
+                    unset($payload['tools']);
+
+                    try {
+                        $secondResponse = $client->chatCompletions($payload);
+                        $response = $secondResponse;
+                        $choiceMessage = $secondResponse['choices'][0]['message'] ?? [];
+                        $usage2 = $secondResponse['usage'] ?? [];
+                        $usage['prompt_tokens'] = ($usage['prompt_tokens'] ?? 0) + ($usage2['prompt_tokens'] ?? 0);
+                        $usage['completion_tokens'] = ($usage['completion_tokens'] ?? 0) + ($usage2['completion_tokens'] ?? 0);
+                    } catch (\Throwable) {
+                        // caso a 2ª chamada falhe, mantém a primeira
+                    }
+                    break;
+                }
+            }
+        }
+
+        $content = trim((string) ($choiceMessage['content'] ?? ''));
 
         return [
             'content' => $content !== '' ? $content : 'Desculpe, não consegui gerar uma resposta. Tente reformular sua pergunta.',
@@ -135,12 +219,20 @@ class LlmOrchestrator
         string $context,
         ?string $studentName = null,
         bool $isFirstMessage = false,
+        bool $isMentoria = false,
     ): string {
         $parts = [
-            "Você é {$agent->name}, assistente de suporte na área de membros.",
+            "Você é {$agent->name}, assistente de suporte e mentor na área de membros.",
             $agent->genderPronounHint(),
             $this->productContext->build($product),
         ];
+
+        if ($isMentoria) {
+            $parts[] = "Você é também o Mentor de Estudos de Concursos deste aluno.\n"
+                . "- Você pode tirar qualquer dúvida teórica sobre as matérias do concurso de forma clara, didática, precisa e motivadora.\n"
+                . "- Sempre que o aluno perguntar sobre o histórico pessoal ou métricas dele (ex: quantas questões resolveu em tal dia/período, progresso no edital verticalizado, o que tem agendado no cronograma ou pontos fracos no radar), USE OBRIGATORIAMENTE a ferramenta 'consultar_dados_mentoria' para obter os números exatos e reais do banco de dados antes de responder.\n"
+                . "- Responda com base nos dados retornados pela ferramenta de forma encorajadora e precisa.";
+        }
 
         if ($agent->personality) {
             $parts[] = "Personalidade: {$agent->personality}";
@@ -155,7 +247,7 @@ class LlmOrchestrator
         if ($isFirstMessage) {
             $name = trim((string) $studentName);
             $greeting = $name !== '' ? "Cumprimente {$name} pelo nome" : 'Cumprimente o aluno calorosamente';
-            $parts[] = "Esta é a PRIMEIRA mensagem desta conversa. {$greeting}, apresente-se como {$agent->name} e convide-o a perguntar sobre o curso \"{$product->name}\".";
+            $parts[] = "Esta é a PRIMEIRA mensagem desta conversa. {$greeting}, apresente-se como {$agent->name} e convide-o a perguntar sobre o curso \"{$product->name}\" ou sobre sua rotina de estudos.";
         }
 
         if ($context !== '') {

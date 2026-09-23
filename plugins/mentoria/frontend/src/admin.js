@@ -131,16 +131,22 @@ export const MentoriaIndex = {
                 item: product,
                 form: {
                     capabilities: [...(product.capabilities?.length ? product.capabilities : (state.value.available_capabilities || []))],
+                    ai_enabled: Boolean(product.settings?.ai_enabled),
                 },
             };
         }
 
         async function saveProduct(m) {
             const product = m.item;
+            const settings = {
+                ...(product.settings || {}),
+                ai_enabled: Boolean(m.form.ai_enabled),
+            };
             await run(() => api('/mentoria/products/' + product.id + '/enable', {
                 method: 'POST',
-                body: jsonBody({ capabilities: m.form.capabilities, settings: product.settings || {} }),
+                body: jsonBody({ capabilities: m.form.capabilities, settings }),
             }), 'Configuração do produto salva.');
+            product.settings = settings;
             closeModal();
         }
 
@@ -980,16 +986,37 @@ export const MentoriaIndex = {
 
             if (m.type === 'product') {
                 const caps = state.value.available_capabilities || [];
-                return modal('Recursos do produto: '+m.item.name, h('div',{class:'space-y-3'},[
-                    h('p',{class:'text-sm text-zinc-500'},'Marque quais módulos o comprador deste produto pode usar.'),
-                    h('div',{class:'grid gap-2 md:grid-cols-2'},caps.map(cap=>h('label',{class:'flex items-center gap-2 rounded-lg border border-zinc-200 p-3 text-sm dark:border-zinc-700'},[
-                        h('input',{type:'checkbox',checked:m.form.capabilities.includes(cap),onChange:e=>{
-                            if(e.target.checked && !m.form.capabilities.includes(cap)) m.form.capabilities.push(cap);
-                            if(!e.target.checked) m.form.capabilities=m.form.capabilities.filter(x=>x!==cap);
-                        }}),
-                        h('span',cap),
-                    ]))),
-                ]),closeModal,[btn('Salvar',()=>saveProduct(m),'primary',{disabled:busy.value})]);
+                return modal('Recursos do produto: ' + m.item.name, h('div', { class: 'space-y-4' }, [
+                    h('div', { class: 'rounded-xl border border-sky-500/30 bg-sky-500/10 p-3.5 dark:border-sky-500/20 dark:bg-sky-950/30' }, [
+                        h('label', { class: 'flex cursor-pointer items-start gap-3' }, [
+                            h('input', {
+                                type: 'checkbox',
+                                class: 'mt-0.5 h-4 w-4 rounded border-zinc-300 text-sky-600 focus:ring-sky-500',
+                                checked: m.form.ai_enabled,
+                                onChange: e => { m.form.ai_enabled = e.target.checked; },
+                            }),
+                            h('div', { class: 'flex-1 text-sm' }, [
+                                h('span', { class: 'font-semibold text-zinc-900 dark:text-zinc-100' }, 'Ativar Assistente de IA na Mentoria'),
+                                h('p', { class: 'mt-0.5 text-xs text-zinc-600 dark:text-zinc-400' }, 'Exibe o botão flutuante de IA para os alunos. O tutor responde dúvidas sobre matérias e consulta o progresso pessoal (questões, edital verticalizado e cronograma).'),
+                            ]),
+                        ]),
+                    ]),
+                    h('div', [
+                        h('h4', { class: 'mb-1 text-sm font-semibold text-zinc-800 dark:text-zinc-200' }, 'Módulos disponíveis'),
+                        h('p', { class: 'mb-3 text-xs text-zinc-500' }, 'Marque quais módulos o comprador deste produto pode usar.'),
+                        h('div', { class: 'grid gap-2 md:grid-cols-2' }, caps.map(cap => h('label', { class: 'flex items-center gap-2 rounded-lg border border-zinc-200 p-3 text-sm dark:border-zinc-700' }, [
+                            h('input', {
+                                type: 'checkbox',
+                                checked: m.form.capabilities.includes(cap),
+                                onChange: e => {
+                                    if (e.target.checked && !m.form.capabilities.includes(cap)) m.form.capabilities.push(cap);
+                                    if (!e.target.checked) m.form.capabilities = m.form.capabilities.filter(x => x !== cap);
+                                },
+                            }),
+                            h('span', cap),
+                        ]))),
+                    ]),
+                ]), closeModal, [btn('Salvar', () => saveProduct(m), 'primary', { disabled: busy.value })]);
             }
 
             if (m.type === 'contest') {

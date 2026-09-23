@@ -3,8 +3,8 @@ import {
     api, alertBox, badge, btn, card, checkbox, choiceCard, countdown, empty, field, fmtDate, fmtDateTime,
     fmtHours, input, jsonBody, modal, optionize, progressBar, safeJson, sectionTitle, select,
     stat, textarea, mentoriaShell, useMentoriaShell, svgIcon, renderIcon,
-} from './shared.js?v=516eddc84f30';
-import { displayAlternative } from './question-alternatives.js?v=516eddc84f30';
+} from './shared.js?v=d91c3e002d02';
+import { displayAlternative } from './question-alternatives.js?v=d91c3e002d02';
 
 const MODULES = [
     ['dashboard', 'Dashboard', 'dashboard', 'dashboard'],
@@ -82,6 +82,16 @@ export const MentoriaStudent = {
         const base = computed(() => state.value.workspace_base || '/mentoria-estudos/' + tenant.value);
         const actingAsMentor = computed(() => Boolean(state.value.acting_as_mentor));
         const capabilities = computed(() => state.value.capabilities || []);
+
+        const aiWidget = computed(() => state.value.ai_widget || { enabled: false });
+        const aiWidgetVisible = computed(() => Boolean(aiWidget.value.enabled && aiWidget.value.product_id));
+        const aiChatOpen = ref(false);
+        const aiChatMessages = ref([]);
+        const aiChatConversationId = ref('');
+        const aiChatInput = ref('');
+        const aiChatSending = ref(false);
+        const aiChatLoading = ref(false);
+        const aiChatLoaded = ref(false);
         const contests = computed(() => state.value.contests || []);
         const activeContestId = ref(
             localStorage.getItem('mentoria_active_contest_'+(props.plugin_ui_page?.tenant_id || ''))
@@ -293,7 +303,7 @@ export const MentoriaStudent = {
 
             return h('button',{
                 type:'button',
-                class:'mentoria-timer-launcher'+(timer.value.running?' mentoria-timer-launcher--running':''),
+                class:'mentoria-timer-launcher'+(timer.value.running?' mentoria-timer-launcher--running':'')+(aiWidgetVisible.value?' mentoria-timer-launcher--with-ai':''),
                 title:'Abrir timer de estudo',
                 'aria-label':label+(hasSession?', '+formatTimer(displaySeconds):''),
                 onClick:()=>openTimer(),
@@ -1002,7 +1012,7 @@ export const MentoriaStudent = {
                     h('div',{class:'flex flex-wrap gap-2'},types.map(t=>btn(labels[t]||t,()=>{materialType.value=t;materialFolder.value='';materialPage.value=1;},materialType.value===t?'primary':'ghost'))),
                     folders.length?h('div',{class:'mt-3 flex flex-wrap gap-2'},[btn('Todas as pastas',()=>{materialFolder.value='';materialPage.value=1;},!materialFolder.value?'soft':'ghost'),...folders.map(f=>btn('📁 '+f,()=>{materialFolder.value=f;materialPage.value=1;},materialFolder.value===f?'soft':'ghost'))]):null,
                 ]),
-                pageItems.length?h('div',{class:'grid gap-3 md:grid-cols-2 xl:grid-cols-3'},pageItems.map(mat=>h('div',{class:'rounded-xl border border-zinc-200 p-4 dark:border-zinc-700'},[
+                pageItems.length?h('div',{class:'grid gap-3 md:grid-cols-2 xl:grid-cols-3'},pageItems.map(mat=>h('div',{class:'rounded-xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-700 dark:bg-zinc-900'},[
                     h('div',{class:'flex items-start justify-between gap-2'},[h('div',[h('strong',mat.title),h('div',{class:'text-xs text-zinc-500'},(mat.folder||'Geral')+' · '+(labels[mat.type]||mat.type))]),mat.completed?badge('Concluído','green'):badge('Pendente','amber')]),
                     mat.description?h('p',{class:'mt-2 text-xs text-zinc-500'},mat.description):null,
                     mat.type==='texto'&&mat.text?h('div',{class:'mt-3 max-h-40 overflow-auto whitespace-pre-wrap rounded-lg bg-zinc-50 p-3 text-sm dark:bg-zinc-800'},mat.text):null,
@@ -1307,7 +1317,7 @@ export const MentoriaStudent = {
                 sectionTitle('Simulados / Raio-X','Registre nota, tempo, questões e resultados por matéria.',btn('Novo simulado',()=>openMock())),
                 list.length?h('div',{class:'space-y-3'},list.map(m=>{
                     const results=(state.value.mock_subject_results||[]).filter(r=>r.mock_exam_id===m.id);
-                    return h('div',{class:'rounded-xl border border-zinc-200 p-4 dark:border-zinc-700'},[
+                    return h('div',{class:'rounded-xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-700 dark:bg-zinc-900'},[
                         h('div',{class:'flex flex-wrap items-start justify-between gap-3'},[
                             h('div',[h('strong',m.name),h('div',{class:'text-xs text-zinc-500'},(m.type==='realizado'?fmtDate(m.performed_at):'Pendente')+(m.time_minutes?' · '+m.time_minutes+' min':''))]),
                             h('div',{class:'flex items-center gap-2'},[m.percentage!==null?badge(m.percentage+'%','sky'):null,btn('Editar',()=>openMock(m),'ghost'),btn('×',()=>deleteMock(m),'danger')]),
@@ -1326,7 +1336,7 @@ export const MentoriaStudent = {
                     h('input',{value:notebookQuery.value,placeholder:'🔍 Buscar anotação ou resumo…',class:'w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-950',onInput:e=>notebookQuery.value=e.target.value}),
                     h('select',{value:notebookFolder.value,class:'w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-950',onChange:e=>notebookFolder.value=e.target.value},[h('option',{value:''},'Todas as pastas'),...folders.map(f=>h('option',{value:f},'📁 '+f))]),
                 ])]),
-                filtered.length?h('div',{class:'grid gap-3 md:grid-cols-2 xl:grid-cols-3'},filtered.map(n=>h('article',{class:'rounded-xl border border-zinc-200 p-4 dark:border-zinc-700',style:{borderTopColor:n.color||'#4f8ef7',borderTopWidth:'4px'}},[
+                filtered.length?h('div',{class:'grid gap-3 md:grid-cols-2 xl:grid-cols-3'},filtered.map(n=>h('article',{class:'rounded-xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-700 dark:bg-zinc-900',style:{borderTopColor:n.color||'#4f8ef7',borderTopWidth:'4px'}},[
                     h('div',{class:'flex items-start justify-between gap-2'},[h('div',[h('strong',n.title),h('div',{class:'text-xs text-zinc-500'},'📁 '+(n.folder||'Geral'))]),h('div',{class:'flex gap-1'},[btn('Copiar',async()=>{await navigator.clipboard.writeText(n.content||'');success.value='Resumo copiado.';},'ghost'),btn('Editar',()=>openNotebook(n),'ghost'),btn('×',()=>deleteNotebook(n),'danger')])]),
                     h('div',{class:'mt-3 max-h-52 overflow-auto whitespace-pre-wrap text-sm text-zinc-600 dark:text-zinc-300'},n.content||'Sem conteúdo.'),h('div',{class:'mt-2 text-[11px] text-zinc-500'},'Atualizado '+fmtDateTime(n.updated_at)),
                 ]))):empty('Nenhum caderno encontrado.'),
@@ -1690,6 +1700,295 @@ export const MentoriaStudent = {
             return null;
         }
 
+        async function loadAiHistory() {
+            if (!aiWidget.value.product_id) return;
+            aiChatLoading.value = true;
+            try {
+                const data = await api(`/api/ai-member/history?product_id=${encodeURIComponent(aiWidget.value.product_id)}`);
+                aiChatMessages.value = data.messages || [];
+                aiChatConversationId.value = data.conversation_id || '';
+                aiChatLoaded.value = true;
+            } catch (e) {
+                console.warn('Não foi possível carregar o histórico do chat IA', e);
+            } finally {
+                aiChatLoading.value = false;
+                scrollAiToBottom();
+            }
+        }
+
+        function toggleAiChat() {
+            aiChatOpen.value = !aiChatOpen.value;
+            if (aiChatOpen.value && !aiChatLoaded.value) {
+                loadAiHistory();
+            } else if (aiChatOpen.value) {
+                scrollAiToBottom();
+            }
+        }
+
+        function scrollAiToBottom() {
+            const doScroll = () => {
+                const el = document.getElementById('mentoria-ai-chat-body');
+                if (el) {
+                    el.scrollTop = el.scrollHeight;
+                }
+            };
+            requestAnimationFrame(doScroll);
+            setTimeout(doScroll, 60);
+            setTimeout(doScroll, 200);
+        }
+
+        async function sendAiMessage(customText = null) {
+            const text = (customText !== null ? customText : aiChatInput.value).trim();
+            if (!text || aiChatSending.value) return;
+            aiChatInput.value = '';
+
+            aiChatMessages.value.push({
+                id: 'temp-' + Date.now(),
+                role: 'user',
+                content: text,
+                created_at: new Date().toISOString(),
+            });
+            aiChatSending.value = true;
+            scrollAiToBottom();
+
+            try {
+                const data = await api('/api/ai-member/chat', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        product_id: aiWidget.value.product_id,
+                        message: text,
+                        conversation_id: aiChatConversationId.value || undefined,
+                    }),
+                });
+
+                if (data?.conversation_id) {
+                    aiChatConversationId.value = data.conversation_id;
+                }
+                if (data?.reply) {
+                    aiChatMessages.value.push({
+                        id: data.reply.id || ('reply-' + Date.now()),
+                        role: 'assistant',
+                        content: data.reply.content || '',
+                        created_at: data.reply.created_at || new Date().toISOString(),
+                    });
+                }
+            } catch (err) {
+                aiChatMessages.value.push({
+                    id: 'err-' + Date.now(),
+                    role: 'assistant',
+                    content: 'Desculpe, ocorreu uma falha ao consultar o Mentor IA: ' + (err.message || 'Erro de conexão') + '. Por favor, tente novamente.',
+                    created_at: new Date().toISOString(),
+                });
+            } finally {
+                aiChatSending.value = false;
+                scrollAiToBottom();
+            }
+        }
+
+        async function resetAiConversation() {
+            if (aiChatSending.value) return;
+            aiChatLoading.value = true;
+            try {
+                const data = await api('/api/ai-member/conversations/new', {
+                    method: 'POST',
+                    body: JSON.stringify({ product_id: aiWidget.value.product_id }),
+                });
+                aiChatConversationId.value = data.conversation_id || '';
+                aiChatMessages.value = [];
+            } catch (e) {
+                console.warn('Falha ao reiniciar conversa', e);
+            } finally {
+                aiChatLoading.value = false;
+            }
+        }
+
+        function formatAiMessage(text) {
+            if (!text) return '';
+            return text
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+                .replace(/\*(.+?)\*/g, '<em>$1</em>')
+                .replace(/`(.+?)`/g, '<code class="bg-zinc-800 text-sky-300 px-1 py-0.5 rounded text-xs">$1</code>')
+                .replace(/\n/g, '<br>');
+        }
+
+        function renderAiFloatingWidget() {
+            if (!aiWidgetVisible.value) return null;
+
+            const agentName = aiWidget.value.agent_name || 'Mentor IA';
+            const welcomeMsg = aiWidget.value.welcome_message || 'Olá! Sou seu Mentor IA. Posso tirar dúvidas teóricas ou consultar suas questões resolvidas, tópicos concluídos do edital e cronograma!';
+            const primaryColor = aiWidget.value.theme_primary || '#0284c7';
+
+            const fab = h('button', {
+                type: 'button',
+                class: 'mentoria-ai-fab text-white group',
+                style: { backgroundColor: primaryColor },
+                title: aiChatOpen.value ? 'Fechar Mentor IA' : 'Abrir Mentor IA',
+                'aria-label': aiChatOpen.value ? 'Fechar chat' : 'Abrir chat com Mentor IA',
+                onClick: toggleAiChat,
+            }, [
+                aiChatOpen.value
+                    ? svgIcon('x', 'h-6 w-6 text-white transition-transform duration-200 rotate-90 group-hover:rotate-0')
+                    : h('div', { class: 'relative flex items-center justify-center' }, [
+                        svgIcon('messageCircle', 'h-7 w-7 text-white'),
+                        h('span', { class: 'absolute -top-1 -right-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-amber-400 text-[9px] text-zinc-950 font-bold shadow animate-pulse' }, '✦'),
+                    ]),
+            ]);
+
+            if (!aiChatOpen.value) {
+                return fab;
+            }
+
+            const panel = h('div', {
+                class: 'mentoria-ai-panel text-zinc-100',
+            }, [
+                h('header', { class: 'mentoria-ai-header' }, [
+                    h('div', { class: 'flex items-center gap-3' }, [
+                        h('div', { class: 'flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-tr from-sky-600 to-indigo-600 text-white shadow-md shrink-0' }, [
+                            svgIcon('sparkles', 'h-5 w-5'),
+                        ]),
+                        h('div', { class: 'min-w-0' }, [
+                            h('div', { class: 'flex items-center gap-2' }, [
+                                h('h3', { class: 'text-sm font-semibold text-white truncate' }, agentName),
+                                h('span', { class: 'inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-medium text-emerald-400 shrink-0' }, [
+                                    h('span', { class: 'h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse' }),
+                                    'Online',
+                                ]),
+                            ]),
+                            h('p', { class: 'text-[11px] text-zinc-400 truncate' }, 'Conectado aos seus estudos e edital'),
+                        ]),
+                    ]),
+                    h('div', { class: 'flex items-center gap-1 shrink-0' }, [
+                        h('button', {
+                            type: 'button',
+                            class: 'rounded-lg p-1.5 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200 transition',
+                            title: 'Nova conversa',
+                            onClick: resetAiConversation,
+                        }, [svgIcon('plus', 'h-4 w-4')]),
+                        h('button', {
+                            type: 'button',
+                            class: 'rounded-lg p-1.5 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200 transition',
+                            title: 'Fechar chat',
+                            onClick: toggleAiChat,
+                        }, [svgIcon('x', 'h-4 w-4')]),
+                    ]),
+                ]),
+
+                h('div', {
+                    id: 'mentoria-ai-chat-body',
+                    class: 'mentoria-ai-body text-sm',
+                }, [
+                    aiChatLoading.value && aiChatMessages.value.length === 0
+                        ? h('div', { class: 'flex flex-col items-center justify-center py-16 text-zinc-500 gap-3 shrink-0' }, [
+                            h('div', { class: 'h-6 w-6 animate-spin rounded-full border-2 border-sky-500 border-t-transparent' }),
+                            h('span', { class: 'text-xs' }, 'Carregando conversa…'),
+                        ])
+                        : aiChatMessages.value.length === 0
+                            ? h('div', { class: 'flex flex-col items-center text-center py-4 px-2 space-y-4 shrink-0' }, [
+                                h('div', { class: 'flex h-14 w-14 items-center justify-center rounded-2xl bg-sky-500/10 text-sky-400 ring-1 ring-sky-500/20 shadow-inner shrink-0' }, [
+                                    svgIcon('bot', 'h-8 w-8'),
+                                ]),
+                                h('div', { class: 'space-y-1' }, [
+                                    h('h4', { class: 'text-base font-bold text-white' }, 'Olá! Como posso ajudar?'),
+                                    h('p', { class: 'text-xs text-zinc-400 leading-relaxed max-w-[320px]' }, welcomeMsg),
+                                ]),
+                                h('div', { class: 'w-full pt-2 space-y-2 text-left' }, [
+                                    h('p', { class: 'text-[11px] font-semibold uppercase tracking-wider text-zinc-400' }, 'Perguntas sugeridas'),
+                                    h('button', {
+                                        type: 'button',
+                                        class: 'w-full text-left rounded-xl border border-zinc-800/80 bg-zinc-900/60 hover:bg-zinc-800 hover:border-zinc-700 p-2.5 text-xs text-zinc-300 transition flex items-center justify-between group',
+                                        onClick: () => sendAiMessage('Quantas questões resolvi hoje e qual foi meu percentual?'),
+                                    }, [
+                                        h('span', {}, '🎯 Quantas questões resolvi hoje?'),
+                                        h('span', { class: 'text-zinc-400 group-hover:text-sky-400 transition' }, '→'),
+                                    ]),
+                                    h('button', {
+                                        type: 'button',
+                                        class: 'w-full text-left rounded-xl border border-zinc-800/80 bg-zinc-900/60 hover:bg-zinc-800 hover:border-zinc-700 p-2.5 text-xs text-zinc-300 transition flex items-center justify-between group',
+                                        onClick: () => sendAiMessage('Quantos tópicos do edital já concluí?'),
+                                    }, [
+                                        h('span', {}, '📊 Quantos tópicos do edital já concluí?'),
+                                        h('span', { class: 'text-zinc-400 group-hover:text-sky-400 transition' }, '→'),
+                                    ]),
+                                    h('button', {
+                                        type: 'button',
+                                        class: 'w-full text-left rounded-xl border border-zinc-800/80 bg-zinc-900/60 hover:bg-zinc-800 hover:border-zinc-700 p-2.5 text-xs text-zinc-300 transition flex items-center justify-between group',
+                                        onClick: () => sendAiMessage('Explique a diferença entre ato discricionário e vinculado no Direito Administrativo.'),
+                                    }, [
+                                        h('span', {}, '💡 Explique ato discricionário vs vinculado'),
+                                        h('span', { class: 'text-zinc-400 group-hover:text-sky-400 transition' }, '→'),
+                                    ]),
+                                ]),
+                            ])
+                            : aiChatMessages.value.map((msg) => {
+                                const isUser = msg.role === 'user';
+                                return h('div', {
+                                    key: msg.id || msg.created_at,
+                                    class: 'flex flex-col shrink-0 ' + (isUser ? 'items-end' : 'items-start'),
+                                }, [
+                                    h('div', {
+                                        class: isUser
+                                            ? 'max-w-[85%] rounded-2xl rounded-tr-xs bg-sky-600 px-4 py-2.5 text-sm text-white shadow-sm break-words'
+                                            : 'max-w-[90%] rounded-2xl rounded-tl-xs bg-zinc-900 border border-zinc-800 px-4 py-3 text-sm text-zinc-200 shadow-sm leading-relaxed break-words',
+                                        innerHTML: formatAiMessage(msg.content),
+                                    }),
+                                    h('span', { class: 'mt-1 text-[10px] text-zinc-400 ' + (isUser ? 'pr-1' : 'pl-1') },
+                                        msg.created_at ? new Date(msg.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : ''
+                                    ),
+                                ]);
+                            }),
+
+                    aiChatSending.value ? h('div', { class: 'flex items-start gap-2.5 shrink-0' }, [
+                        h('div', { class: 'flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-sky-600/20 text-sky-400 text-xs' }, [
+                            svgIcon('sparkles', 'h-3.5 w-3.5 animate-spin'),
+                        ]),
+                        h('div', { class: 'rounded-2xl rounded-tl-xs bg-zinc-900 border border-zinc-800 px-4 py-2.5 text-xs text-zinc-400 flex items-center gap-2' }, [
+                            h('div', { class: 'h-3 w-3 animate-spin rounded-full border border-sky-500 border-t-transparent' }),
+                            h('span', {}, 'Consultando dados e formulando resposta…'),
+                        ]),
+                    ]) : null,
+                ]),
+
+                h('footer', { class: 'mentoria-ai-footer' }, [
+                    h('form', {
+                        class: 'flex items-center gap-2',
+                        onSubmit: (e) => {
+                            e.preventDefault();
+                            sendAiMessage();
+                        },
+                    }, [
+                        h('input', {
+                            type: 'text',
+                            class: 'flex-1 rounded-full border border-zinc-700 bg-zinc-950 px-4 py-2.5 text-xs sm:text-sm text-zinc-100 placeholder:text-zinc-400 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500 disabled:opacity-50',
+                            placeholder: 'Tire uma dúvida ou consulte seus dados…',
+                            value: aiChatInput.value,
+                            disabled: aiChatSending.value,
+                            onInput: (e) => aiChatInput.value = e.target.value,
+                            onKeydown: (e) => {
+                                if (e.key === 'Enter' && !e.shiftKey) {
+                                    e.preventDefault();
+                                    sendAiMessage();
+                                }
+                            },
+                        }),
+                        h('button', {
+                            type: 'submit',
+                            class: 'flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-sky-600 text-white transition hover:bg-sky-500 active:scale-95 disabled:opacity-40 disabled:pointer-events-none shadow-md',
+                            disabled: aiChatSending.value || !aiChatInput.value.trim(),
+                            title: 'Enviar mensagem',
+                        }, [
+                            svgIcon('send', 'h-4 w-4'),
+                        ]),
+                    ]),
+                    h('p', { class: 'mt-2 text-center text-[10px] text-zinc-400' }, 'Mentor IA · Conectado ao seu histórico de estudos'),
+                ]),
+            ]);
+
+            return h('div', {}, [fab, panel]);
+        }
+
         const availableTabs = computed(() => availableModules(capabilities.value)
             .map(([id,label,,icon])=>({id,label,icon})));
 
@@ -1715,6 +2014,7 @@ export const MentoriaStudent = {
             extras: [
                 busy.value?h('div',{class:'fixed bottom-5 right-5 z-[100001] rounded-xl bg-zinc-950 px-4 py-3 text-sm font-semibold text-white shadow-xl'},'Atualizando…'):null,
                 renderTimerLauncher(),
+                renderAiFloatingWidget(),
                 renderModal(),
             ],
         });

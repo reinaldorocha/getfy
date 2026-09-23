@@ -9,6 +9,7 @@ import MemberLessonMaterials from '@/components/member-area/lesson/MemberLessonM
 import MemberLessonComments from '@/components/member-area/lesson/MemberLessonComments.vue';
 import { ChevronLeft, ChevronRight } from 'lucide-vue-next';
 import { useMemberAreaCinemaMode } from '@/composables/useMemberAreaCinemaMode.js';
+import PluginRenderZone from '@/components/plugins/PluginRenderZone.vue';
 
 defineOptions({ layout: MemberAreaAppLayout });
 
@@ -359,6 +360,11 @@ function scrollCarousel(sectionId, direction) {
                         @complete="markComplete"
                         @open-lessons="mobileSidebarOpen = true"
                     />
+                    <PluginRenderZone
+                        :key="`cinema-${current_lesson.id}`"
+                        zone="member.lesson.after_content"
+                        :context="{ product, lesson: current_lesson, slug }"
+                    />
                 </main>
             </template>
 
@@ -401,6 +407,12 @@ function scrollCarousel(sectionId, direction) {
                             @toggle-cinema="toggleCinemaMode()"
                             @complete="markComplete"
                             @open-lessons="mobileSidebarOpen = true"
+                        />
+
+                        <PluginRenderZone
+                            :key="current_lesson.id"
+                            zone="member.lesson.after_content"
+                            :context="{ product, lesson: current_lesson, slug }"
                         />
 
                         <MemberLessonMaterials :lesson="current_lesson" />

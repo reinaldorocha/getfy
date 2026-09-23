@@ -4,6 +4,7 @@ namespace Plugins\AiMember\Services;
 
 use App\Models\Product;
 use App\Models\User;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Plugins\AiMember\Models\AiMemberAgent;
 use Plugins\AiMember\Models\AiMemberConnection;
@@ -26,8 +27,39 @@ class ChatService
         }
 
         $agent = AiMemberAgent::query()->where('product_id', $product->id)->first();
+        if ($agent?->enabled) {
+            return true;
+        }
 
-        return $agent?->enabled ?? false;
+        // Se for produto Mentoria com ai_enabled ativo nas settings
+        if (DB::getSchemaBuilder()->hasTable('mentoria_products')) {
+            $mProduct = DB::table('mentoria_products')->where('product_id', $product->id)->first();
+            if ($mProduct) {
+                $settings = json_decode($mProduct->settings ?? '[]', true) ?: [];
+                if (! empty($settings['ai_enabled'])) {
+                    if (! $agent) {
+                        AiMemberAgent::query()->create([
+                            'product_id' => $product->id,
+                            'tenant_id' => $product->tenant_id,
+                            'enabled' => true,
+                            'name' => 'Mentor IA',
+                            'gender' => 'neutral',
+                            'temperature' => 0.7,
+                            'max_tokens' => 2000,
+                            'system_instructions' => 'Você é o Mentor IA oficial deste curso e mentoria para concursos. Ajude o aluno tirando dúvidas sobre matérias e orientando os estudos.',
+                            'welcome_message' => 'Olá! Sou o seu Mentor IA. Como posso te ajudar nos estudos hoje?',
+                        ]);
+                    } else {
+                        $agent->enabled = true;
+                        $agent->save();
+                    }
+
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -157,6 +189,7 @@ class ChatService
             $attachments,
             $user->name,
             $isFirstMessage,
+            (int) $user->id,
         );
 
         $assistantMsg = AiMemberMessage::query()->create([

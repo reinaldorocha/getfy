@@ -89,6 +89,138 @@
     color-scheme: light;
 }
 
+html:not(.dark) .mentoria-embedded,
+.mentoria-embedded--theme-light {
+    --mentoria-bg: #f8fafc;
+    --mentoria-surface: #ffffff;
+    --mentoria-raised: #f1f5f9;
+    --mentoria-hover: #e2e8f0;
+    --mentoria-border: #e2e8f0;
+    --mentoria-border-strong: #cbd5e1;
+    --mentoria-text: #0f172a;
+    --mentoria-soft: #334155;
+    --mentoria-muted: #64748b;
+    --mentoria-faint: #94a3b8;
+    --mentoria-blue: #2563eb;
+    --mentoria-blue-hover: #1d4ed8;
+    --mentoria-blue-soft: #eff6ff;
+    --mentoria-green: #059669;
+    --mentoria-green-soft: #ecfdf5;
+    --mentoria-yellow: #d97706;
+    --mentoria-yellow-soft: #fffbeb;
+    --mentoria-red: #dc2626;
+    --mentoria-red-soft: #fef2f2;
+    --mentoria-violet: #7c3aed;
+    --mentoria-violet-soft: #f5f3ff;
+    --mentoria-card-shadow: 0 1px 3px rgba(15, 23, 42, 0.04), 0 4px 14px rgba(15, 23, 42, 0.05);
+    --mentoria-card-glow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+    color-scheme: light;
+}
+
+/* ==========================================================================
+   Mentoria Light Theme Overrides
+   Neutralizes Tailwind dark utility classes within light Mentoria containers,
+   even when the host page or root <html> element includes the ".dark" class.
+   Explicitly excludes .mentoria-ai-panel to preserve its sleek dark aesthetic.
+   ========================================================================== */
+
+/* Backgrounds */
+:is(.mentoria-app--theme-light, html:not(.dark) .mentoria-embedded, .mentoria-embedded--theme-light) :is([class*="dark:bg-zinc-950"], [class*="dark:bg-zinc-900"]):not(.mentoria-ai-panel):not(.mentoria-ai-panel *) {
+    background-color: var(--mentoria-surface) !important;
+    color: var(--mentoria-text) !important;
+}
+
+:is(.mentoria-app--theme-light, html:not(.dark) .mentoria-embedded, .mentoria-embedded--theme-light) :is([class*="dark:bg-zinc-800"]):not(.mentoria-ai-panel):not(.mentoria-ai-panel *) {
+    background-color: var(--mentoria-raised) !important;
+    color: var(--mentoria-text) !important;
+}
+
+:is(.mentoria-app--theme-light, html:not(.dark) .mentoria-embedded, .mentoria-embedded--theme-light) :is([class*="dark:bg-violet-950"]):not(.mentoria-ai-panel):not(.mentoria-ai-panel *) {
+    background-color: var(--mentoria-violet-soft) !important;
+    color: #6d28d9 !important;
+}
+
+:is(.mentoria-app--theme-light, html:not(.dark) .mentoria-embedded, .mentoria-embedded--theme-light) :is([class*="dark:bg-sky-950"]):not(.mentoria-ai-panel):not(.mentoria-ai-panel *) {
+    background-color: var(--mentoria-blue-soft) !important;
+    color: #0284c7 !important;
+}
+
+:is(.mentoria-app--theme-light, html:not(.dark) .mentoria-embedded, .mentoria-embedded--theme-light) :is([class*="dark:bg-red-950"]):not(.mentoria-ai-panel):not(.mentoria-ai-panel *) {
+    background-color: var(--mentoria-red-soft) !important;
+    color: #dc2626 !important;
+}
+
+/* Borders */
+:is(.mentoria-app--theme-light, html:not(.dark) .mentoria-embedded, .mentoria-embedded--theme-light) :is([class*="dark:border-zinc-700"], [class*="dark:border-zinc-800"], [class*="dark:border-zinc-600"]):not(.mentoria-ai-panel):not(.mentoria-ai-panel *) {
+    border-color: var(--mentoria-border) !important;
+}
+
+:is(.mentoria-app--theme-light, html:not(.dark) .mentoria-embedded, .mentoria-embedded--theme-light) :is([class*="dark:border-violet-800"], [class*="dark:ring-violet-800"]):not(.mentoria-ai-panel):not(.mentoria-ai-panel *) {
+    border-color: #ddd6fe !important;
+    --tw-ring-color: #ddd6fe !important;
+}
+
+:is(.mentoria-app--theme-light, html:not(.dark) .mentoria-embedded, .mentoria-embedded--theme-light) :is([class*="dark:border-sky-900"], [class*="dark:border-sky-500/20"]):not(.mentoria-ai-panel):not(.mentoria-ai-panel *) {
+    border-color: #bae6fd !important;
+}
+
+:is(.mentoria-app--theme-light, html:not(.dark) .mentoria-embedded, .mentoria-embedded--theme-light) :is([class*="dark:border-red-900"]):not(.mentoria-ai-panel):not(.mentoria-ai-panel *) {
+    border-color: #fecaca !important;
+}
+
+/* Text Colors */
+:is(.mentoria-app--theme-light, html:not(.dark) .mentoria-embedded, .mentoria-embedded--theme-light) :is([class*="dark:text-white"], [class*="dark:text-zinc-100"]):not(.mentoria-ai-panel):not(.mentoria-ai-panel *) {
+    color: var(--mentoria-text) !important;
+}
+
+:is(.mentoria-app--theme-light, html:not(.dark) .mentoria-embedded, .mentoria-embedded--theme-light) :is([class*="dark:text-zinc-200"], [class*="dark:text-zinc-300"]):not(.mentoria-ai-panel):not(.mentoria-ai-panel *) {
+    color: var(--mentoria-soft) !important;
+}
+
+:is(.mentoria-app--theme-light, html:not(.dark) .mentoria-embedded, .mentoria-embedded--theme-light) :is([class*="dark:text-zinc-400"], [class*="dark:text-zinc-500"]):not(.mentoria-ai-panel):not(.mentoria-ai-panel *) {
+    color: var(--mentoria-muted) !important;
+}
+
+:is(.mentoria-app--theme-light, html:not(.dark) .mentoria-embedded, .mentoria-embedded--theme-light) [class*="dark:text-violet-200"]:not(.mentoria-ai-panel):not(.mentoria-ai-panel *) {
+    color: #6d28d9 !important;
+}
+
+:is(.mentoria-app--theme-light, html:not(.dark) .mentoria-embedded, .mentoria-embedded--theme-light) :is([class*="dark:text-sky-200"], [class*="dark:text-sky-100"]):not(.mentoria-ai-panel):not(.mentoria-ai-panel *) {
+    color: #0284c7 !important;
+}
+
+:is(.mentoria-app--theme-light, html:not(.dark) .mentoria-embedded, .mentoria-embedded--theme-light) [class*="dark:text-red-200"]:not(.mentoria-ai-panel):not(.mentoria-ai-panel *) {
+    color: #dc2626 !important;
+}
+
+/* Form Controls (Inputs, Selects, Textareas) */
+:is(.mentoria-app--theme-light, html:not(.dark) .mentoria-embedded, .mentoria-embedded--theme-light) :is(input:not([type="checkbox"]):not([type="radio"]):not([type="color"]), select, textarea):not(.mentoria-ai-panel):not(.mentoria-ai-panel *) {
+    background-color: var(--mentoria-surface) !important;
+    border-color: var(--mentoria-border-strong) !important;
+    color: var(--mentoria-text) !important;
+}
+
+:is(.mentoria-app--theme-light, html:not(.dark) .mentoria-embedded, .mentoria-embedded--theme-light) :is(input, select, textarea):focus:not(.mentoria-ai-panel):not(.mentoria-ai-panel *) {
+    border-color: var(--mentoria-blue) !important;
+    box-shadow: 0 0 0 3px var(--mentoria-blue-soft) !important;
+}
+
+:is(.mentoria-app--theme-light, html:not(.dark) .mentoria-embedded, .mentoria-embedded--theme-light) :is(input, select, textarea)::placeholder:not(.mentoria-ai-panel):not(.mentoria-ai-panel *) {
+    color: var(--mentoria-faint) !important;
+}
+
+/* Preformatted code/reports and hollow rounded-xl containers */
+:is(.mentoria-app--theme-light, html:not(.dark) .mentoria-embedded, .mentoria-embedded--theme-light) pre:is([class*="dark:bg-zinc-800"], [class*="dark:bg-zinc-900"]) {
+    background-color: var(--mentoria-raised) !important;
+    border: 1px solid var(--mentoria-border) !important;
+    color: var(--mentoria-text) !important;
+}
+
+:is(.mentoria-app--theme-light, html:not(.dark) .mentoria-embedded, .mentoria-embedded--theme-light) :is(article, section, div):is(.rounded-xl):not(.mentoria-card):not([class*="bg-"]):not(.mentoria-ai-panel *) {
+    background-color: var(--mentoria-surface);
+    border-color: var(--mentoria-border);
+}
+
 .mentoria-app *, .mentoria-embedded * { box-sizing: border-box; }
 .mentoria-app :is(h1, h2, h3, h4, p), .mentoria-embedded :is(h1, h2, h3, h4, p) { color: inherit; }
 .mentoria-app :is(.text-zinc-900, .text-zinc-700, .text-zinc-800, .dark\:text-white, .dark\:text-zinc-200),
@@ -891,6 +1023,117 @@
     border-color: rgba(16, 185, 129, 0.6);
 }
 
+.mentoria-timer-launcher--with-ai {
+    right: 92px;
+}
+
+/* --- Mentoria AI Chat Widget --- */
+.mentoria-ai-fab {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    z-index: 99998;
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 10px 25px -5px rgba(2, 132, 199, 0.45), 0 8px 10px -6px rgba(2, 132, 199, 0.3);
+    cursor: pointer;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    border: none;
+    outline: none;
+}
+
+.mentoria-ai-fab:hover {
+    transform: scale(1.08);
+    box-shadow: 0 14px 28px -4px rgba(2, 132, 199, 0.55);
+}
+
+.mentoria-ai-fab:active {
+    transform: scale(0.95);
+}
+
+.mentoria-ai-panel {
+    position: fixed;
+    bottom: 92px;
+    right: 24px;
+    width: 410px;
+    max-width: calc(100vw - 32px);
+    height: 560px;
+    max-height: calc(100vh - 120px);
+    z-index: 99999;
+    display: flex;
+    flex-direction: column;
+    background: #121212;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 16px;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7);
+    overflow: hidden;
+    font-family: inherit;
+}
+
+@media (max-width: 640px) {
+    .mentoria-ai-panel {
+        bottom: 84px;
+        right: 12px;
+        left: 12px;
+        width: auto;
+        max-width: none;
+        height: calc(100vh - 100px);
+        max-height: calc(100vh - 100px);
+    }
+}
+
+.mentoria-ai-header {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    background: rgba(24, 24, 27, 0.95);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.mentoria-ai-body {
+    flex: 1 1 0%;
+    min-height: 0;
+    height: 100%;
+    overflow-y: auto !important;
+    overflow-x: hidden;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    scroll-behavior: smooth;
+    -webkit-overflow-scrolling: touch;
+}
+
+.mentoria-ai-body::-webkit-scrollbar {
+    width: 6px;
+}
+
+.mentoria-ai-body::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.mentoria-ai-body::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 3px;
+}
+
+.mentoria-ai-body::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.35);
+}
+
+.mentoria-ai-footer {
+    flex-shrink: 0;
+    padding: 12px 14px;
+    background: rgba(24, 24, 27, 0.95);
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
 .mentoria-timer-launcher__icon {
     align-items: center;
     background: var(--mentoria-blue-soft);
@@ -1478,6 +1721,11 @@
     .mentoria-timer-launcher {
         bottom: 16px;
         right: 16px;
+    }
+
+    .mentoria-timer-launcher--with-ai {
+        right: auto;
+        left: 16px;
     }
 }
 

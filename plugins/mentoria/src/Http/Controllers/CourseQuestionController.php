@@ -253,8 +253,7 @@ class CourseQuestionController extends Controller
             throw new NotFoundHttpException('Produto não encontrado.');
         }
 
-        $hasAccess = $student->products()->where('products.id', $product->id)->exists();
-        if (! $hasAccess) {
+        if (! $product->hasMemberAreaAccess($student)) {
             throw new NotFoundHttpException('Produto não disponível para este aluno.');
         }
 

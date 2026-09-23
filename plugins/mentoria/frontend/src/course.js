@@ -1,5 +1,5 @@
-import { h, ref, computed, onMounted } from 'vue';
-import { api, alertBox, badge, btn, card, choiceCard, empty, jsonBody, sectionTitle } from './shared.js';
+import { h, ref, computed, onMounted, watch } from 'vue';
+import { api, alertBox, badge, btn, card, choiceCard, cn, empty, jsonBody, sectionTitle } from './shared.js';
 import { displayAlternative } from './question-alternatives.js';
 
 function flattenLessons(produto) {
@@ -161,19 +161,43 @@ export const MentoriaLessonExercises = {
         const loading = ref(true);
         const message = ref('');
         const questions = ref([]);
+        const currentIndex = ref(0);
         const answers = ref({});
         const results = ref({});
 
         async function load() {
+            if (!props.product?.id || !props.lesson?.id) {
+                loading.value = false;
+                return;
+            }
+            loading.value = true;
             try {
                 const data = await api('/mentoria-course/products/' + props.product.id + '/lessons/' + props.lesson.id + '/questions');
                 questions.value = data.questions || [];
+                currentIndex.value = 0;
+                if (data.latest_attempts && typeof data.latest_attempts === 'object') {
+                    results.value = { ...data.latest_attempts };
+                    const draftAnswers = {};
+                    for (const [qid, att] of Object.entries(data.latest_attempts)) {
+                        if (att && att.answer) {
+                            draftAnswers[qid] = att.answer;
+                        }
+                    }
+                    answers.value = { ...draftAnswers, ...answers.value };
+                }
             } catch (e) {
                 message.value = e.message;
             } finally {
                 loading.value = false;
             }
         }
+
+        watch(() => props.lesson?.id, () => {
+            answers.value = {};
+            results.value = {};
+            currentIndex.value = 0;
+            load();
+        });
 
         async function answer(q) {
             const answerValue = answers.value[q.id];
@@ -192,57 +216,102 @@ export const MentoriaLessonExercises = {
         onMounted(load);
 
         return () => {
-            if (loading.value) return h('div', { class: 'rounded-2xl border border-zinc-800 p-5 text-sm text-zinc-400' }, 'Carregando exercícios…');
+            if (loading.value) return h('div', { class: 'rounded-2xl border border-zinc-200 dark:border-zinc-800 p-5 text-sm text-zinc-600 dark:text-zinc-400' }, 'Carregando exercícios…');
+            if (message.value && !questions.value.length) return h('div', { class: 'mentoria-embedded my-4' }, alertBox(message.value));
             if (!questions.value.length) return null;
 
+            const total = questions.value.length;
+            const idx = Math.min(Math.max(0, currentIndex.value), total - 1);
+            const q = questions.value[idx];
+            if (!q) return null;
+
+            const result = results.value[q.id];
             const answered = Object.keys(results.value).length;
             const correct = Object.values(results.value).filter(r => r.correct).length;
+            const options = q.type === 'certo_errado' ? ['Certo', 'Errado'] : (q.alternatives || []);
+            const isFirst = idx === 0;
+            const isLast = idx === total - 1;
 
             return h('section', { class: 'mentoria-embedded mentoria-lesson-exercises' }, [
-                h('div', { class: 'mb-5 flex flex-wrap items-start justify-between gap-3' }, [
+                h('div', { class: 'mb-4 flex flex-wrap items-start justify-between gap-3' }, [
                     h('div', [
-                        h('h2', { class: 'text-lg font-bold text-white' }, 'Pratique o que aprendeu'),
-                        h('p', { class: 'mt-1 text-sm text-zinc-400' }, questions.value.length + ' questão(ões) desta aula.'),
+                        h('h2', { class: 'text-lg font-bold text-zinc-900 dark:text-white' }, 'Pratique o que aprendeu'),
+                        h('p', { class: 'mt-1 text-sm text-zinc-500 dark:text-zinc-400' }, total + ' questão(ões) nesta aula.'),
                     ]),
-                    answered ? badge(correct + '/' + answered + ' acertos', correct === answered ? 'green' : 'sky') : null,
+                    h('div', { class: 'flex items-center gap-2' }, [
+                        answered ? badge(correct + '/' + answered + ' acertos', correct === answered ? 'green' : 'sky') : null,
+                        badge((idx + 1) + ' de ' + total, 'sky'),
+                    ]),
                 ]),
                 alertBox(message.value),
-                h('div', { class: 'space-y-4' }, questions.value.map((q, index) => {
-                    const result = results.value[q.id];
-                    const options = q.type === 'certo_errado' ? ['Certo', 'Errado'] : (q.alternatives || []);
-                    return h('article', { class: 'mentoria-card p-5' }, [
-                        h('div', { class: 'mb-2 flex flex-wrap gap-1' }, [badge('Questão ' + (index + 1), 'sky'), badge(q.subject), q.topic ? badge(q.topic) : null]),
-                        h('p', { class: 'whitespace-pre-wrap text-sm font-medium' }, q.prompt),
-                        !result ? h('div', { class: 'mt-4 space-y-2' }, options.map((option, optionIndex) => {
-                            const letter = q.type === 'certo_errado' ? (option === 'Certo' ? 'C' : 'E') : String.fromCharCode(65 + optionIndex);
-                            const value = q.type === 'certo_errado' ? option : letter;
-                            const isSelected = answers.value[q.id] === value;
-                            return choiceCard({
-                                letter,
-                                text: q.type === 'certo_errado' ? option : displayAlternative(option),
-                                selected: isSelected,
-                                disabled: false,
-                                onClick: () => { answers.value = { ...answers.value, [q.id]: value }; },
-                            });
-                        })) : null,
-                        !result ? h('div', { class: 'mt-4' }, btn('Responder', () => answer(q), 'primary', { disabled: !answers.value[q.id] }))
-                            : h('div', {
-                                class: 'mentoria-question-feedback ' + (result.correct
-                                    ? 'mentoria-question-feedback--correct'
-                                    : 'mentoria-question-feedback--incorrect'),
-                            }, [
-                                h('strong', { class: 'mentoria-question-feedback__title' }, result.correct ? '✓ Resposta correta' : '✕ Resposta incorreta'),
-                                !result.correct ? h('div', { class: 'mentoria-question-feedback__answer' }, 'Gabarito: ' + result.correct_answer) : null,
-                                result.explanation ? h('p', { class: 'mentoria-question-feedback__explanation' }, result.explanation) : null,
-                                h('div', { class: 'mt-3' }, btn('Refazer', () => {
-                                    const next = { ...results.value };
-                                    delete next[q.id];
-                                    results.value = next;
-                                    answers.value = { ...answers.value, [q.id]: '' };
-                                }, 'ghost')),
+                h('article', { class: 'mentoria-card p-5' }, [
+                    h('div', { class: 'mb-3 flex flex-wrap items-center justify-between gap-2 border-b border-zinc-200 dark:border-zinc-800 pb-3' }, [
+                        h('div', { class: 'flex flex-wrap gap-1' }, [
+                            badge('Questão ' + (idx + 1), 'sky'),
+                            badge(q.subject),
+                            q.topic ? badge(q.topic) : null,
+                        ]),
+                        h('span', { class: 'text-xs font-semibold text-zinc-400' }, (idx + 1) + ' de ' + total),
+                    ]),
+                    h('p', { class: 'whitespace-pre-wrap text-sm font-medium leading-relaxed text-zinc-800 dark:text-zinc-100' }, q.prompt),
+                    !result ? h('div', { class: 'mt-4 space-y-2' }, options.map((option, optionIndex) => {
+                        const letter = q.type === 'certo_errado' ? (option === 'Certo' ? 'C' : 'E') : String.fromCharCode(65 + optionIndex);
+                        const value = q.type === 'certo_errado' ? option : letter;
+                        const isSelected = answers.value[q.id] === value;
+                        return choiceCard({
+                            letter,
+                            text: q.type === 'certo_errado' ? option : displayAlternative(option),
+                            selected: isSelected,
+                            disabled: false,
+                            onClick: () => { answers.value = { ...answers.value, [q.id]: value }; },
+                        });
+                    })) : null,
+                    !result ? h('div', { class: 'mt-5 flex flex-wrap items-center justify-between gap-3' }, [
+                        btn('Responder', () => answer(q), 'primary', { disabled: !answers.value[q.id] }),
+                        h('div', { class: 'flex items-center gap-2' }, [
+                            !isFirst ? btn('Anterior', () => { currentIndex.value--; }, 'ghost') : null,
+                            !isLast ? btn('Próxima questão', () => { currentIndex.value++; }, 'secondary') : null,
+                        ]),
+                    ]) : h('div', {
+                        class: 'mentoria-question-feedback mt-4 ' + (result.correct
+                            ? 'mentoria-question-feedback--correct'
+                            : 'mentoria-question-feedback--incorrect'),
+                    }, [
+                        h('strong', { class: 'mentoria-question-feedback__title' }, result.correct ? '✓ Resposta correta' : '✕ Resposta incorreta'),
+                        !result.correct ? h('div', { class: 'mentoria-question-feedback__answer' }, 'Gabarito: ' + result.correct_answer) : null,
+                        result.explanation ? h('p', { class: 'mentoria-question-feedback__explanation' }, result.explanation) : null,
+                        h('div', { class: 'mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-zinc-200 dark:border-white/10 pt-3' }, [
+                            btn('Refazer', () => {
+                                const next = { ...results.value };
+                                delete next[q.id];
+                                results.value = next;
+                                answers.value = { ...answers.value, [q.id]: '' };
+                            }, 'ghost'),
+                            h('div', { class: 'flex items-center gap-2' }, [
+                                !isFirst ? btn('Anterior', () => { currentIndex.value--; }, 'ghost') : null,
+                                !isLast ? btn('Próxima questão', () => { currentIndex.value++; }, 'primary') : null,
                             ]),
-                    ]);
-                })),
+                        ]),
+                    ]),
+                ]),
+                total > 1 ? h('div', { class: 'mt-3 flex flex-wrap items-center justify-center gap-2' }, questions.value.map((item, i) => {
+                    const isCurrent = i === idx;
+                    const res = results.value[item.id];
+                    let stateClass = 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200 hover:text-zinc-900 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-700 dark:hover:text-white';
+                    if (isCurrent) {
+                        stateClass = 'bg-sky-500 text-white shadow-sm ring-2 ring-sky-400/40';
+                    } else if (res?.correct) {
+                        stateClass = 'bg-emerald-50 text-emerald-700 border border-emerald-300 hover:bg-emerald-100 dark:bg-emerald-950/60 dark:text-emerald-400 dark:border-emerald-500/40 dark:hover:bg-emerald-900/60';
+                    } else if (res && !res.correct) {
+                        stateClass = 'bg-red-50 text-red-700 border border-red-300 hover:bg-red-100 dark:bg-red-950/60 dark:text-red-400 dark:border-red-500/40 dark:hover:bg-red-900/60';
+                    }
+                    return h('button', {
+                        type: 'button',
+                        onClick: () => { currentIndex.value = i; },
+                        class: cn('flex h-8 w-8 items-center justify-center rounded-lg text-xs font-semibold transition', stateClass),
+                        title: 'Ir para questão ' + (i + 1),
+                    }, String(i + 1));
+                })) : null,
             ]);
         };
     },
