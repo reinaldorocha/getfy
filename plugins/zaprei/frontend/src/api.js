@@ -63,7 +63,10 @@ export const api = {
     updateFlow: (id, payload) => request(`/flows/${id}`, { method: 'PUT', body: payload }),
     deleteFlow: (id) => request(`/flows/${id}`, { method: 'DELETE' }),
     duplicateFlow: (id) => request(`/flows/${id}/duplicate`, { method: 'POST' }),
-    testFlow: (id, phone) => request(`/flows/${id}/test`, { method: 'POST', body: { phone } }),
+    testFlow: (id, payload) => request(`/flows/${id}/test`, {
+        method: 'POST',
+        body: typeof payload === 'string' ? { phone: payload } : payload,
+    }),
     runs: () => request('/flows/runs'),
     retryRun: (id) => request(`/flows/runs/${id}/retry`, { method: 'POST' }),
 

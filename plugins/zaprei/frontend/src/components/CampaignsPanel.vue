@@ -93,12 +93,28 @@ onMounted(load);
                     <tr v-for="campaign in visible" :key="campaign.id" class="transition hover:bg-zinc-50 dark:hover:bg-zinc-900/40">
                         <td class="px-3 py-2.5 font-medium text-zinc-900 dark:text-white">{{ campaign.name }}</td>
                         <td class="px-3 py-2.5">
-                            <span class="rounded-full border px-2 py-0.5 text-[10px] font-semibold" :class="badgeFor(campaign.status)">
+                            <span class="inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[10px] font-semibold" :class="badgeFor(campaign.status)">
+                                <span v-if="campaign.status === 'running'" class="relative flex h-1.5 w-1.5">
+                                    <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                                    <span class="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                                </span>
                                 {{ CAMPAIGN_STATUS_LABELS[campaign.status] || campaign.status }}
                             </span>
                         </td>
                         <td class="px-3 py-2.5">{{ campaign.total_recipients }}</td>
-                        <td class="px-3 py-2.5 font-semibold text-emerald-600 dark:text-emerald-400">{{ campaign.sent_count }}</td>
+                        <td class="px-3 py-2.5">
+                            <div class="flex items-center gap-2">
+                                <span class="font-semibold text-emerald-600 dark:text-emerald-400">
+                                    {{ campaign.sent_count }}/{{ campaign.total_recipients }}
+                                </span>
+                                <div class="hidden sm:block h-1.5 w-14 overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-800">
+                                    <div
+                                        class="h-full rounded-full bg-emerald-500 transition-all duration-300"
+                                        :style="{ width: `${campaign.total_recipients ? Math.min(100, Math.round((campaign.sent_count / campaign.total_recipients) * 100)) : 0}%` }"
+                                    />
+                                </div>
+                            </div>
+                        </td>
                         <td class="px-3 py-2.5" :class="campaign.error_count ? 'font-semibold text-red-600 dark:text-red-400' : ''">{{ campaign.error_count }}</td>
                         <td class="px-3 py-2.5 text-zinc-500 dark:text-zinc-400">
                             {{ campaign.scheduled_at ? new Date(campaign.scheduled_at).toLocaleString('pt-BR') : 'Imediato' }}

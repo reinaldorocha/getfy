@@ -157,7 +157,8 @@ final class OrderReader
                 'currency' => $currency,
                 'gateway' => (string) ($subject->gateway ?? ''),
                 // pix/pix_auto/card/boleto/... — método real do checkout, não o slug do gateway.
-                'payment_method' => method_exists($subject, 'checkoutPaymentMethod') ? $subject->checkoutPaymentMethod() : '',
+                'payment_method' => $paymentMethod = method_exists($subject, 'checkoutPaymentMethod') ? (string) $subject->checkoutPaymentMethod() : '',
+                'payment_method_label' => self::paymentMethodLabel($paymentMethod),
                 'metadata' => $metadata,
                 'product' => [
                     'id' => $product?->id,
@@ -250,5 +251,19 @@ final class OrderReader
         return $currency === 'BRL'
             ? 'R$ '.number_format($amount, 2, ',', '.')
             : $currency.' '.number_format($amount, 2, '.', ',');
+    }
+
+    public static function paymentMethodLabel(string $method): string
+    {
+        return match (strtolower(trim($method))) {
+            'pix', 'pix_auto' => 'PIX',
+            'card' => 'Cartão de crédito',
+            'boleto' => 'Boleto bancário',
+            'apple_pay' => 'Apple Pay',
+            'google_pay' => 'Google Pay',
+            'paypal' => 'PayPal',
+            'crypto' => 'Criptomoeda',
+            default => $method !== '' ? ucfirst($method) : 'PIX / Cartão',
+        };
     }
 }

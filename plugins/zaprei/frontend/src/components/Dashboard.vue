@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue';
-import { History, MessageSquare, Plug, Send, Users, Zap } from 'lucide-vue-next';
+import { Activity, CheckCircle2, History, MessageSquare, Plug, Send, Users, Zap } from 'lucide-vue-next';
 import ConnectionForm from './ConnectionForm.vue';
 import FlowsPanel from './FlowsPanel.vue';
 import ContactsPanel from './ContactsPanel.vue';
@@ -19,6 +19,14 @@ const TABS = [
 const active = ref('flows');
 const connection = ref(null);
 const counts = ref({ flows: 0, campaigns: 0, contacts: 0 });
+const stats = ref({
+    flowsCount: 0,
+    activeFlowsCount: 0,
+    campaignsCount: 0,
+    contactsCount: 0,
+    runsCount: 0,
+    runsSuccessRate: 100,
+});
 
 async function refreshStatus() {
     try {
@@ -30,11 +38,35 @@ async function refreshStatus() {
 
 async function refreshCounts() {
     try {
-        const [flows, campaigns, contacts] = await Promise.all([api.flows(), api.campaigns(), api.contacts()]);
+        const [flowsRes, campaignsRes, contactsRes, runsRes] = await Promise.all([
+            api.flows().catch(() => ({ flows: [] })),
+            api.campaigns().catch(() => ({ campaigns: [] })),
+            api.contacts().catch(() => ({ counts: {} })),
+            api.runs().catch(() => ({ runs: [] })),
+        ]);
+
+        const flowsList = flowsRes.flows || [];
+        const campaignsList = campaignsRes.campaigns || [];
+        const runsList = runsRes.runs || [];
+        const totalContacts = contactsRes.counts?.all || 0;
+
         counts.value = {
-            flows: (flows.flows || []).length,
-            campaigns: (campaigns.campaigns || []).length,
-            contacts: contacts.counts?.all || 0,
+            flows: flowsList.length,
+            campaigns: campaignsList.length,
+            contacts: totalContacts,
+        };
+
+        const activeFlows = flowsList.filter((f) => f.is_active).length;
+        const successfulRuns = runsList.filter((r) => r.status === 'completed').length;
+        const successRate = runsList.length ? Math.round((successfulRuns / runsList.length) * 100) : 100;
+
+        stats.value = {
+            flowsCount: flowsList.length,
+            activeFlowsCount: activeFlows,
+            campaignsCount: campaignsList.length,
+            contactsCount: totalContacts,
+            runsCount: runsList.length,
+            runsSuccessRate: successRate,
         };
     } catch {
         // Best-effort — os badges apenas ficam sem número.
@@ -51,6 +83,7 @@ onMounted(() => {
 
 <template>
     <div class="space-y-6 pb-12 text-zinc-900 dark:text-white">
+        <!-- Banner Principal com Identidade -->
         <div class="relative overflow-hidden rounded-3xl border border-zinc-200/80 bg-gradient-to-br from-white via-zinc-50 to-emerald-50/30 p-6 shadow-xs sm:p-8 dark:border-zinc-800 dark:from-zinc-950 dark:via-zinc-900 dark:to-emerald-950/20">
             <div class="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
                 <div>
@@ -81,7 +114,7 @@ onMounted(() => {
                                 {{ connection?.connected ? 'WhatsApp Conectado' : 'WhatsApp Desconectado' }}
                             </div>
                             <div class="text-[11px] text-zinc-500 dark:text-zinc-400">
-                                {{ connection?.connected ? 'Evolution GO ativa' : 'Nenhuma API ativa' }}
+                                {{ connection?.connected ? (connection.instance_name || 'Evolution GO ativa') : 'Nenhuma API ativa' }}
                             </div>
                         </div>
                         <button
@@ -95,6 +128,89 @@ onMounted(() => {
                 </div>
             </div>
 
+            <!-- Grade de 4 Cards de KPIs Modernos -->
+            <div class="mt-6 grid grid-cols-2 gap-3 border-t border-zinc-200/80 pt-6 sm:grid-cols-2 lg:grid-cols-4 dark:border-zinc-800">
+                <!-- KPI 1: Automações Ativas -->
+                <div
+                    class="group relative cursor-pointer overflow-hidden rounded-2xl border border-zinc-200/90 bg-white/70 p-4 transition-all duration-200 hover:-translate-y-0.5 hover:border-emerald-500/50 hover:bg-white hover:shadow-md dark:border-zinc-800 dark:bg-zinc-900/50 dark:hover:bg-zinc-900"
+                    @click="active = 'flows'"
+                >
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs font-medium text-zinc-500 dark:text-zinc-400">Automações</span>
+                        <div class="flex h-8 w-8 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-600 transition group-hover:bg-emerald-500 group-hover:text-white dark:bg-emerald-500/20 dark:text-emerald-400">
+                            <Zap class="h-4 w-4" />
+                        </div>
+                    </div>
+                    <div class="mt-2 text-2xl font-black tracking-tight text-zinc-900 dark:text-white">
+                        {{ stats.activeFlowsCount }}
+                        <span class="text-xs font-semibold text-emerald-600 dark:text-emerald-400">ativas</span>
+                    </div>
+                    <div class="mt-1 text-[11px] text-zinc-500 dark:text-zinc-400">
+                        de {{ stats.flowsCount }} fluxos configurados
+                    </div>
+                </div>
+
+                <!-- KPI 2: Campanhas em Massa -->
+                <div
+                    class="group relative cursor-pointer overflow-hidden rounded-2xl border border-zinc-200/90 bg-white/70 p-4 transition-all duration-200 hover:-translate-y-0.5 hover:border-sky-500/50 hover:bg-white hover:shadow-md dark:border-zinc-800 dark:bg-zinc-900/50 dark:hover:bg-zinc-900"
+                    @click="active = 'campaigns'"
+                >
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs font-medium text-zinc-500 dark:text-zinc-400">Campanhas</span>
+                        <div class="flex h-8 w-8 items-center justify-center rounded-xl bg-sky-500/10 text-sky-600 transition group-hover:bg-sky-500 group-hover:text-white dark:bg-sky-500/20 dark:text-sky-400">
+                            <Send class="h-4 w-4" />
+                        </div>
+                    </div>
+                    <div class="mt-2 text-2xl font-black tracking-tight text-zinc-900 dark:text-white">
+                        {{ stats.campaignsCount }}
+                    </div>
+                    <div class="mt-1 text-[11px] text-zinc-500 dark:text-zinc-400">
+                        disparos em massa com anti-ban
+                    </div>
+                </div>
+
+                <!-- KPI 3: Base de Contatos -->
+                <div
+                    class="group relative cursor-pointer overflow-hidden rounded-2xl border border-zinc-200/90 bg-white/70 p-4 transition-all duration-200 hover:-translate-y-0.5 hover:border-purple-500/50 hover:bg-white hover:shadow-md dark:border-zinc-800 dark:bg-zinc-900/50 dark:hover:bg-zinc-900"
+                    @click="active = 'contacts'"
+                >
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs font-medium text-zinc-500 dark:text-zinc-400">Base Unificada</span>
+                        <div class="flex h-8 w-8 items-center justify-center rounded-xl bg-purple-500/10 text-purple-600 transition group-hover:bg-purple-500 group-hover:text-white dark:bg-purple-500/20 dark:text-purple-400">
+                            <Users class="h-4 w-4" />
+                        </div>
+                    </div>
+                    <div class="mt-2 text-2xl font-black tracking-tight text-zinc-900 dark:text-white">
+                        {{ stats.contactsCount.toLocaleString('pt-BR') }}
+                    </div>
+                    <div class="mt-1 text-[11px] text-zinc-500 dark:text-zinc-400">
+                        contatos sincronizados
+                    </div>
+                </div>
+
+                <!-- KPI 4: Execuções & Taxa de Sucesso -->
+                <div
+                    class="group relative cursor-pointer overflow-hidden rounded-2xl border border-zinc-200/90 bg-white/70 p-4 transition-all duration-200 hover:-translate-y-0.5 hover:border-teal-500/50 hover:bg-white hover:shadow-md dark:border-zinc-800 dark:bg-zinc-900/50 dark:hover:bg-zinc-900"
+                    @click="active = 'runs'"
+                >
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs font-medium text-zinc-500 dark:text-zinc-400">Disparos do Motor</span>
+                        <div class="flex h-8 w-8 items-center justify-center rounded-xl bg-teal-500/10 text-teal-600 transition group-hover:bg-teal-500 group-hover:text-white dark:bg-teal-500/20 dark:text-teal-400">
+                            <Activity class="h-4 w-4" />
+                        </div>
+                    </div>
+                    <div class="mt-2 text-2xl font-black tracking-tight text-zinc-900 dark:text-white">
+                        {{ stats.runsCount }}
+                        <span class="text-xs font-semibold text-teal-600 dark:text-teal-400">envios</span>
+                    </div>
+                    <div class="mt-1 flex items-center gap-1.5 text-[11px] text-zinc-500 dark:text-zinc-400">
+                        <span class="inline-block h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                        <span>{{ stats.runsSuccessRate }}% taxa de sucesso</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Barra de Abas -->
             <div class="mt-6 flex flex-wrap gap-2 border-t border-zinc-200/80 pt-4 dark:border-zinc-800">
                 <button
                     v-for="tab in TABS"

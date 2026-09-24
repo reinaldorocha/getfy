@@ -34,6 +34,12 @@ const badgeFor = (status) => ({
     cancelled: 'border-zinc-700 bg-zinc-800 text-zinc-400',
 }[status] || 'border-blue-500/20 bg-blue-500/10 text-blue-400');
 
+const progressPercentage = computed(() => {
+    if (!campaign.value || !campaign.value.total_recipients) return 0;
+    const processed = (campaign.value.sent_count || 0) + (campaign.value.error_count || 0);
+    return Math.min(100, Math.round((processed / campaign.value.total_recipients) * 100));
+});
+
 async function load() {
     loading.value = true;
     error.value = '';
@@ -101,6 +107,35 @@ onMounted(load);
             <p v-else-if="error" class="px-6 py-4 text-sm text-red-400">{{ error }}</p>
 
             <template v-else-if="campaign">
+                <!-- Progresso Visual da Campanha -->
+                <div class="border-b border-zinc-800 bg-zinc-950/80 px-6 py-4">
+                    <div class="flex items-center justify-between text-xs">
+                        <div class="flex items-center gap-2">
+                            <span v-if="campaign.status === 'running'" class="relative flex h-2.5 w-2.5">
+                                <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                                <span class="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500" />
+                            </span>
+                            <span class="font-bold text-white">
+                                {{ campaign.status === 'running' ? 'Disparando mensagens em segundo plano...' : (campaign.status === 'completed' ? 'Envio finalizado com sucesso' : 'Progresso do envio') }}
+                            </span>
+                        </div>
+                        <span class="font-mono font-bold text-emerald-400">{{ progressPercentage }}%</span>
+                    </div>
+                    <div class="mt-2.5 h-2 w-full overflow-hidden rounded-full bg-zinc-800">
+                        <div
+                            class="h-full rounded-full bg-gradient-to-r from-emerald-500 via-teal-400 to-emerald-400 transition-all duration-500"
+                            :class="{ 'animate-pulse': campaign.status === 'running' }"
+                            :style="{ width: `${progressPercentage}%` }"
+                        />
+                    </div>
+                    <div class="mt-2 flex items-center justify-between text-[11px] text-zinc-500">
+                        <span>{{ campaign.sent_count }} de {{ campaign.total_recipients }} entregues</span>
+                        <span v-if="campaign.throttle_mode === 'random' && campaign.status === 'running'" class="text-amber-400/90 font-medium">
+                            🛡️ Intervalo randômico (jitter) ativo
+                        </span>
+                    </div>
+                </div>
+
                 <div class="grid grid-cols-2 gap-3 border-b border-zinc-800 bg-zinc-950/60 px-6 py-4 md:grid-cols-4">
                     <div class="rounded-xl border border-zinc-800 bg-zinc-900 p-3">
                         <span class="text-xs text-zinc-500">Destinatários</span>

@@ -4,6 +4,7 @@ import { Copy, Download, Loader2, Palette, Plus, Search, Send, Settings, Trash2,
 import FlowEditorModal from './FlowEditorModal.vue';
 import FlowSettingsModal from './FlowSettingsModal.vue';
 import FlowTemplateGallery from './FlowTemplateGallery.vue';
+import FlowTestModal from './FlowTestModal.vue';
 import MultiSelectDropdown from './MultiSelectDropdown.vue';
 import { api } from '../api';
 import { TRIGGER_EVENTS, defaultGraph, eventLabel } from '../constants';
@@ -19,6 +20,7 @@ const search = ref('');
 const eventFilter = ref('all');
 const editing = ref(null);
 const configuring = ref(null);
+const testingFlow = ref(null);
 
 const draft = ref({ name: '', trigger_event: TRIGGER_EVENTS[3].eventClass, product_ids: [] });
 const creating = ref(false);
@@ -72,14 +74,11 @@ async function run(action) {
 }
 
 function test(flow) {
-    const phone = window.prompt(`Testar "${flow.name}" — número de WhatsApp com DDD (ex: 11999998888):`);
-    if (!phone || !phone.trim()) return;
+    testingFlow.value = flow;
+}
 
-    notice.value = '';
-    return run(async () => {
-        await api.testFlow(flow.id, phone.trim());
-        notice.value = `Fluxo "${flow.name}" disparado para ${phone.trim()}. Confira o WhatsApp e o Histórico de Execuções.`;
-    });
+function onFlowTested({ phone }) {
+    notice.value = `Fluxo "${testingFlow.value?.name}" disparado para ${phone}. Confira o WhatsApp e o Histórico de Execuções.`;
 }
 
 function create() {
@@ -325,5 +324,6 @@ onMounted(load);
 
         <FlowEditorModal v-if="editing" :flow="editing" @close="editing = null" @saved="load" />
         <FlowSettingsModal v-if="configuring" :flow="configuring" @close="configuring = null" @saved="load" />
+        <FlowTestModal v-if="testingFlow" :flow="testingFlow" @close="testingFlow = null" @tested="onFlowTested" />
     </div>
 </template>

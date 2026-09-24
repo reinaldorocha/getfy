@@ -3,9 +3,10 @@ import { computed, ref, watch } from 'vue';
 import { Handle, MarkerType, Position, VueFlow, useVueFlow } from '@vue-flow/core';
 import { Background } from '@vue-flow/background';
 import { Controls } from '@vue-flow/controls';
-import { AlertCircle, Clock, Flag, GitBranch, MessageCircle, Reply, X, Zap } from 'lucide-vue-next';
+import { AlertCircle, Check, Clock, Flag, GitBranch, MessageCircle, Mic, Reply, Sparkles, X, Zap } from 'lucide-vue-next';
 import FlowEdge from './FlowEdge.vue';
 import NodeInspector from './NodeInspector.vue';
+import FlowSimulatorModal from './FlowSimulatorModal.vue';
 import { nodeLabel } from '../constants';
 import { makeNode, subtitleFor, toStoredGraph, toVueFlow } from '../graph';
 import { validateGraph } from '../validation';
@@ -22,6 +23,23 @@ const edges = ref([]);
 const selectedNodeId = ref(null);
 const selectedEdgeId = ref(null);
 const validationErrors = ref([]);
+const simulatorOpen = ref(false);
+
+const MESSAGE_MODE_META = {
+    text: { label: 'Texto', color: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20' },
+    media: { label: 'Mídia', color: 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/20' },
+    audio: { label: 'Áudio', color: 'bg-violet-500/10 text-violet-600 dark:text-violet-400 border-violet-500/20' },
+    buttons: { label: 'Botões', color: 'bg-sky-500/10 text-sky-600 dark:text-sky-400 border-sky-500/20' },
+    list: { label: 'Lista', color: 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20' },
+    location: { label: 'Local', color: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20' },
+    contact: { label: 'Contato', color: 'bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border-cyan-500/20' },
+    poll: { label: 'Enquete', color: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20' },
+    link: { label: 'Link', color: 'bg-pink-500/10 text-pink-600 dark:text-pink-400 border-pink-500/20' },
+};
+
+function messageModeMeta(mode) {
+    return MESSAGE_MODE_META[mode] || { label: mode || 'Texto', color: 'bg-zinc-500/10 text-zinc-600 dark:text-zinc-400 border-zinc-500/20' };
+}
 
 const { onConnect, addEdges, project, fitView } = useVueFlow();
 
@@ -58,7 +76,12 @@ watch(
 );
 
 onConnect((connection) => {
-    addEdges([{ ...connection, ...defaultEdgeOptions, data: {} }]);
+    addEdges([{
+        ...connection,
+        ...defaultEdgeOptions,
+        sourceHandle: connection.sourceHandle,
+        data: { sourceHandle: connection.sourceHandle },
+    }]);
 });
 
 function selectNode(id) {
@@ -119,65 +142,74 @@ function onDrop(event) {
     if (!type) return;
 
     const bounds = event.currentTarget.getBoundingClientRect();
-    addNode(type, project({ x: event.clientX - bounds.left, y: event.clientY - bounds.top }));
+    const position = project({
+        x: event.clientX - bounds.left,
+        y: event.clientY - bounds.top,
+    });
+    addNode(type, position);
 }
 
-function requestSave() {
-    const errors = validateGraph(nodes.value);
-    if (errors.length > 0) {
-        validationErrors.value = errors;
+function handleSave() {
+    const stored = toStoredGraph(nodes.value, edges.value);
+    const errors = validateGraph(stored);
+    validationErrors.value = errors;
+    if (errors.length) return;
 
-        return;
-    }
-    validationErrors.value = [];
-    emit('save', toStoredGraph(nodes.value, edges.value));
+    emit('save', stored);
 }
-
-defineExpose({ requestSave });
 </script>
 
 <template>
-    <div class="flex h-full">
-        <aside class="flex w-64 shrink-0 flex-col gap-3 overflow-y-auto border-r border-zinc-200 p-4 dark:border-zinc-800">
-            <div>
-                <div class="mb-1 text-xs font-black tracking-wider text-zinc-400 uppercase">Componentes</div>
-                <p class="mb-3 text-xs text-zinc-500 dark:text-zinc-400">Arraste para o canvas ou clique duas vezes para adicionar:</p>
-            </div>
-            <div
-                v-for="item in PALETTE"
-                :key="item.type"
-                class="group relative flex cursor-grab items-start gap-3 rounded-2xl border border-zinc-200/80 bg-zinc-50/80 p-3 shadow-2xs transition select-none hover:border-emerald-500/40 hover:bg-white hover:shadow-md active:cursor-grabbing dark:border-zinc-800 dark:bg-zinc-900 dark:hover:border-emerald-500/40"
-                draggable="true"
-                @dragstart="(event) => onDragStart(event, item.type)"
-                @dblclick="addNode(item.type)"
-            >
-                <div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border" :class="item.color">
-                    <component :is="item.icon" class="h-4 w-4" />
-                </div>
+    <div class="flex h-full flex-col lg:flex-row">
+        <!-- Sidebar com Paleta de Blocos -->
+        <aside class="flex w-full shrink-0 flex-col border-b border-zinc-200 bg-white p-4 lg:w-64 lg:border-r lg:border-b-0 dark:border-zinc-800 dark:bg-zinc-950">
+            <div class="mb-4 flex items-center justify-between">
                 <div>
-                    <div class="text-xs font-bold text-zinc-900 dark:text-white">{{ item.title }}</div>
-                    <div class="text-[11px] text-zinc-500 dark:text-zinc-400">{{ item.desc }}</div>
+                    <h3 class="text-xs font-bold uppercase tracking-wider text-zinc-400">Componentes</h3>
+                    <p class="text-[11px] text-zinc-500">Arraste para a área de edição</p>
+                </div>
+                <button
+                    type="button"
+                    class="inline-flex items-center gap-1.5 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-xs font-bold text-emerald-600 transition hover:bg-emerald-500/20 dark:text-emerald-400"
+                    @click="simulatorOpen = true"
+                >
+                    <Sparkles class="h-3.5 w-3.5" />
+                    <span>Simulador</span>
+                </button>
+            </div>
+
+            <div class="space-y-2">
+                <div
+                    v-for="item in PALETTE"
+                    :key="item.type"
+                    draggable="true"
+                    class="group flex cursor-grab items-start gap-3 rounded-2xl border p-2.5 transition active:cursor-grabbing hover:shadow-xs"
+                    :class="item.color"
+                    @dragstart="onDragStart($event, item.type)"
+                    @click="addNode(item.type)"
+                >
+                    <component :is="item.icon" class="mt-0.5 h-4 w-4 shrink-0" />
+                    <div>
+                        <div class="text-xs font-bold">{{ item.title }}</div>
+                        <div class="text-[10px] text-zinc-500 dark:text-zinc-400">{{ item.desc }}</div>
+                    </div>
                 </div>
             </div>
-            <div class="mt-auto border-t border-zinc-100 pt-6 text-[11px] text-zinc-400 dark:border-zinc-800/80">
-                💡 Dica: conecte puxando do ponto de saída para o ponto de entrada de outro bloco.
+
+            <div class="mt-auto pt-4 border-t border-zinc-100 dark:border-zinc-800">
+                <button
+                    type="button"
+                    :disabled="saving"
+                    class="flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 py-2.5 text-xs font-bold text-white shadow-xs transition hover:bg-emerald-700 disabled:opacity-50"
+                    @click="handleSave"
+                >
+                    <span>{{ saving ? 'Salvando...' : 'Salvar Alterações' }}</span>
+                </button>
             </div>
         </aside>
 
-        <main class="relative flex-1 bg-zinc-50/60 dark:bg-zinc-950/80" @dragover="onDragOver" @drop="onDrop">
-            <div
-                v-if="validationErrors.length > 0"
-                class="absolute inset-x-4 top-4 z-10 space-y-1 rounded-2xl border border-rose-300 bg-rose-50 p-3 text-xs text-rose-700 shadow-lg dark:border-rose-500/30 dark:bg-rose-950/80 dark:text-rose-300"
-            >
-                <div class="flex items-center gap-1.5 font-bold">
-                    <AlertCircle class="h-3.5 w-3.5" />
-                    Corrija antes de salvar:
-                </div>
-                <ul class="list-disc space-y-0.5 pl-5">
-                    <li v-for="(error, index) in validationErrors" :key="index">{{ error }}</li>
-                </ul>
-            </div>
-
+        <!-- Canvas Principal -->
+        <main class="relative h-full flex-1" @dragover="onDragOver" @drop="onDrop">
             <VueFlow
                 v-model:nodes="nodes"
                 v-model:edges="edges"
@@ -194,91 +226,244 @@ defineExpose({ requestSave });
                 </template>
 
                 <template #node-trigger="nodeProps">
-                    <div class="min-w-[210px] max-w-[260px] rounded-2xl border bg-white p-3 shadow-lg dark:bg-zinc-900" :class="nodeProps.selected ? 'border-emerald-500 ring-4 ring-emerald-500/20' : 'border-zinc-200 dark:border-zinc-700'">
-                        <Handle type="source" :position="Position.Right" />
-                        <div class="flex items-center justify-between gap-2 text-xs font-bold text-zinc-900 dark:text-white">
-                            <span class="flex items-center gap-1.5"><Zap class="h-3.5 w-3.5 text-emerald-500" />{{ nodeLabel('trigger') }}</span>
-                            <span class="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[9px] font-black text-emerald-600 dark:text-emerald-400">INÍCIO</span>
+                    <div
+                        class="min-w-[240px] max-w-[280px] overflow-hidden rounded-2xl border bg-white shadow-lg transition-all hover:shadow-xl dark:bg-zinc-900"
+                        :class="nodeProps.selected ? 'border-emerald-500 ring-4 ring-emerald-500/20 shadow-emerald-500/10' : 'border-zinc-200/90 dark:border-zinc-800'"
+                    >
+                        <Handle type="source" :position="Position.Right" class="!h-3.5 !w-3.5 !rounded-full !border-2 !border-white !bg-emerald-500 shadow-sm transition hover:!scale-125 dark:!border-zinc-900" />
+
+                        <div class="flex items-center justify-between border-b border-zinc-100 bg-gradient-to-r from-emerald-500/10 via-emerald-500/5 to-transparent px-3 py-2.5 dark:border-zinc-800/80">
+                            <div class="flex items-center gap-2">
+                                <div class="flex h-6 w-6 items-center justify-center rounded-lg bg-emerald-500 text-white shadow-xs shadow-emerald-500/30">
+                                    <Zap class="h-3.5 w-3.5" />
+                                </div>
+                                <span class="text-xs font-bold text-zinc-900 dark:text-zinc-100">{{ nodeLabel('trigger') }}</span>
+                            </div>
+                            <span class="rounded-full border border-emerald-500/30 bg-emerald-500/15 px-2 py-0.5 text-[9px] font-black tracking-wider text-emerald-600 dark:text-emerald-400">INÍCIO</span>
                         </div>
-                        <div class="mt-1.5 font-mono text-[11px] text-zinc-500 dark:text-zinc-400">{{ subtitleFor('trigger', nodeProps.data) }}</div>
+
+                        <div class="p-3">
+                            <div class="flex items-center gap-1.5 rounded-xl border border-zinc-200/60 bg-zinc-50/80 px-2.5 py-1.5 font-mono text-[11px] text-zinc-700 dark:border-zinc-800 dark:bg-zinc-800/60 dark:text-zinc-300">
+                                <span class="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                                <span class="truncate">{{ subtitleFor('trigger', nodeProps.data) }}</span>
+                            </div>
+                        </div>
                     </div>
                 </template>
 
                 <template #node-send_message="nodeProps">
-                    <div class="relative min-w-[210px] max-w-[260px] rounded-2xl border bg-white p-3 shadow-lg dark:bg-zinc-900" :class="nodeProps.selected ? 'border-emerald-500 ring-4 ring-emerald-500/20' : 'border-zinc-200 dark:border-zinc-700'">
-                        <Handle type="target" :position="Position.Left" />
-                        <Handle type="source" :position="Position.Right" />
-                        <button type="button" class="absolute top-1.5 right-1.5 rounded-lg p-1 text-zinc-400 hover:bg-rose-500/10 hover:text-rose-600" @click.stop="removeNode(nodeProps.id)">
-                            <X class="h-3.5 w-3.5" />
-                        </button>
-                        <div class="flex items-center gap-1.5 text-xs font-bold text-zinc-900 dark:text-white">
-                            <MessageCircle class="h-3.5 w-3.5 text-blue-500" />{{ nodeLabel('send_message') }}
+                    <div
+                        class="relative min-w-[260px] max-w-[300px] overflow-hidden rounded-2xl border bg-white shadow-lg transition-all hover:shadow-xl dark:bg-zinc-900"
+                        :class="nodeProps.selected ? 'border-sky-500 ring-4 ring-sky-500/20 shadow-sky-500/10' : 'border-zinc-200/90 dark:border-zinc-800'"
+                    >
+                        <Handle type="target" :position="Position.Left" class="!h-3.5 !w-3.5 !rounded-full !border-2 !border-white !bg-zinc-400 shadow-sm transition hover:!scale-125 dark:!border-zinc-900 dark:!bg-zinc-500" />
+                        <Handle type="source" :position="Position.Right" class="!h-3.5 !w-3.5 !rounded-full !border-2 !border-white !bg-sky-500 shadow-sm transition hover:!scale-125 dark:!border-zinc-900" />
+
+                        <div class="flex items-center justify-between border-b border-zinc-100 bg-gradient-to-r from-sky-500/10 via-sky-500/5 to-transparent px-3 py-2.5 dark:border-zinc-800/80">
+                            <div class="flex items-center gap-2">
+                                <div class="flex h-6 w-6 items-center justify-center rounded-lg bg-sky-500 text-white shadow-xs shadow-sky-500/30">
+                                    <MessageCircle class="h-3.5 w-3.5" />
+                                </div>
+                                <span class="text-xs font-bold text-zinc-900 dark:text-zinc-100">{{ nodeLabel('send_message') }}</span>
+                            </div>
+                            <div class="flex items-center gap-1.5">
+                                <span
+                                    class="rounded-full border px-2 py-0.5 text-[9px] font-bold tracking-wider uppercase"
+                                    :class="messageModeMeta(nodeProps.data?.mode).color"
+                                >
+                                    {{ messageModeMeta(nodeProps.data?.mode).label }}
+                                </span>
+                                <button
+                                    type="button"
+                                    class="rounded-lg p-1 text-zinc-400 transition hover:bg-rose-500/10 hover:text-rose-600"
+                                    title="Excluir bloco"
+                                    @click.stop="removeNode(nodeProps.id)"
+                                >
+                                    <X class="h-3.5 w-3.5" />
+                                </button>
+                            </div>
                         </div>
-                        <div class="mt-1.5 truncate text-[11px] text-zinc-500 dark:text-zinc-400">{{ subtitleFor('send_message', nodeProps.data) }}</div>
+
+                        <div class="p-3">
+                            <div class="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-2.5 text-xs text-zinc-700 shadow-xs dark:bg-emerald-950/20 dark:text-zinc-200">
+                                <div v-if="nodeProps.data?.mode === 'audio'" class="flex items-center gap-2 text-emerald-600 dark:text-emerald-400">
+                                    <Mic class="h-3.5 w-3.5" />
+                                    <span class="font-mono text-[11px] font-semibold">Mensagem de Voz</span>
+                                    <span class="text-[10px] text-zinc-400">PTT</span>
+                                </div>
+                                <div v-else-if="nodeProps.data?.mode === 'poll'" class="space-y-1">
+                                    <div class="font-semibold text-zinc-900 dark:text-zinc-100 text-[11px] truncate">📊 {{ nodeProps.data?.question || 'Pergunta da enquete...' }}</div>
+                                    <div class="text-[10px] text-zinc-500">{{ (nodeProps.data?.options || []).length }} opções configuradas</div>
+                                </div>
+                                <div v-else-if="nodeProps.data?.mode === 'buttons'" class="space-y-1.5">
+                                    <p class="text-[11px] leading-snug line-clamp-2">{{ nodeProps.data?.text || 'Texto da mensagem...' }}</p>
+                                    <div v-if="(nodeProps.data?.buttons || []).length" class="flex flex-wrap gap-1 pt-1 border-t border-emerald-500/10">
+                                        <span
+                                            v-for="(btn, idx) in (nodeProps.data?.buttons || []).slice(0, 3)"
+                                            :key="idx"
+                                            class="rounded-md border border-sky-500/30 bg-white/80 px-1.5 py-0.5 text-[9px] font-medium text-sky-700 dark:bg-zinc-800 dark:text-sky-300"
+                                        >
+                                            {{ btn.label || `Botão ${idx + 1}` }}
+                                        </span>
+                                    </div>
+                                </div>
+                                <div v-else class="line-clamp-2 text-[11px] leading-snug">
+                                    {{ nodeProps.data?.text || nodeProps.data?.caption || 'Sem texto definido...' }}
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </template>
 
                 <template #node-delay="nodeProps">
-                    <div class="relative min-w-[210px] max-w-[260px] rounded-2xl border bg-white p-3 shadow-lg dark:bg-zinc-900" :class="nodeProps.selected ? 'border-emerald-500 ring-4 ring-emerald-500/20' : 'border-zinc-200 dark:border-zinc-700'">
-                        <Handle type="target" :position="Position.Left" />
-                        <Handle type="source" :position="Position.Right" />
-                        <button type="button" class="absolute top-1.5 right-1.5 rounded-lg p-1 text-zinc-400 hover:bg-rose-500/10 hover:text-rose-600" @click.stop="removeNode(nodeProps.id)">
-                            <X class="h-3.5 w-3.5" />
-                        </button>
-                        <div class="flex items-center gap-1.5 text-xs font-bold text-zinc-900 dark:text-white">
-                            <Clock class="h-3.5 w-3.5 text-amber-500" />{{ nodeLabel('delay') }}
+                    <div
+                        class="relative min-w-[240px] max-w-[280px] overflow-hidden rounded-2xl border bg-white shadow-lg transition-all hover:shadow-xl dark:bg-zinc-900"
+                        :class="nodeProps.selected ? 'border-amber-500 ring-4 ring-amber-500/20 shadow-amber-500/10' : 'border-zinc-200/90 dark:border-zinc-800'"
+                    >
+                        <Handle type="target" :position="Position.Left" class="!h-3.5 !w-3.5 !rounded-full !border-2 !border-white !bg-zinc-400 shadow-sm transition hover:!scale-125 dark:!border-zinc-900 dark:!bg-zinc-500" />
+                        <Handle type="source" :position="Position.Right" class="!h-3.5 !w-3.5 !rounded-full !border-2 !border-white !bg-amber-500 shadow-sm transition hover:!scale-125 dark:!border-zinc-900" />
+
+                        <div class="flex items-center justify-between border-b border-zinc-100 bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent px-3 py-2.5 dark:border-zinc-800/80">
+                            <div class="flex items-center gap-2">
+                                <div class="flex h-6 w-6 items-center justify-center rounded-lg bg-amber-500 text-white shadow-xs shadow-amber-500/30">
+                                    <Clock class="h-3.5 w-3.5" />
+                                </div>
+                                <span class="text-xs font-bold text-zinc-900 dark:text-zinc-100">{{ nodeLabel('delay') }}</span>
+                            </div>
+                            <button
+                                type="button"
+                                class="rounded-lg p-1 text-zinc-400 transition hover:bg-rose-500/10 hover:text-rose-600"
+                                title="Excluir bloco"
+                                @click.stop="removeNode(nodeProps.id)"
+                            >
+                                <X class="h-3.5 w-3.5" />
+                            </button>
                         </div>
-                        <div class="mt-1.5 text-[11px] text-zinc-500 dark:text-zinc-400">{{ subtitleFor('delay', nodeProps.data) }}</div>
+
+                        <div class="p-3">
+                            <div class="flex items-center gap-2 rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs font-semibold text-amber-700 dark:text-amber-300">
+                                <span class="relative flex h-2 w-2">
+                                    <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-75" />
+                                    <span class="relative inline-flex h-2 w-2 rounded-full bg-amber-500" />
+                                </span>
+                                <span>{{ subtitleFor('delay', nodeProps.data) }}</span>
+                            </div>
+                        </div>
                     </div>
                 </template>
 
                 <template #node-condition="nodeProps">
-                    <div class="relative min-w-[210px] max-w-[260px] rounded-2xl border bg-white p-3 pr-6 shadow-lg dark:bg-zinc-900" :class="nodeProps.selected ? 'border-emerald-500 ring-4 ring-emerald-500/20' : 'border-zinc-200 dark:border-zinc-700'">
-                        <Handle type="target" :position="Position.Left" />
-                        <button type="button" class="absolute top-1.5 right-1.5 rounded-lg p-1 text-zinc-400 hover:bg-rose-500/10 hover:text-rose-600" @click.stop="removeNode(nodeProps.id)">
-                            <X class="h-3.5 w-3.5" />
-                        </button>
-                        <div class="flex items-center gap-1.5 text-xs font-bold text-zinc-900 dark:text-white">
-                            <GitBranch class="h-3.5 w-3.5 text-purple-500" />{{ nodeLabel('condition') }}
-                        </div>
-                        <div class="mt-1.5 truncate text-[11px] text-zinc-500 dark:text-zinc-400">{{ subtitleFor('condition', nodeProps.data) }}</div>
+                    <div
+                        class="relative min-w-[260px] max-w-[300px] overflow-hidden rounded-2xl border bg-white shadow-lg transition-all hover:shadow-xl dark:bg-zinc-900"
+                        :class="nodeProps.selected ? 'border-purple-500 ring-4 ring-purple-500/20 shadow-purple-500/10' : 'border-zinc-200/90 dark:border-zinc-800'"
+                    >
+                        <Handle type="target" :position="Position.Left" class="!h-3.5 !w-3.5 !rounded-full !border-2 !border-white !bg-zinc-400 shadow-sm transition hover:!scale-125 dark:!border-zinc-900 dark:!bg-zinc-500" />
 
-                        <!-- Duas saídas nomeadas: a linha nasce de uma delas, sem precisar
-                             marcar SIM/NÃO depois — a origem já diz qual é. -->
-                        <span class="pointer-events-none absolute top-[35%] right-4 -translate-y-1/2 rounded-full bg-emerald-500/10 px-1.5 py-0.5 text-[9px] font-black text-emerald-600 dark:text-emerald-400">SIM</span>
-                        <Handle id="yes" type="source" :position="Position.Right" class="!bg-emerald-500 !border-emerald-600" style="top: 35%" />
-                        <span class="pointer-events-none absolute top-[65%] right-4 -translate-y-1/2 rounded-full bg-rose-500/10 px-1.5 py-0.5 text-[9px] font-black text-rose-600 dark:text-rose-400">NÃO</span>
-                        <Handle id="no" type="source" :position="Position.Right" class="!bg-rose-500 !border-rose-600" style="top: 65%" />
+                        <div class="flex items-center justify-between border-b border-zinc-100 bg-gradient-to-r from-purple-500/10 via-purple-500/5 to-transparent px-3 py-2.5 dark:border-zinc-800/80">
+                            <div class="flex items-center gap-2">
+                                <div class="flex h-6 w-6 items-center justify-center rounded-lg bg-purple-500 text-white shadow-xs shadow-purple-500/30">
+                                    <GitBranch class="h-3.5 w-3.5" />
+                                </div>
+                                <span class="text-xs font-bold text-zinc-900 dark:text-zinc-100">{{ nodeLabel('condition') }}</span>
+                            </div>
+                            <button
+                                type="button"
+                                class="rounded-lg p-1 text-zinc-400 transition hover:bg-rose-500/10 hover:text-rose-600"
+                                title="Excluir bloco"
+                                @click.stop="removeNode(nodeProps.id)"
+                            >
+                                <X class="h-3.5 w-3.5" />
+                            </button>
+                        </div>
+
+                        <div class="p-3 space-y-2.5 pb-12">
+                            <div class="rounded-xl border border-purple-500/20 bg-purple-500/10 px-2.5 py-1.5 text-[11px] font-medium text-purple-700 dark:text-purple-300">
+                                <span class="line-clamp-2">{{ subtitleFor('condition', nodeProps.data) }}</span>
+                            </div>
+
+                            <!-- Saídas Nomeadas SIM e NÃO com badges e handles dedicados -->
+                            <span class="pointer-events-none absolute top-[58%] right-4 -translate-y-1/2 rounded-full border border-emerald-500/30 bg-emerald-500/15 px-2 py-0.5 text-[9px] font-black text-emerald-600 dark:text-emerald-400">
+                                SIM
+                            </span>
+                            <Handle id="yes" type="source" :position="Position.Right" class="!h-3.5 !w-3.5 !rounded-full !border-2 !border-white !bg-emerald-500 shadow-sm transition hover:!scale-125 dark:!border-zinc-900" style="top: 58%" />
+
+                            <span class="pointer-events-none absolute top-[82%] right-4 -translate-y-1/2 rounded-full border border-rose-500/30 bg-rose-500/15 px-2 py-0.5 text-[9px] font-black text-rose-600 dark:text-rose-400">
+                                NÃO
+                            </span>
+                            <Handle id="no" type="source" :position="Position.Right" class="!h-3.5 !w-3.5 !rounded-full !border-2 !border-white !bg-rose-500 shadow-sm transition hover:!scale-125 dark:!border-zinc-900" style="top: 82%" />
+                        </div>
                     </div>
                 </template>
 
                 <template #node-wait_reply="nodeProps">
-                    <div class="relative min-w-[210px] max-w-[260px] rounded-2xl border bg-white p-3 pr-6 shadow-lg dark:bg-zinc-900" :class="nodeProps.selected ? 'border-emerald-500 ring-4 ring-emerald-500/20' : 'border-zinc-200 dark:border-zinc-700'">
-                        <Handle type="target" :position="Position.Left" />
-                        <button type="button" class="absolute top-1.5 right-1.5 rounded-lg p-1 text-zinc-400 hover:bg-rose-500/10 hover:text-rose-600" @click.stop="removeNode(nodeProps.id)">
-                            <X class="h-3.5 w-3.5" />
-                        </button>
-                        <div class="flex items-center gap-1.5 text-xs font-bold text-zinc-900 dark:text-white">
-                            <Reply class="h-3.5 w-3.5 text-teal-500" />{{ nodeLabel('wait_reply') }}
-                        </div>
-                        <div class="mt-1.5 truncate text-[11px] text-zinc-500 dark:text-zinc-400">{{ subtitleFor('wait_reply', nodeProps.data) }}</div>
+                    <div
+                        class="relative min-w-[260px] max-w-[300px] overflow-hidden rounded-2xl border bg-white shadow-lg transition-all hover:shadow-xl dark:bg-zinc-900"
+                        :class="nodeProps.selected ? 'border-teal-500 ring-4 ring-teal-500/20 shadow-teal-500/10' : 'border-zinc-200/90 dark:border-zinc-800'"
+                    >
+                        <Handle type="target" :position="Position.Left" class="!h-3.5 !w-3.5 !rounded-full !border-2 !border-white !bg-zinc-400 shadow-sm transition hover:!scale-125 dark:!border-zinc-900 dark:!bg-zinc-500" />
 
-                        <!-- Duas saídas nomeadas, mesma convenção do bloco de condição. -->
-                        <span class="pointer-events-none absolute top-[35%] right-4 -translate-y-1/2 rounded-full bg-emerald-500/10 px-1.5 py-0.5 text-[9px] font-black text-emerald-600 dark:text-emerald-400">RESPONDEU</span>
-                        <Handle id="replied" type="source" :position="Position.Right" class="!bg-emerald-500 !border-emerald-600" style="top: 35%" />
-                        <span class="pointer-events-none absolute top-[65%] right-4 -translate-y-1/2 rounded-full bg-amber-500/10 px-1.5 py-0.5 text-[9px] font-black text-amber-600 dark:text-amber-400">ESGOTOU</span>
-                        <Handle id="timeout" type="source" :position="Position.Right" class="!bg-amber-500 !border-amber-600" style="top: 65%" />
+                        <div class="flex items-center justify-between border-b border-zinc-100 bg-gradient-to-r from-teal-500/10 via-teal-500/5 to-transparent px-3 py-2.5 dark:border-zinc-800/80">
+                            <div class="flex items-center gap-2">
+                                <div class="flex h-6 w-6 items-center justify-center rounded-lg bg-teal-500 text-white shadow-xs shadow-teal-500/30">
+                                    <Reply class="h-3.5 w-3.5" />
+                                </div>
+                                <span class="text-xs font-bold text-zinc-900 dark:text-zinc-100">{{ nodeLabel('wait_reply') }}</span>
+                            </div>
+                            <button
+                                type="button"
+                                class="rounded-lg p-1 text-zinc-400 transition hover:bg-rose-500/10 hover:text-rose-600"
+                                title="Excluir bloco"
+                                @click.stop="removeNode(nodeProps.id)"
+                            >
+                                <X class="h-3.5 w-3.5" />
+                            </button>
+                        </div>
+
+                        <div class="p-3 space-y-2.5 pb-12">
+                            <div class="rounded-xl border border-teal-500/20 bg-teal-500/10 px-2.5 py-1.5 text-[11px] font-medium text-teal-700 dark:text-teal-300">
+                                <span class="line-clamp-2">{{ subtitleFor('wait_reply', nodeProps.data) }}</span>
+                            </div>
+
+                            <!-- Saídas Nomeadas RESPONDEU e ESGOTOU -->
+                            <span class="pointer-events-none absolute top-[58%] right-4 -translate-y-1/2 rounded-full border border-teal-500/30 bg-teal-500/15 px-2 py-0.5 text-[9px] font-black text-teal-600 dark:text-teal-400">
+                                RESPONDEU
+                            </span>
+                            <Handle id="replied" type="source" :position="Position.Right" class="!h-3.5 !w-3.5 !rounded-full !border-2 !border-white !bg-teal-500 shadow-sm transition hover:!scale-125 dark:!border-zinc-900" style="top: 58%" />
+
+                            <span class="pointer-events-none absolute top-[82%] right-4 -translate-y-1/2 rounded-full border border-amber-500/30 bg-amber-500/15 px-2 py-0.5 text-[9px] font-black text-amber-600 dark:text-amber-400">
+                                ESGOTOU
+                            </span>
+                            <Handle id="timeout" type="source" :position="Position.Right" class="!h-3.5 !w-3.5 !rounded-full !border-2 !border-white !bg-amber-500 shadow-sm transition hover:!scale-125 dark:!border-zinc-900" style="top: 82%" />
+                        </div>
                     </div>
                 </template>
 
                 <template #node-end="nodeProps">
-                    <div class="relative min-w-[160px] rounded-2xl border bg-white p-3 shadow-lg dark:bg-zinc-900" :class="nodeProps.selected ? 'border-emerald-500 ring-4 ring-emerald-500/20' : 'border-zinc-200 dark:border-zinc-700'">
-                        <Handle type="target" :position="Position.Left" />
-                        <button type="button" class="absolute top-1.5 right-1.5 rounded-lg p-1 text-zinc-400 hover:bg-rose-500/10 hover:text-rose-600" @click.stop="removeNode(nodeProps.id)">
-                            <X class="h-3.5 w-3.5" />
-                        </button>
-                        <div class="flex items-center justify-between gap-2 text-xs font-bold text-zinc-900 dark:text-white">
-                            <span class="flex items-center gap-1.5"><Flag class="h-3.5 w-3.5 text-rose-500" />{{ nodeLabel('end') }}</span>
+                    <div
+                        class="relative min-w-[200px] overflow-hidden rounded-2xl border bg-white shadow-lg transition-all hover:shadow-xl dark:bg-zinc-900"
+                        :class="nodeProps.selected ? 'border-rose-500 ring-4 ring-rose-500/20 shadow-rose-500/10' : 'border-zinc-200/90 dark:border-zinc-800'"
+                    >
+                        <Handle type="target" :position="Position.Left" class="!h-3.5 !w-3.5 !rounded-full !border-2 !border-white !bg-zinc-400 shadow-sm transition hover:!scale-125 dark:!border-zinc-900 dark:!bg-zinc-500" />
+
+                        <div class="flex items-center justify-between border-b border-zinc-100 bg-gradient-to-r from-rose-500/10 via-rose-500/5 to-transparent px-3 py-2.5 dark:border-zinc-800/80">
+                            <div class="flex items-center gap-2">
+                                <div class="flex h-6 w-6 items-center justify-center rounded-lg bg-rose-500 text-white shadow-xs shadow-rose-500/30">
+                                    <Flag class="h-3.5 w-3.5" />
+                                </div>
+                                <span class="text-xs font-bold text-zinc-900 dark:text-zinc-100">{{ nodeLabel('end') }}</span>
+                            </div>
+                            <button
+                                type="button"
+                                class="rounded-lg p-1 text-zinc-400 transition hover:bg-rose-500/10 hover:text-rose-600"
+                                title="Excluir bloco"
+                                @click.stop="removeNode(nodeProps.id)"
+                            >
+                                <X class="h-3.5 w-3.5" />
+                            </button>
+                        </div>
+
+                        <div class="p-3">
+                            <p class="text-[11px] text-zinc-500 dark:text-zinc-400">Execução encerrada com sucesso.</p>
                         </div>
                     </div>
                 </template>
@@ -293,6 +478,14 @@ defineExpose({ requestSave });
             :edge="selectedEdge"
             @remove-node="removeNode"
             @remove-edge="removeEdge"
+        />
+
+        <FlowSimulatorModal
+            v-if="simulatorOpen"
+            :flow="flow"
+            :nodes="nodes"
+            :edges="edges"
+            @close="simulatorOpen = false"
         />
     </div>
 </template>

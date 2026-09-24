@@ -98,7 +98,10 @@ final class FlowController extends Controller
         $model = $this->find($request, $flow);
         $tenantId = $this->tenantId($request);
 
-        $data = $request->validate(['phone' => ['required', 'string']]);
+        $data = $request->validate([
+            'phone' => ['required', 'string'],
+            'customer_name' => ['nullable', 'string', 'max:120'],
+        ]);
         $phone = PhoneNumber::normalize($data['phone']);
         if ($phone === null) {
             return response()->json(['message' => 'Telefone inválido.'], 422);
@@ -109,7 +112,7 @@ final class FlowController extends Controller
         }
 
         try {
-            $this->engine->run($model, $this->testContext($tenantId, $model, $phone));
+            $this->engine->run($model, $this->testContext($tenantId, $model, $phone, $data['customer_name'] ?? null));
         } catch (Throwable $e) {
             return response()->json(['message' => 'Falha ao testar o fluxo: '.$e->getMessage()], 422);
         }
@@ -120,13 +123,18 @@ final class FlowController extends Controller
     /**
      * @return array<string, mixed>
      */
-    private function testContext(int $tenantId, Flow $flow, string $phone): array
+    private function testContext(int $tenantId, Flow $flow, string $phone, ?string $customerName = null): array
     {
         $productId = $flow->product_ids[0] ?? null;
         $product = is_string($productId) && $productId !== ''
             ? Getfy::products()->findForTenant($tenantId, $productId)
             : null;
         $productName = $product?->name ?? 'Produto de teste';
+
+        $name = trim($customerName ?? '') !== '' ? trim($customerName) : 'Contato de Teste';
+        $parts = explode(' ', $name, 2);
+        $firstName = $parts[0];
+        $lastName = $parts[1] ?? '';
 
         return [
             'tenant_id' => $tenantId,
@@ -135,11 +143,11 @@ final class FlowController extends Controller
             'subject_id' => null,
             'phone' => $phone,
             'email' => 'teste@getfy.com',
-            'name' => 'Contato de Teste',
+            'name' => $name,
             'customer' => [
-                'name' => 'Contato de Teste',
-                'first_name' => 'Contato',
-                'last_name' => 'de Teste',
+                'name' => $name,
+                'first_name' => $firstName,
+                'last_name' => $lastName,
                 'email' => 'teste@getfy.com',
                 'phone' => $phone,
                 'cpf' => '000.000.000-00',
@@ -158,6 +166,7 @@ final class FlowController extends Controller
                 'currency' => 'BRL',
                 'gateway' => 'teste',
                 'payment_method' => 'pix',
+                'payment_method_label' => 'PIX',
                 'metadata' => [],
                 'product' => ['id' => $product?->id, 'name' => $productName],
             ],

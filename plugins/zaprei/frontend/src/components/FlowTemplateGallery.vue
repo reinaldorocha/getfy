@@ -17,7 +17,7 @@ defineEmits(['use']);
             </div>
         </div>
 
-        <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
             <button
                 v-for="template in FLOW_TEMPLATES"
                 :key="template.id"
