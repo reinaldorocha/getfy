@@ -104,6 +104,7 @@ final class OrderReader
             self::hasRelation($subject, 'user') ? 'user' : null,
             self::hasRelation($subject, 'subscriptionPlan') ? 'subscriptionPlan' : null,
             self::hasRelation($subject, 'productOffer') ? 'productOffer' : null,
+            self::hasRelation($subject, 'orderItems') ? 'orderItems' : null,
         ])));
 
         $metadata = is_array($subject->metadata ?? null) ? $subject->metadata : [];
@@ -125,7 +126,16 @@ final class OrderReader
         $currency = strtoupper(trim((string) (
             $subject->currency ?? $priceSource?->currency ?? 'BRL'
         ))) ?: 'BRL';
-        $amount = (float) ($subject->amount ?? $priceSource?->price ?? 0);
+
+        $rawAmount = (float) ($subject->amount ?? $priceSource?->price ?? 0);
+
+        // Valor da venda equivalente ao enviado para a Utmify e relatórios de vendas
+        // (total dos itens do produto/bumps, sem juros de parcelamento do cartão assumidos pelo cliente)
+        $amount = $rawAmount;
+        if ($subject instanceof \App\Models\Order || (is_object($subject) && method_exists($subject, 'lineItemsTotalAmount'))) {
+            $amount = (float) $subject->lineItemsTotalAmount();
+        }
+
         $product = $subject->product ?? null;
 
         return [
@@ -150,10 +160,14 @@ final class OrderReader
             'order' => [
                 'id' => $subject->id ?? null,
                 'status' => (string) ($subject->status ?? ''),
+                // Valor igual ao da Utmify (sem acréscimo de taxas de parcelamento do cartão)
                 'amount' => $amount,
                 'amount_formatted' => self::money($amount, $currency),
                 'total_amount' => $amount,
                 'total_amount_formatted' => self::money($amount, $currency),
+                // Valor total bruto pago pelo cliente (com juros de parcelamento do cartão, se houver)
+                'paid_amount' => $rawAmount,
+                'paid_amount_formatted' => self::money($rawAmount, $currency),
                 'currency' => $currency,
                 'gateway' => (string) ($subject->gateway ?? ''),
                 // pix/pix_auto/card/boleto/... — método real do checkout, não o slug do gateway.
