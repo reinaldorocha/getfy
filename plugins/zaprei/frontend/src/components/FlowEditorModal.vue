@@ -10,8 +10,13 @@ const props = defineProps({
 
 const emit = defineEmits(['close', 'saved']);
 
+const canvas = ref(null);
 const saving = ref(false);
 const error = ref('');
+
+function handleSaveClick() {
+    canvas.value?.requestSave?.();
+}
 
 async function save(graph) {
     saving.value = true;
@@ -56,7 +61,7 @@ async function save(graph) {
                     type="button"
                     :disabled="saving"
                     class="flex min-w-[130px] items-center justify-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-emerald-700 active:scale-95 disabled:opacity-60"
-                    @click="$refs.canvas?.requestSave()"
+                    @click="handleSaveClick"
                 >
                     <Loader2 v-if="saving" class="h-4 w-4 animate-spin" />
                     <Save v-else class="h-4 w-4" />

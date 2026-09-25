@@ -100,13 +100,14 @@ export function messageDataErrors(data, prefix) {
 }
 
 /**
- * @param {Array<{id:string,type:string,data:Record<string,unknown>}>} nodes
+ * @param {Array<{id:string,type:string,data:Record<string,unknown>}> | {nodes: Array<{id:string,type:string,data:Record<string,unknown>}>}} nodesOrGraph
  * @returns {string[]} mensagens de erro; vazio quando o grafo pode ser salvo
  */
-export function validateGraph(nodes) {
+export function validateGraph(nodesOrGraph) {
     const errors = [];
+    const list = Array.isArray(nodesOrGraph) ? nodesOrGraph : (nodesOrGraph?.nodes || []);
 
-    for (const node of nodes || []) {
+    for (const node of list) {
         if (node.type !== 'send_message') continue;
         const data = node.data || {};
         const label = text(data.mode) || 'text';

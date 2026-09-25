@@ -157,6 +157,11 @@ function handleSave() {
 
     emit('save', stored);
 }
+
+defineExpose({
+    requestSave: handleSave,
+    handleSave,
+});
 </script>
 
 <template>
@@ -210,6 +215,40 @@ function handleSave() {
 
         <!-- Canvas Principal -->
         <main class="relative h-full flex-1" @dragover="onDragOver" @drop="onDrop">
+            <!-- Toast de Erros de Validação -->
+            <transition
+                enter-active-class="transition duration-200 ease-out"
+                enter-from-class="-translate-y-2 opacity-0"
+                enter-to-class="translate-y-0 opacity-100"
+                leave-active-class="transition duration-150 ease-in"
+                leave-from-class="translate-y-0 opacity-100"
+                leave-to-class="-translate-y-2 opacity-0"
+            >
+                <div
+                    v-if="validationErrors.length"
+                    class="absolute top-4 left-1/2 z-50 -translate-x-1/2 max-w-md w-full px-4"
+                >
+                    <div class="flex items-start gap-3 rounded-2xl border border-red-500/20 bg-white/95 p-3.5 shadow-2xl backdrop-blur-md dark:bg-zinc-900/95 dark:border-red-500/30">
+                        <div class="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-red-500/10 text-red-500">
+                            <AlertCircle class="h-4 w-4" />
+                        </div>
+                        <div class="flex-1 text-xs">
+                            <p class="font-bold text-red-600 dark:text-red-400">Não foi possível salvar o fluxo:</p>
+                            <ul class="mt-1 list-disc pl-4 space-y-0.5 text-zinc-600 dark:text-zinc-300">
+                                <li v-for="(err, i) in validationErrors" :key="i">{{ err }}</li>
+                            </ul>
+                        </div>
+                        <button
+                            type="button"
+                            class="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200"
+                            @click="validationErrors = []"
+                        >
+                            <X class="h-4 w-4" />
+                        </button>
+                    </div>
+                </div>
+            </transition>
+
             <VueFlow
                 v-model:nodes="nodes"
                 v-model:edges="edges"
