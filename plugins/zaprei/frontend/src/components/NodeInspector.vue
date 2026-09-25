@@ -177,6 +177,52 @@ function updateDelay() {
                         <input id="zr-value" v-model.trim="node.data.value" type="text" placeholder="App\Events\OrderCompleted" :class="inputClass">
                     </div>
 
+                    <div v-else-if="node.data.kind === 'reply_matches'" class="space-y-3 rounded-2xl border border-teal-500/20 bg-teal-500/5 p-3.5">
+                        <div class="text-xs font-bold text-zinc-900 dark:text-white">Identificar resposta do cliente</div>
+                        <div>
+                            <label :class="labelClass" for="zr-reply-mode">Modo de correspondência</label>
+                            <select id="zr-reply-mode" v-model="node.data.match_mode" :class="inputClass">
+                                <option value="contains">Contém o texto</option>
+                                <option value="exact">Texto exato</option>
+                            </select>
+                        </div>
+
+                        <div>
+                            <label :class="labelClass" for="zr-reply-value">Texto esperado</label>
+                            <input
+                                id="zr-reply-value"
+                                v-model="node.data.value"
+                                type="text"
+                                placeholder="Ex: eu quero"
+                                :class="inputClass"
+                            >
+                        </div>
+
+                        <div class="space-y-2 pt-1">
+                            <label class="flex items-center gap-2 text-xs text-zinc-700 dark:text-zinc-300 cursor-pointer">
+                                <input
+                                    v-model="node.data.case_sensitive"
+                                    type="checkbox"
+                                    class="rounded border-zinc-300 text-teal-600 focus:ring-teal-500"
+                                >
+                                <span>Diferenciar maiúsculas e minúsculas</span>
+                            </label>
+
+                            <label class="flex items-center gap-2 text-xs text-zinc-700 dark:text-zinc-300 cursor-pointer">
+                                <input
+                                    v-model="node.data.ignore_accents"
+                                    type="checkbox"
+                                    class="rounded border-zinc-300 text-teal-600 focus:ring-teal-500"
+                                >
+                                <span>Ignorar acentos (ex: "não" = "nao", "é" = "e")</span>
+                            </label>
+                        </div>
+
+                        <p class="text-[11px] text-teal-700 dark:text-teal-300">
+                            Avalia a última mensagem enviada pelo cliente. Segue por <strong class="text-emerald-600 dark:text-emerald-400">SIM</strong> se corresponder, ou <strong class="text-rose-600 dark:text-rose-400">NÃO</strong> caso responda outra coisa (ex: "não").
+                        </p>
+                    </div>
+
                     <p v-if="node.data.kind === 'order_is_paid'" class="rounded-xl bg-emerald-500/10 px-3 py-2 text-[11px] text-emerald-700 dark:text-emerald-400">
                         Consulta o status atual do pedido no momento da execução — ideal depois de um bloco de espera.
                     </p>
@@ -191,21 +237,82 @@ function updateDelay() {
             </template>
 
             <template v-else-if="node.type === 'wait_reply'">
-                <div class="space-y-1 p-4">
-                    <label :class="labelClass" for="zr-wait-value">Tempo máximo de espera</label>
-                    <div class="flex gap-2">
-                        <input id="zr-wait-value" v-model.number="node.data.delay_value" type="number" min="1" :class="inputClass" @change="updateDelay">
-                        <select v-model="node.data.delay_unit" :class="inputClass" @change="updateDelay">
-                            <option value="seconds">Segundos</option>
-                            <option value="minutes">Minutos</option>
-                            <option value="hours">Horas</option>
-                            <option value="days">Dias</option>
-                        </select>
+                <div class="space-y-3 p-4">
+                    <div>
+                        <label :class="labelClass" for="zr-wait-value">Tempo máximo de espera</label>
+                        <div class="flex gap-2">
+                            <input id="zr-wait-value" v-model.number="node.data.delay_value" type="number" min="1" :class="inputClass" @change="updateDelay">
+                            <select v-model="node.data.delay_unit" :class="inputClass" @change="updateDelay">
+                                <option value="seconds">Segundos</option>
+                                <option value="minutes">Minutos</option>
+                                <option value="hours">Horas</option>
+                                <option value="days">Dias</option>
+                            </select>
+                        </div>
+                        <p class="mt-1 text-[11px] text-zinc-500 dark:text-zinc-400">
+                            Espera até {{ node.data.delay_value || 0 }} {{ delayUnitLabel(node.data.delay_unit) }} (máximo de 24 horas) por uma resposta do cliente na Evolution GO.
+                        </p>
                     </div>
-                    <p class="mt-1 text-[11px] text-zinc-500 dark:text-zinc-400">
-                        Espera até {{ node.data.delay_value || 0 }} {{ delayUnitLabel(node.data.delay_unit) }} (máximo de 24 horas) por uma resposta do cliente.
-                    </p>
-                    <p class="mt-3 text-[11px] text-zinc-500 dark:text-zinc-400">
+
+                    <!-- Filtro opcional na espera -->
+                    <div class="rounded-2xl border border-teal-500/20 bg-teal-500/5 p-3 space-y-2.5">
+                        <label class="flex items-center gap-2 text-xs font-bold text-zinc-900 dark:text-white cursor-pointer">
+                            <input
+                                v-model="node.data.filter_reply"
+                                type="checkbox"
+                                class="rounded border-zinc-300 text-teal-600 focus:ring-teal-500"
+                            >
+                            <span>Filtrar resposta esperada (opcional)</span>
+                        </label>
+
+                        <div v-if="node.data.filter_reply" class="space-y-2.5 pt-1 border-t border-teal-500/10">
+                            <div>
+                                <label :class="labelClass" for="zr-wait-filter-mode">Tipo de correspondência</label>
+                                <select id="zr-wait-filter-mode" v-model="node.data.match_mode" :class="inputClass">
+                                    <option value="contains">Contém o texto</option>
+                                    <option value="exact">Texto exato</option>
+                                </select>
+                            </div>
+
+                            <div>
+                                <label :class="labelClass" for="zr-wait-filter-text">Texto esperado</label>
+                                <input
+                                    id="zr-wait-filter-text"
+                                    v-model="node.data.match_text"
+                                    type="text"
+                                    placeholder="Ex: eu quero"
+                                    :class="inputClass"
+                                >
+                            </div>
+
+                            <div class="space-y-1.5 pt-0.5">
+                                <label class="flex items-center gap-2 text-xs text-zinc-700 dark:text-zinc-300 cursor-pointer">
+                                    <input
+                                        v-model="node.data.case_sensitive"
+                                        type="checkbox"
+                                        class="rounded border-zinc-300 text-teal-600 focus:ring-teal-500"
+                                    >
+                                    <span>Diferenciar maiúsculas/minúsculas</span>
+                                </label>
+
+                                <label class="flex items-center gap-2 text-xs text-zinc-700 dark:text-zinc-300 cursor-pointer">
+                                    <input
+                                        v-model="node.data.ignore_accents"
+                                        type="checkbox"
+                                        class="rounded border-zinc-300 text-teal-600 focus:ring-teal-500"
+                                    >
+                                    <span>Ignorar acentos (ex: "não" = "nao")</span>
+                                </label>
+                            </div>
+
+                            <p class="text-[10px] text-zinc-500 dark:text-zinc-400">
+                                Apenas respostas que atenderem a este critério ativarão a saída <strong class="text-teal-600 dark:text-teal-400">RESPONDEU</strong>.
+                                Respostas divergentes continuarão aguardando até o tempo esgotar.
+                            </p>
+                        </div>
+                    </div>
+
+                    <p class="text-[11px] text-zinc-500 dark:text-zinc-400">
                         Este bloco tem duas saídas: puxe uma linha do ponto <strong class="text-emerald-600 dark:text-emerald-400">RESPONDEU</strong>
                         (o cliente mandou uma mensagem) e outra do ponto <strong class="text-amber-600 dark:text-amber-400">ESGOTOU</strong>
                         (ninguém respondeu a tempo) até os próximos blocos. Deixar uma saída sem conexão é válido — o fluxo só segue pela outra.

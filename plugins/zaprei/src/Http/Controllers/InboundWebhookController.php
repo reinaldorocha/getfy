@@ -10,15 +10,19 @@ use Plugins\Zaprei\Models\Flow;
 use Plugins\Zaprei\Models\FlowRun;
 use Plugins\Zaprei\Services\ConnectionRepository;
 use Plugins\Zaprei\Support\PhoneNumber;
+use Plugins\Zaprei\Support\ReplyMatcher;
 
 /**
- * Recebe mensagens do cliente via webhook da Evolution (Evolution GO ou Evolution API v1/v2)
+ * Recebe mensagens do cliente via webhook da Evolution GO (produto whatsmeow)
  * e resume execuções paradas num bloco "Aguardar resposta".
  *
  * Rota pública (sem sessão/CSRF — ver plugin.json `public_routes` e a exceção
  * de CSRF em bootstrap/app.php para `webhooks/inbound/*`), autenticada por um
- * segredo próprio do ZapRei embutido na URL (tenant + webhook_secret), não
- * pela Evolution — ver EvolutionGoCredentials::$webhookSecret.
+ * segredo próprio do ZapRei embutido na URL (tenant + webhook_secret), gerado
+ * exclusivamente para a Evolution GO.
+ *
+ * Formato do payload conforme https://docs.evolutionfoundation.com.br/evolution-go/webhooks:
+ * { "event": "Message", "data": { "Info": {...}, "Message": {...} } }
  */
 final class InboundWebhookController
 {
@@ -38,35 +42,27 @@ final class InboundWebhookController
         $payload = (array) ($request->json()->all() ?: $request->all());
         $rawEvent = (string) ($payload['event'] ?? $payload['type'] ?? '');
 
-        Log::info('ZapRei Inbound Webhook: payload recebido.', [
+        Log::info('ZapRei Inbound Webhook (Evolution GO): payload recebido.', [
             'tenant_id' => $tenant,
             'event' => $rawEvent,
             'remote_ip' => $request->ip(),
         ]);
 
-        $eventLower = strtolower(str_replace(['_', '-'], '.', trim($rawEvent)));
+        $eventLower = strtolower(trim($rawEvent));
 
-        // Teste de webhook enviado pela interface da Evolution
+        // Teste de webhook enviado pela interface da Evolution GO
         if ($eventLower === 'webhook.test' || str_contains($eventLower, 'test')) {
-            Log::info('ZapRei Inbound Webhook: teste de conexão recebido com sucesso.', [
+            Log::info('ZapRei Inbound Webhook (Evolution GO): teste de conexão recebido com sucesso.', [
                 'tenant_id' => $tenant,
                 'event' => $rawEvent,
             ]);
 
-            return response()->json(['ok' => true, 'message' => 'Webhook test received successfully']);
+            return response()->json(['ok' => true, 'message' => 'Evolution GO webhook test received successfully']);
         }
 
-        // Reconhecer eventos de mensagem de entrada (Evolution GO: Message | Evolution API: messages.upsert / MESSAGES_UPSERT)
-        $isMessageEvent = in_array($eventLower, [
-            'message',
-            'messages',
-            'messages.upsert',
-            'message.upsert',
-            'messages.set',
-        ], true) || (str_contains($eventLower, 'message') && str_contains($eventLower, 'upsert'));
-
-        if (! $isMessageEvent) {
-            Log::info('ZapRei Inbound Webhook: evento ignorado (não é mensagem de cliente).', [
+        // A Evolution GO envia o evento "Message" para mensagens recebidas do WhatsApp
+        if ($eventLower !== 'message') {
+            Log::info('ZapRei Inbound Webhook (Evolution GO): evento ignorado (não é Message).', [
                 'tenant_id' => $tenant,
                 'event' => $rawEvent,
             ]);
@@ -74,127 +70,44 @@ final class InboundWebhookController
             return response()->json(['ok' => true]);
         }
 
-        $items = $this->extractItems($payload);
-        $resumedCount = 0;
+        $info = (array) ($payload['data']['Info'] ?? []);
+        if (($info['IsFromMe'] ?? false) === true || ($info['IsGroup'] ?? false) === true) {
+            Log::debug('ZapRei Inbound Webhook (Evolution GO): mensagem própria (fromMe) ou de grupo ignorada.', [
+                'tenant_id' => $tenant,
+            ]);
 
-        foreach ($items as $item) {
-            if (! is_array($item)) {
-                continue;
-            }
-
-            // Ignorar mensagens enviadas pela própria instância (fromMe)
-            $fromMe = ($item['Info']['IsFromMe'] ?? null) === true
-                || ($item['key']['fromMe'] ?? null) === true
-                || ($item['fromMe'] ?? null) === true;
-
-            if ($fromMe) {
-                Log::debug('ZapRei Inbound Webhook: mensagem enviada pelo próprio número (fromMe=true), ignorada.', [
-                    'tenant_id' => $tenant,
-                ]);
-                continue;
-            }
-
-            // JID / Chat do remetente
-            $jid = (string) (
-                $item['Info']['Chat']
-                ?? $item['key']['remoteJid']
-                ?? $item['remoteJid']
-                ?? $item['chat']
-                ?? $item['from']
-                ?? $item['Info']['Sender']
-                ?? ''
-            );
-
-            // Ignorar mensagens de grupos (@g.us)
-            $isGroup = ($item['Info']['IsGroup'] ?? null) === true
-                || ($item['isGroup'] ?? null) === true
-                || str_contains($jid, '@g.us');
-
-            if ($isGroup) {
-                Log::debug('ZapRei Inbound Webhook: mensagem de grupo ignorada.', [
-                    'tenant_id' => $tenant,
-                    'jid' => $jid,
-                ]);
-                continue;
-            }
-
-            // Extrair o telefone do JID (removendo sufixo multi-device como :38@...)
-            $rawPhone = explode('@', $jid)[0];
-            $rawPhone = explode(':', $rawPhone)[0];
-            $phone = PhoneNumber::normalize($rawPhone);
-
-            if ($phone === null) {
-                Log::warning('ZapRei Inbound Webhook: JID não contém número de telefone válido.', [
-                    'tenant_id' => $tenant,
-                    'jid' => $jid,
-                ]);
-                continue;
-            }
-
-            // Extrair mensagem
-            $messageObj = (array) (
-                $item['Message']
-                ?? $item['message']
-                ?? $item['data']['message']
-                ?? []
-            );
-            if (empty($messageObj) && isset($item['conversation'])) {
-                $messageObj = $item;
-            }
-
-            $text = $this->extractReplyText($messageObj);
-            if ($text === '') {
-                Log::info('ZapRei Inbound Webhook: mensagem sem texto ou resposta interativa reconhecida.', [
-                    'tenant_id' => $tenant,
-                    'phone' => $phone,
-                ]);
-                continue;
-            }
-
-            if ($this->resumeWaitingRun($tenant, $phone, $text)) {
-                $resumedCount++;
-            }
+            return response()->json(['ok' => true]);
         }
 
-        return response()->json(['ok' => true, 'resumed' => $resumedCount]);
+        // "Chat" é o JID puro (5511999998888@s.whatsapp.net); "Sender" tem sufixo multi-device (5511999998888:38@...)
+        $chat = (string) ($info['Chat'] ?? $info['Sender'] ?? '');
+        if (str_contains($chat, '@g.us')) {
+            return response()->json(['ok' => true]);
+        }
+
+        $rawPhone = explode('@', $chat)[0];
+        $rawPhone = explode(':', $rawPhone)[0];
+        $phone = PhoneNumber::normalize($rawPhone);
+
+        $text = $this->extractReplyText((array) ($payload['data']['Message'] ?? []));
+
+        if ($phone === null || $text === '') {
+            Log::info('ZapRei Inbound Webhook (Evolution GO): mensagem sem telefone normalizável ou sem texto reconhecido.', [
+                'tenant_id' => $tenant,
+                'phone' => $phone,
+            ]);
+
+            return response()->json(['ok' => true]);
+        }
+
+        $resumed = $this->resumeWaitingRun($tenant, $phone, $text);
+
+        return response()->json(['ok' => true, 'resumed' => $resumed]);
     }
 
     /**
-     * Normaliza as variações de payload da Evolution GO e Evolution API (Node v1/v2).
-     *
-     * @param  array<string, mixed>  $payload
-     * @return list<array<string, mixed>>
-     */
-    private function extractItems(array $payload): array
-    {
-        $data = $payload['data'] ?? null;
-
-        if (is_array($data)) {
-            if (isset($data['messages']) && is_array($data['messages'])) {
-                return array_values($data['messages']);
-            }
-            if (array_is_list($data) && count($data) > 0 && is_array($data[0])) {
-                return $data;
-            }
-
-            return [$data];
-        }
-
-        if (isset($payload['messages']) && is_array($payload['messages'])) {
-            return array_values($payload['messages']);
-        }
-
-        if (isset($payload['key']) && is_array($payload['key'])) {
-            return [$payload];
-        }
-
-        return [];
-    }
-
-    /**
-     * Extrai o texto da resposta de qualquer tipo de mensagem — texto digitado
-     * ou clique em botão/lista de uma mensagem que o próprio ZapRei mandou.
-     * Compatível com Evolution GO (whatsmeow) e Evolution API Node v1/v2 (Baileys).
+     * Extrai o texto da resposta de qualquer tipo de mensagem enviada pela Evolution GO
+     * (texto digitado, resposta de botões ou seleção de lista).
      *
      * @param  array<string, mixed>  $message
      */
@@ -205,12 +118,12 @@ final class InboundWebhookController
             return trim($message['conversation']);
         }
 
-        // 2. Mensagem de texto estendida (respostas citadas, formatação)
+        // 2. Mensagem de texto estendida
         if (isset($message['extendedTextMessage']['text']) && is_string($message['extendedTextMessage']['text']) && trim($message['extendedTextMessage']['text']) !== '') {
             return trim($message['extendedTextMessage']['text']);
         }
 
-        // 3. Resposta de botões rápidos (Evolution GO / whatsmeow / Baileys)
+        // 3. Resposta de botões rápidos (Evolution GO / whatsmeow)
         if (isset($message['buttonsResponseMessage'])) {
             $btn = (array) $message['buttonsResponseMessage'];
             $text = $btn['selectedDisplayText'] ?? $btn['selectedButtonId'] ?? null;
@@ -228,7 +141,7 @@ final class InboundWebhookController
             }
         }
 
-        // 5. Resposta de lista interativa (List message)
+        // 5. Seleção em lista
         if (isset($message['listResponseMessage'])) {
             $list = (array) $message['listResponseMessage'];
             $text = $list['title'] ?? ($list['singleSelectReply']['selectedRowId'] ?? null) ?? ($list['description'] ?? null);
@@ -237,7 +150,7 @@ final class InboundWebhookController
             }
         }
 
-        // 6. Mensagens interativas modernas (Interactive Response / Native Flow)
+        // 6. Mensagens interativas (Evolution GO native flow)
         if (isset($message['interactiveResponseMessage'])) {
             $interactive = (array) $message['interactiveResponseMessage'];
             $body = $interactive['body']['text'] ?? null;
@@ -257,7 +170,7 @@ final class InboundWebhookController
             }
         }
 
-        // 7. Legendas em mídias (foto, vídeo ou documento com texto)
+        // 7. Legendas em mídias
         $captionCandidates = [
             $message['imageMessage']['caption'] ?? null,
             $message['videoMessage']['caption'] ?? null,
@@ -278,7 +191,7 @@ final class InboundWebhookController
     {
         $candidates = PhoneNumber::candidates($phone);
 
-        Log::info('ZapRei Inbound Webhook: buscando execução em espera.', [
+        Log::info('ZapRei Inbound Webhook (Evolution GO): buscando execução em espera.', [
             'tenant_id' => $tenantId,
             'phone' => $phone,
             'candidates' => $candidates,
@@ -299,8 +212,7 @@ final class InboundWebhookController
             ->orderByDesc('id')
             ->first();
 
-        // Fallback: se a consulta JSON direta não casar por diferença de formato nos dígitos,
-        // busca nas execuções em espera do tenant pelo sufixo do número
+        // Fallback em memória nas execuções em espera se o JSON query do banco divergir
         if ($run === null) {
             $waitingRuns = FlowRun::forTenant($tenantId)
                 ->where('status', FlowRun::STATUS_WAITING)
@@ -319,7 +231,7 @@ final class InboundWebhookController
                 foreach ($candidates as $cand) {
                     if ($runDigits === $cand || (strlen($runDigits) >= 8 && str_ends_with($cand, substr($runDigits, -8)))) {
                         $run = $candidateRun;
-                        Log::info('ZapRei Inbound Webhook: execução em espera encontrada via fallback de dígitos.', [
+                        Log::info('ZapRei Inbound Webhook (Evolution GO): execução encontrada via fallback de dígitos.', [
                             'run_id' => $run->id,
                             'run_phone' => $runPhone,
                             'webhook_phone' => $phone,
@@ -336,7 +248,7 @@ final class InboundWebhookController
                 ->whereNotNull('reply_node_id')
                 ->count();
 
-            Log::warning('ZapRei Inbound Webhook: nenhuma execução em espera encontrada para o telefone.', [
+            Log::warning('ZapRei Inbound Webhook (Evolution GO): nenhuma execução em espera encontrada para o telefone.', [
                 'tenant_id' => $tenantId,
                 'phone' => $phone,
                 'candidates' => $candidates,
@@ -346,16 +258,35 @@ final class InboundWebhookController
             return false;
         }
 
-        // Mesmo update atômico condicionado ao status usado em
-        // FlowEngine::resumeDue() — evita resumir a mesma execução duas vezes
-        // se uma resposta chegar bem na hora do timeout.
+        // Validação se o bloco "Aguardar resposta" possui filtro configurado
+        $nodeData = (array) ($run->context['waiting_node_data'] ?? []);
+        if (! empty($nodeData['filter_reply']) && ! empty($nodeData['match_text'])) {
+            $mode = (string) ($nodeData['match_mode'] ?? 'contains');
+            $matchText = (string) ($nodeData['match_text'] ?? '');
+            $caseSensitive = (bool) ($nodeData['case_sensitive'] ?? false);
+            $ignoreAccents = (bool) ($nodeData['ignore_accents'] ?? true);
+
+            if (! ReplyMatcher::matches($text, $matchText, $mode, $caseSensitive, $ignoreAccents)) {
+                Log::info('ZapRei Inbound Webhook (Evolution GO): resposta não atende ao filtro do bloco Aguardar resposta. Execução permanece aguardando.', [
+                    'tenant_id' => $tenantId,
+                    'run_id' => $run->id,
+                    'reply_text' => $text,
+                    'expected' => $matchText,
+                    'mode' => $mode,
+                ]);
+
+                return false;
+            }
+        }
+
+        // Mesmo update atômico condicionado ao status usado em FlowEngine::resumeDue()
         $claimed = FlowRun::query()
             ->whereKey($run->id)
             ->where('status', FlowRun::STATUS_WAITING)
             ->update(['status' => FlowRun::STATUS_RUNNING]);
 
         if ($claimed === 0) {
-            Log::warning('ZapRei Inbound Webhook: execução já foi retomada concorrentemente.', [
+            Log::warning('ZapRei Inbound Webhook (Evolution GO): execução já foi retomada concorrentemente.', [
                 'run_id' => $run->id,
             ]);
 
@@ -369,7 +300,7 @@ final class InboundWebhookController
                 'last_error' => 'Fluxo removido ou pausado antes da resposta do cliente.',
             ]);
 
-            Log::warning('ZapRei Inbound Webhook: fluxo inexistente ou inativo ao retomar.', [
+            Log::warning('ZapRei Inbound Webhook (Evolution GO): fluxo inexistente ou inativo ao retomar.', [
                 'tenant_id' => $tenantId,
                 'flow_id' => $run->flow_id,
                 'run_id' => $run->id,
@@ -385,7 +316,7 @@ final class InboundWebhookController
             'context' => $context,
         ]);
 
-        Log::info('ZapRei Inbound Webhook: resposta do cliente recebida, retomando fluxo com sucesso!', [
+        Log::info('ZapRei Inbound Webhook (Evolution GO): resposta recebida com sucesso, retomando fluxo!', [
             'tenant_id' => $tenantId,
             'flow_id' => $flow->id,
             'run_id' => $run->id,

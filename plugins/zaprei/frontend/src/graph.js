@@ -56,14 +56,22 @@ export function subtitleFor(type, data = {}) {
 
             return `Pagamento é "${label}"`;
         }
+        if (data.kind === 'reply_matches') {
+            const mode = data.match_mode === 'exact' ? 'igual a' : 'contém';
+            return `Resposta ${mode} "${data.value || '…'}"`;
+        }
         if (data.kind === 'event_is') return `Evento é "${data.value || '…'}"`;
 
         return CONDITION_KINDS.find((k) => k.value === data.kind)?.label || 'Pedido foi pago?';
     }
     if (type === 'wait_reply') {
-        if (data.delay_value && data.delay_unit) return `Espera até ${data.delay_value} ${delayUnitLabel(data.delay_unit)}`;
+        const time = data.delay_value && data.delay_unit ? `${data.delay_value} ${delayUnitLabel(data.delay_unit)}` : `${Math.max(0, Number(data.seconds) || 0)}s`;
+        if (data.filter_reply && data.match_text) {
+            const mode = data.match_mode === 'exact' ? 'igual a' : 'contém';
+            return `Espera até ${time} • Resposta ${mode} "${data.match_text}"`;
+        }
 
-        return `Espera até ${Math.max(0, Number(data.seconds) || 0)}s`;
+        return `Espera até ${time}`;
     }
     if (type === 'trigger') {
         return data.event_class || 'Evento do fluxo';

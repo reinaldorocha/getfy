@@ -8,6 +8,7 @@ use Plugins\Zaprei\Models\Flow;
 use Plugins\Zaprei\Models\FlowRun;
 use Plugins\Zaprei\Support\OrderReader;
 use Plugins\Zaprei\Support\PhoneNumber;
+use Plugins\Zaprei\Support\ReplyMatcher;
 use Plugins\Zaprei\Zaprei;
 use Throwable;
 
@@ -139,6 +140,16 @@ final class FlowEngine
             return $status === $expected;
         }
 
+        if ($kind === 'reply_matches' || $kind === 'reply_contains' || $kind === 'reply_exact') {
+            $actual = (string) ($context['last_reply'] ?? '');
+            $expected = trim($this->templates->render((string) ($data['value'] ?? ''), $context));
+            $mode = (string) ($data['match_mode'] ?? ($kind === 'reply_exact' ? 'exact' : 'contains'));
+            $caseSensitive = (bool) ($data['case_sensitive'] ?? false);
+            $ignoreAccents = (bool) ($data['ignore_accents'] ?? true);
+
+            return ReplyMatcher::matches($actual, $expected, $mode, $caseSensitive, $ignoreAccents);
+        }
+
         $expected = mb_strtolower(trim($this->templates->render((string) ($data['value'] ?? ''), $context)));
 
         return match ($kind) {
@@ -219,8 +230,13 @@ final class FlowEngine
         }
 
         $seconds = max(0, min(86400, (int) ($data['seconds'] ?? 86400)));
+        $context = (array) $run->context;
+        $context['waiting_node_id'] = $nodeId;
+        $context['waiting_node_data'] = $data;
+
         $run->update([
             'status' => FlowRun::STATUS_WAITING,
+            'context' => $context,
             'resume_node_id' => $timeoutTarget,
             'reply_node_id' => $replyTarget,
             // Sem saída de timeout conectada, a execução só é retomada por uma

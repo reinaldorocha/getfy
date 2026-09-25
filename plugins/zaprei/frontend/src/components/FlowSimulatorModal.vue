@@ -19,6 +19,22 @@ const waitingForReply = ref(false);
 const replyInput = ref('');
 const orderPaid = ref(false);
 const currentDelay = ref(null);
+const lastReplyText = ref('');
+
+function testMatches(actual, expected, mode = 'contains', caseSensitive = false, ignoreAccents = true) {
+    let a = (actual || '').trim();
+    let e = (expected || '').trim();
+    if (!e) return true;
+    if (ignoreAccents) {
+        a = a.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        e = e.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    }
+    if (!caseSensitive) {
+        a = a.toLowerCase();
+        e = e.toLowerCase();
+    }
+    return mode === 'exact' ? a === e : a.includes(e);
+}
 
 const currentNode = computed(() => props.nodes.find((n) => n.id === currentNodeId.value));
 
@@ -94,7 +110,17 @@ function stepNext() {
     }
 
     if (curr.type === 'condition') {
-        const condResult = orderPaid.value ? 'true' : 'false';
+        let condResult = 'false';
+        if (curr.data?.kind === 'reply_matches') {
+            const expected = curr.data?.value || '';
+            const mode = curr.data?.match_mode || 'contains';
+            const caseSensitive = Boolean(curr.data?.case_sensitive);
+            const ignoreAccents = curr.data?.ignore_accents !== false;
+            const matches = testMatches(lastReplyText.value, expected, mode, caseSensitive, ignoreAccents);
+            condResult = matches ? 'true' : 'false';
+        } else {
+            condResult = orderPaid.value ? 'true' : 'false';
+        }
         const edge = findNextEdge(curr.id, condResult);
         if (!edge) return finish(`Fim do fluxo (ramificação ${condResult === 'true' ? 'SIM' : 'NÃO'} sem saída).`);
         currentNodeId.value = edge.target;
@@ -136,12 +162,25 @@ function processCurrentNode() {
     }
 
     if (node.type === 'condition') {
-        const condResult = orderPaid.value;
-        history.value.push({
-            type: 'system',
-            text: `🔀 Avaliando condição: Pedido pago? -> ${condResult ? 'SIM (Aprovado)' : 'NÃO (Pendente)'}`,
-            time: nowTime(),
-        });
+        if (node.data?.kind === 'reply_matches') {
+            const expected = node.data?.value || '';
+            const mode = node.data?.match_mode || 'contains';
+            const caseSensitive = Boolean(node.data?.case_sensitive);
+            const ignoreAccents = node.data?.ignore_accents !== false;
+            const matches = testMatches(lastReplyText.value, expected, mode, caseSensitive, ignoreAccents);
+            history.value.push({
+                type: 'system',
+                text: `🔀 Avaliando resposta do cliente: "${lastReplyText.value || '(vazia)'}" ${mode === 'exact' ? 'igual a' : 'contém'} "${expected}" -> ${matches ? 'SIM' : 'NÃO'}`,
+                time: nowTime(),
+            });
+        } else {
+            const condResult = orderPaid.value;
+            history.value.push({
+                type: 'system',
+                text: `🔀 Avaliando condição: Pedido pago? -> ${condResult ? 'SIM (Aprovado)' : 'NÃO (Pendente)'}`,
+                time: nowTime(),
+            });
+        }
         setTimeout(stepNext, 600);
         return;
     }
@@ -177,7 +216,7 @@ function sendReply() {
 
     const userText = replyInput.value.trim();
     replyInput.value = '';
-    waitingForReply.value = false;
+    lastReplyText.value = userText;
 
     history.value.push({
         type: 'user',
@@ -187,6 +226,26 @@ function sendReply() {
 
     const curr = props.nodes.find((n) => n.id === currentNodeId.value);
     if (curr && curr.type === 'wait_reply') {
+        if (curr.data?.filter_reply && curr.data?.match_text) {
+            const matches = testMatches(
+                userText,
+                curr.data.match_text,
+                curr.data.match_mode || 'contains',
+                Boolean(curr.data.case_sensitive),
+                curr.data.ignore_accents !== false
+            );
+
+            if (!matches) {
+                history.value.push({
+                    type: 'system',
+                    text: `⚠️ Resposta "${userText}" não atende ao filtro ("${curr.data.match_text}"). O fluxo continua aguardando.`,
+                    time: nowTime(),
+                });
+                return;
+            }
+        }
+
+        waitingForReply.value = false;
         const edge = findNextEdge(curr.id, 'true');
         if (!edge) return finish('Fim do fluxo (saída RESPONDEU não conectada).');
         currentNodeId.value = edge.target;

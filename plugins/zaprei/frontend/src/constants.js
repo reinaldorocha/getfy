@@ -92,6 +92,7 @@ export const PIX_KEY_TYPES = [
 export const CONDITION_KINDS = [
     { value: 'order_is_paid', label: '✅ Pedido foi pago? (status = Aprovado/Concluído)' },
     { value: 'has_order_bumps', label: '➕ Comprou Order Bump? (Sim/Não)' },
+    { value: 'reply_matches', label: '💬 Resposta do cliente (contém / exato / maiúsculas e minúsculas)' },
     { value: 'order_status_is', label: 'Status específico do pedido é…' },
     { value: 'payment_method_is', label: 'Método de pagamento é…' },
     { value: 'event_is', label: 'Evento é…' },
@@ -157,8 +158,8 @@ export function defaultNodeData(type, eventClass = '') {
     if (type === 'trigger') return { event_class: eventClass };
     if (type === 'send_message') return { mode: 'text', recipient_type: 'customer', text: 'Olá {{customer.first_name}}!' };
     if (type === 'delay') return { delay_value: 15, delay_unit: 'minutes', seconds: 900 };
-    if (type === 'condition') return { kind: 'order_is_paid', value: '' };
-    if (type === 'wait_reply') return { delay_value: 24, delay_unit: 'hours', seconds: 86400 };
+    if (type === 'condition') return { kind: 'order_is_paid', value: '', match_mode: 'contains', case_sensitive: false, ignore_accents: true };
+    if (type === 'wait_reply') return { delay_value: 24, delay_unit: 'hours', seconds: 86400, filter_reply: false, match_mode: 'contains', match_text: '', case_sensitive: false, ignore_accents: true };
     return {};
 }
 

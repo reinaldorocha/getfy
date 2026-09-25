@@ -154,8 +154,8 @@ onMounted(load);
             <div v-if="webhookUrl" class="rounded-2xl border border-teal-500/20 bg-teal-500/5 p-3">
                 <div class="text-xs font-bold text-zinc-900 dark:text-white">URL de webhook (respostas do cliente)</div>
                 <p class="mt-0.5 text-[11px] text-zinc-500 dark:text-zinc-400">
-                    Cole esta URL na Evolution (Evolution GO ou Evolution API v1/v2).
-                    Habilite o webhook e marque o evento <span class="font-mono font-semibold">MESSAGES_UPSERT</span> (ou <span class="font-mono font-semibold">Message</span>)
+                    Cole esta URL como <span class="font-mono">webhookUrl</span> ao conectar a instância na Evolution GO
+                    (<span class="font-mono">POST /instance/connect</span>, evento <span class="font-mono">Message</span>)
                     para usar o bloco "Aguardar resposta" nos fluxos.
                 </p>
                 <div class="mt-2 flex items-center gap-2">
