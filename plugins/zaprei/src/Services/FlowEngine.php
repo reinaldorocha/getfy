@@ -142,6 +142,7 @@ final class FlowEngine
         $expected = mb_strtolower(trim($this->templates->render((string) ($data['value'] ?? ''), $context)));
 
         return match ($kind) {
+            'has_order_bumps' => ! empty($context['order']['has_bumps_bool']),
             'payment_method_is' => mb_strtolower((string) ($context['order']['payment_method'] ?? '')) === $expected,
             'event_is' => mb_strtolower((string) ($context['event_class'] ?? '')) === $expected,
             default => PhoneNumber::normalize((string) ($context['phone'] ?? '')) !== null,

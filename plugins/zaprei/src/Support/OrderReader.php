@@ -99,13 +99,21 @@ final class OrderReader
             return null;
         }
 
-        $subject->loadMissing(array_values(array_filter([
+        $relations = [
             self::hasRelation($subject, 'product') ? 'product' : null,
             self::hasRelation($subject, 'user') ? 'user' : null,
             self::hasRelation($subject, 'subscriptionPlan') ? 'subscriptionPlan' : null,
             self::hasRelation($subject, 'productOffer') ? 'productOffer' : null,
-            self::hasRelation($subject, 'orderItems') ? 'orderItems' : null,
-        ])));
+        ];
+
+        if (self::hasRelation($subject, 'orderItems')) {
+            $relations[] = 'orderItems';
+            $relations[] = 'orderItems.product';
+            $relations[] = 'orderItems.productOrderBump';
+            $relations[] = 'orderItems.productOffer';
+        }
+
+        $subject->loadMissing(array_values(array_filter($relations)));
 
         $metadata = is_array($subject->metadata ?? null) ? $subject->metadata : [];
         $name = trim((string) (
@@ -137,6 +145,63 @@ final class OrderReader
         }
 
         $product = $subject->product ?? null;
+
+        // Processamento de itens do pedido e order bumps
+        $bumps = [];
+        $bumpsFormattedList = [];
+        $bumpsNames = [];
+        $bumpsTotal = 0.0;
+        $allItemsFormattedList = [];
+
+        $items = ($subject instanceof \App\Models\Order || isset($subject->orderItems))
+            ? ($subject->orderItems ?? collect())
+            : collect();
+
+        if ($items->isNotEmpty()) {
+            foreach ($items as $item) {
+                $isBump = ($item->product_order_bump_id !== null) || ((int) ($item->position ?? 0) > 0);
+                $itemAmount = (float) ($item->amount ?? 0);
+                $itemAmountFormatted = self::money($itemAmount, $currency);
+
+                // Nome do item: preferência pelo nome do produto alvo ou título do order bump
+                $itemName = trim((string) (
+                    $item->product?->name
+                    ?? $item->productOrderBump?->title
+                    ?? $item->productOffer?->name
+                    ?? ''
+                ));
+
+                if ($itemName === '') {
+                    $itemName = $isBump ? 'Order Bump' : ($product?->name ?? 'Produto Principal');
+                }
+
+                $allItemsFormattedList[] = "• {$itemName} ({$itemAmountFormatted})";
+
+                if ($isBump) {
+                    $bumpsTotal += $itemAmount;
+                    $bumpsNames[] = $itemName;
+                    $bumpsFormattedList[] = "• {$itemName} ({$itemAmountFormatted})";
+                    $bumps[] = [
+                        'id' => $item->id,
+                        'product_id' => $item->product_id,
+                        'name' => $itemName,
+                        'title' => (string) ($item->productOrderBump?->title ?? $itemName),
+                        'amount' => $itemAmount,
+                        'amount_formatted' => $itemAmountFormatted,
+                    ];
+                }
+            }
+        } elseif ($product) {
+            $allItemsFormattedList[] = "• {$product->name} (".self::money($amount, $currency).')';
+        }
+
+        $bumpsCount = count($bumps);
+        $hasBumps = $bumpsCount > 0;
+        $bumpsList = implode("\n", $bumpsFormattedList);
+        $bumpsSection = $hasBumps ? "➕ *Order Bump(s):*\n".implode("\n", $bumpsFormattedList)."\n" : '';
+        $bumpsNamesStr = implode(', ', $bumpsNames);
+        $allItemsList = implode("\n", $allItemsFormattedList);
+        $firstBump = $bumps[0] ?? null;
 
         return [
             'tenant_id' => $tenantId,
@@ -178,12 +243,31 @@ final class OrderReader
                     'id' => $product?->id,
                     'name' => (string) ($product?->name ?? ''),
                 ],
+                // Order Bumps
+                'has_bumps' => $hasBumps ? 'Sim' : 'Não',
+                'has_bumps_bool' => $hasBumps,
+                'bumps_count' => $bumpsCount,
+                'bumps' => $bumpsList,
+                'bumps_list' => $bumpsList,
+                'bumps_section' => $bumpsSection,
+                'bumps_names' => $bumpsNamesStr,
+                'bumps_total' => $bumpsTotal,
+                'bumps_total_formatted' => self::money($bumpsTotal, $currency),
+                'items_list' => $allItemsList,
+                'first_bump' => $firstBump ?? [],
+                'bumps_items' => $bumps,
             ],
             'product' => [
                 'id' => $product?->id,
                 'name' => (string) ($product?->name ?? ''),
             ],
             'checkout_link' => self::checkoutLink($subject, $product),
+            // Atalhos diretos de bumps
+            'bumps' => $bumpsList,
+            'bumps_list' => $bumpsList,
+            'bumps_section' => $bumpsSection,
+            'bumps_names' => $bumpsNamesStr,
+            'order_bumps' => $bumpsList,
         ];
     }
 

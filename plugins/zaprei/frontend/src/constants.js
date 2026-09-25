@@ -31,6 +31,11 @@ export const TEMPLATE_VARIABLES = [
     { token: '{{order.paid_amount_formatted}}', label: 'Valor pago pelo cliente (com juros)' },
     { token: '{{order.payment_method_label}}', label: 'Forma de pagamento (PIX, Cartão...)' },
     { token: '{{order.product.name}}', label: 'Nome do produto' },
+    { token: '{{order.bumps_section}}', label: 'Bloco de Order Bumps (oculta se vazio)' },
+    { token: '{{order.bumps_list}}', label: 'Lista de Order Bumps (bullet points)' },
+    { token: '{{order.bumps_names}}', label: 'Nomes dos Order Bumps (vírgula)' },
+    { token: '{{order.bumps_total_formatted}}', label: 'Total dos Order Bumps' },
+    { token: '{{order.items_list}}', label: 'Lista de todos os itens (principal + bumps)' },
     { token: '{{checkout_link}}', label: 'Link do checkout' },
     { token: '{{pix.copy_paste}}', label: 'PIX copia e cola' },
     { token: '{{pix.qrcode}}', label: 'QR Code do PIX' },
@@ -86,6 +91,7 @@ export const PIX_KEY_TYPES = [
 
 export const CONDITION_KINDS = [
     { value: 'order_is_paid', label: '✅ Pedido foi pago? (status = Aprovado/Concluído)' },
+    { value: 'has_order_bumps', label: '➕ Comprou Order Bump? (Sim/Não)' },
     { value: 'order_status_is', label: 'Status específico do pedido é…' },
     { value: 'payment_method_is', label: 'Método de pagamento é…' },
     { value: 'event_is', label: 'Evento é…' },

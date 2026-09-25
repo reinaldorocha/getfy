@@ -188,7 +188,7 @@ export const FLOW_TEMPLATES = [
                         mode: 'text',
                         recipient_type: 'custom',
                         custom_phone: '5511999999999',
-                        text: '🎉 *NOVA VENDA APROVADA!* 🚀\n\n📦 *Produto:* {{order.product.name}}\n💰 *Valor:* {{order.amount_formatted}}\n💳 *Pagamento:* {{order.payment_method_label}}\n👤 *Cliente:* {{customer.name}}\n📱 *Telefone:* {{customer.phone}}\n🆔 *Pedido:* #{{order.id}}\n\n_Notificação automática ZapRei / Getfy._',
+                        text: '🎉 *NOVA VENDA APROVADA!* 🚀\n\n📦 *Produto:* {{order.product.name}}\n{{order.bumps_section}}\n💰 *Valor:* {{order.amount_formatted}}\n💳 *Pagamento:* {{order.payment_method_label}}\n👤 *Cliente:* {{customer.name}}\n📱 *Telefone:* {{customer.phone}}\n🆔 *Pedido:* #{{order.id}}\n\n_Notificação automática ZapRei / Getfy._',
                     },
                 },
                 { id: 'end_alert', type: 'end', x: 720, y: 180, data: {} },

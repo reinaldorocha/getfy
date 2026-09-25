@@ -180,6 +180,9 @@ function updateDelay() {
                     <p v-if="node.data.kind === 'order_is_paid'" class="rounded-xl bg-emerald-500/10 px-3 py-2 text-[11px] text-emerald-700 dark:text-emerald-400">
                         Consulta o status atual do pedido no momento da execução — ideal depois de um bloco de espera.
                     </p>
+                    <p v-else-if="node.data.kind === 'has_order_bumps'" class="rounded-xl bg-emerald-500/10 px-3 py-2 text-[11px] text-emerald-700 dark:text-emerald-400">
+                        Verifica se o cliente incluiu algum Order Bump no pedido. Segue pela saída <strong class="text-emerald-600 dark:text-emerald-400">SIM</strong> se houver bumps, ou <strong class="text-rose-600 dark:text-rose-400">NÃO</strong> se comprou apenas o produto principal.
+                    </p>
                     <p class="text-[11px] text-zinc-500 dark:text-zinc-400">
                         Este bloco tem duas saídas: puxe uma linha do ponto <strong class="text-emerald-600 dark:text-emerald-400">SIM</strong>
                         e outra do ponto <strong class="text-rose-600 dark:text-rose-400">NÃO</strong> até os próximos blocos.
