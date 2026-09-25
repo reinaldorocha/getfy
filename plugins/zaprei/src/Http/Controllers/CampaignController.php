@@ -30,7 +30,6 @@ final class CampaignController extends Controller
             'name' => ['required', 'string', 'max:255'],
             'flow_id' => ['nullable', 'integer'],
             'message_data' => ['nullable', 'array'],
-            'message_data.mode' => ['nullable', 'string'],
             'contact_ids' => ['required', 'array', 'min:1'],
             'contact_ids.*' => ['integer'],
             'throttle_seconds' => ['sometimes', 'integer', 'min:3', 'max:30'],
@@ -44,7 +43,7 @@ final class CampaignController extends Controller
                 ], 422);
             }
 
-            $mode = $data['message_data']['mode'] ?? 'text';
+            $mode = strtolower(trim((string) ($data['message_data']['mode'] ?? 'text')));
             if ($mode === 'text' && trim((string) ($data['message_data']['text'] ?? '')) === '') {
                 return response()->json([
                     'message' => 'O texto da mensagem não pode ficar em branco.',
