@@ -29,4 +29,29 @@ final class PhoneNumber
 
         return $digits;
     }
+
+    /**
+     * Retorna as variações possíveis do número (com e sem o 9º dígito no Brasil).
+     *
+     * @return list<string>
+     */
+    public static function candidates(?string $raw): array
+    {
+        $normalized = self::normalize($raw);
+        if ($normalized === null) {
+            return [];
+        }
+
+        $candidates = [$normalized];
+
+        if (str_starts_with($normalized, self::BRAZIL_CODE)) {
+            if (strlen($normalized) === 13 && $normalized[4] === '9') {
+                $candidates[] = substr($normalized, 0, 4).substr($normalized, 5);
+            } elseif (strlen($normalized) === 12) {
+                $candidates[] = substr($normalized, 0, 4).'9'.substr($normalized, 4);
+            }
+        }
+
+        return array_values(array_unique($candidates));
+    }
 }
