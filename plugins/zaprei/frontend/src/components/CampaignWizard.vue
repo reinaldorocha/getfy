@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue';
-import { AlertCircle, ArrowLeft, ArrowRight, Calendar, Check, Clock, Loader2, Search, Send, ShieldCheck, Zap } from 'lucide-vue-next';
+import { AlertCircle, ArrowLeft, ArrowRight, Calendar, Check, Clock, GitBranch, Loader2, Search, Send, ShieldCheck, Zap } from 'lucide-vue-next';
 import MessageEditor from './MessageEditor.vue';
 import MessagePreview from './MessagePreview.vue';
 import MultiSelectDropdown from './MultiSelectDropdown.vue';
@@ -17,6 +17,7 @@ const error = ref('');
 
 const contacts = ref([]);
 const products = ref([]);
+const flows = ref([]);
 const loadingContacts = ref(false);
 
 const origin = ref('all');
@@ -27,12 +28,16 @@ const search = ref('');
 
 const form = ref({
     name: '',
+    action_type: 'message',
+    flow_id: null,
     schedule_mode: 'immediate',
     scheduled_at: '',
     throttle_seconds: 8,
     selected_contact_keys: [],
-    message_data: { mode: 'text', recipient_type: 'customer', text: '' },
+    message_data: { mode: 'text', recipient_type: 'customer', text: 'Olá {{customer.first_name}}!' },
 });
+
+const selectedFlow = computed(() => flows.value.find((f) => f.id === form.value.flow_id));
 
 const minDateTime = computed(() => new Date(Date.now() + 5 * 60000).toISOString().slice(0, 16));
 
@@ -108,9 +113,14 @@ const previewCaption = computed(() => renderPreview(form.value.message_data.capt
 async function loadContacts() {
     loadingContacts.value = true;
     try {
-        const [contactsResponse, productsResponse] = await Promise.all([api.contacts(), api.products()]);
+        const [contactsResponse, productsResponse, flowsResponse] = await Promise.all([
+            api.contacts(),
+            api.products(),
+            api.flows(),
+        ]);
         contacts.value = contactsResponse.contacts || [];
         products.value = productsResponse.products || [];
+        flows.value = flowsResponse.flows || [];
     } catch {
         contacts.value = [];
     } finally {
@@ -126,6 +136,11 @@ function next() {
 
             return;
         }
+        if (form.value.action_type === 'flow' && !form.value.flow_id) {
+            error.value = 'Selecione o fluxo de automação que deseja disparar.';
+
+            return;
+        }
         if (form.value.schedule_mode === 'scheduled' && !form.value.scheduled_at) {
             error.value = 'Escolha a data e o horário do disparo.';
 
@@ -138,23 +153,57 @@ function next() {
         return;
     }
     if (step.value === 3) {
-        const errors = messageDataErrors(form.value.message_data, 'Mensagem');
-        if (errors.length) {
-            error.value = errors[0];
+        if (form.value.action_type === 'flow') {
+            if (!form.value.flow_id) {
+                error.value = 'Selecione um fluxo de automação para disparar.';
 
-            return;
+                return;
+            }
+        } else {
+            const errors = messageDataErrors(form.value.message_data, 'Mensagem');
+            if (errors.length) {
+                error.value = errors[0];
+
+                return;
+            }
+            if (form.value.message_data.mode === 'text' && !form.value.message_data.text?.trim()) {
+                error.value = 'Escreva o texto da mensagem antes de avançar.';
+
+                return;
+            }
         }
     }
     step.value++;
 }
 
 async function submit() {
-    saving.value = true;
     error.value = '';
+    if (form.value.action_type === 'flow') {
+        if (!form.value.flow_id) {
+            error.value = 'Selecione um fluxo de automação para disparar.';
+            step.value = 1;
+            return;
+        }
+    } else {
+        const errors = messageDataErrors(form.value.message_data, 'Mensagem');
+        if (errors.length) {
+            error.value = errors[0];
+            step.value = 3;
+            return;
+        }
+        if (form.value.message_data.mode === 'text' && !form.value.message_data.text?.trim()) {
+            error.value = 'Escreva o texto da mensagem antes de iniciar o disparo.';
+            step.value = 3;
+            return;
+        }
+    }
+
+    saving.value = true;
     try {
         await api.createCampaign({
             name: form.value.name,
-            message_data: form.value.message_data,
+            flow_id: form.value.action_type === 'flow' ? form.value.flow_id : null,
+            message_data: form.value.action_type === 'message' ? form.value.message_data : null,
             contact_ids: form.value.selected_contact_keys,
             throttle_seconds: form.value.throttle_seconds,
             scheduled_at: form.value.schedule_mode === 'scheduled' ? form.value.scheduled_at : null,
@@ -215,6 +264,57 @@ onMounted(loadContacts);
                             class="w-full rounded-xl border border-zinc-700 bg-zinc-800/90 px-4 py-2.5 text-sm text-white placeholder-zinc-500 focus:border-emerald-500 focus:outline-none"
                         >
                         <p class="mt-1 text-[11px] text-zinc-500">Identificador interno para relatórios e histórico.</p>
+                    </div>
+
+                    <!-- Tipo de Ação: Mensagem Direta ou Disparar Fluxo -->
+                    <div class="space-y-2">
+                        <label class="block text-xs font-semibold text-zinc-300">Tipo de Envio da Campanha *</label>
+                        <div class="grid grid-cols-2 gap-3">
+                            <button
+                                type="button"
+                                class="flex flex-col justify-between rounded-xl border p-3.5 text-left transition"
+                                :class="form.action_type === 'message' ? 'border-emerald-500 bg-emerald-500/10 text-white shadow-sm' : 'border-zinc-800 bg-zinc-800/40 text-zinc-400 hover:border-zinc-700'"
+                                @click="form.action_type = 'message'"
+                            >
+                                <div class="flex items-center gap-2">
+                                    <Send class="h-4 w-4 text-emerald-400" />
+                                    <span class="text-xs font-bold">Mensagem Avulsa</span>
+                                </div>
+                                <p class="mt-1 text-[10px] text-zinc-400">Texto, botões, mídia ou enquete avulsa.</p>
+                            </button>
+                            <button
+                                type="button"
+                                class="flex flex-col justify-between rounded-xl border p-3.5 text-left transition"
+                                :class="form.action_type === 'flow' ? 'border-emerald-500 bg-emerald-500/10 text-white shadow-sm' : 'border-zinc-800 bg-zinc-800/40 text-zinc-400 hover:border-zinc-700'"
+                                @click="form.action_type = 'flow'"
+                            >
+                                <div class="flex items-center gap-2">
+                                    <GitBranch class="h-4 w-4 text-emerald-400" />
+                                    <span class="text-xs font-bold">Disparar Fluxo</span>
+                                </div>
+                                <p class="mt-1 text-[10px] text-zinc-400">Executa uma automação visual completa.</p>
+                            </button>
+                        </div>
+
+                        <!-- Seletor de fluxo -->
+                        <div v-if="form.action_type === 'flow'" class="mt-3 space-y-2 rounded-xl border border-emerald-500/30 bg-zinc-950/80 p-4">
+                            <label class="flex items-center gap-1.5 text-xs font-bold text-emerald-400">
+                                <GitBranch class="h-3.5 w-3.5" />
+                                <span>Fluxo de Automação a Disparar *</span>
+                            </label>
+                            <select
+                                v-model="form.flow_id"
+                                class="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-xs text-white focus:border-emerald-500 focus:outline-none"
+                            >
+                                <option :value="null">Selecione um fluxo...</option>
+                                <option v-for="f in flows" :key="f.id" :value="f.id">
+                                    {{ f.name }} ({{ f.trigger_event || 'Personalizado' }})
+                                </option>
+                            </select>
+                            <p class="text-[11px] text-zinc-400">
+                                Cada contato selecionado iniciará este fluxo respeitando o intervalo anti-bloqueio configurado.
+                            </p>
+                        </div>
                     </div>
 
                     <div class="space-y-2">
@@ -370,14 +470,48 @@ onMounted(loadContacts);
                     </div>
                 </div>
 
-                <!-- Passo 3: mensagem + preview -->
-                <div v-else-if="step === 3" class="grid grid-cols-1 gap-6 md:grid-cols-2">
-                    <div class="dark">
-                        <MessageEditor :data="form.message_data" :show-recipient="false" :variables="variables" />
+                <!-- Passo 3: mensagem ou fluxo + preview -->
+                <div v-else-if="step === 3">
+                    <div v-if="form.action_type === 'flow'" class="mx-auto max-w-xl space-y-4 py-2">
+                        <div class="rounded-2xl border border-emerald-500/30 bg-zinc-950/80 p-6">
+                            <div class="flex items-center gap-3 border-b border-zinc-800 pb-4">
+                                <div class="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-500/10 text-emerald-400">
+                                    <GitBranch class="h-6 w-6" />
+                                </div>
+                                <div>
+                                    <span class="text-[10px] font-bold uppercase tracking-wider text-emerald-400">Fluxo de Automação Selecionado</span>
+                                    <h4 class="text-base font-bold text-white">{{ selectedFlow?.name || 'Nenhum fluxo selecionado' }}</h4>
+                                </div>
+                            </div>
+                            <div class="mt-4 space-y-3 text-xs text-zinc-300">
+                                <div class="flex justify-between">
+                                    <span class="text-zinc-500">Gatilho do Fluxo:</span>
+                                    <span class="font-medium text-white">{{ selectedFlow?.trigger_event || 'Disparo Direto' }}</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span class="text-zinc-500">Blocos de Ação:</span>
+                                    <span class="font-medium text-emerald-400">{{ selectedFlow?.graph_json?.nodes?.length || 0 }} blocos configurados</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span class="text-zinc-500">Status:</span>
+                                    <span class="rounded-full px-2 py-0.5 text-[10px] font-semibold" :class="selectedFlow?.is_active ? 'bg-emerald-500/20 text-emerald-400' : 'bg-zinc-800 text-zinc-400'">
+                                        {{ selectedFlow?.is_active ? 'Ativo' : 'Pausado' }}
+                                    </span>
+                                </div>
+                            </div>
+                            <p class="mt-5 rounded-xl bg-zinc-900/80 p-3 text-[11px] text-zinc-400">
+                                Cada contato selecionado no Passo 2 iniciará este fluxo respeitando o intervalo anti-bloqueio configurado.
+                            </p>
+                        </div>
                     </div>
-                    <div>
-                        <span class="mb-2 block text-xs font-semibold text-zinc-400">Simulador de Pré-visualização</span>
-                        <MessagePreview :text="previewText" :caption="previewCaption" :mode="form.message_data.mode" :recipient-name="previewContact.name" />
+                    <div v-else class="grid grid-cols-1 gap-6 md:grid-cols-2">
+                        <div class="dark">
+                            <MessageEditor :data="form.message_data" :show-recipient="false" :variables="variables" />
+                        </div>
+                        <div>
+                            <span class="mb-2 block text-xs font-semibold text-zinc-400">Simulador de Pré-visualização</span>
+                            <MessagePreview :text="previewText" :caption="previewCaption" :mode="form.message_data.mode" :recipient-name="previewContact.name" />
+                        </div>
                     </div>
                 </div>
 
@@ -407,8 +541,11 @@ onMounted(loadContacts);
                             </div>
                         </div>
                         <div>
-                            <span class="text-xs text-zinc-500">Prévia do Conteúdo ({{ form.message_data.mode }}):</span>
-                            <div class="mt-1 max-h-32 overflow-y-auto rounded-xl border border-zinc-800 bg-zinc-900 p-3 font-mono text-xs whitespace-pre-wrap text-zinc-300">{{ previewText || previewCaption || '—' }}</div>
+                            <span class="text-xs text-zinc-500">{{ form.action_type === 'flow' ? 'Fluxo a Disparar:' : `Conteúdo da Mensagem (${form.message_data.mode}):` }}</span>
+                            <div v-if="form.action_type === 'flow'" class="mt-1 rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-3 text-xs font-semibold text-emerald-400">
+                                ⚡ {{ selectedFlow?.name || 'Fluxo selecionado' }}
+                            </div>
+                            <div v-else class="mt-1 max-h-32 overflow-y-auto rounded-xl border border-zinc-800 bg-zinc-900 p-3 font-mono text-xs whitespace-pre-wrap text-zinc-300">{{ previewText || previewCaption || '—' }}</div>
                         </div>
                     </div>
                 </div>

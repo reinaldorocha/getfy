@@ -28,13 +28,30 @@ final class CampaignController extends Controller
     {
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
-            'message_data' => ['required', 'array'],
-            'message_data.mode' => ['required', 'string'],
+            'flow_id' => ['nullable', 'integer'],
+            'message_data' => ['nullable', 'array'],
+            'message_data.mode' => ['nullable', 'string'],
             'contact_ids' => ['required', 'array', 'min:1'],
             'contact_ids.*' => ['integer'],
             'throttle_seconds' => ['sometimes', 'integer', 'min:3', 'max:30'],
             'scheduled_at' => ['sometimes', 'nullable', 'date', 'after:now'],
         ]);
+
+        if (empty($data['flow_id'])) {
+            if (empty($data['message_data'])) {
+                return response()->json([
+                    'message' => 'Configuração de mensagem é obrigatória quando não houver fluxo selecionado.',
+                ], 422);
+            }
+
+            $mode = $data['message_data']['mode'] ?? 'text';
+            if ($mode === 'text' && trim((string) ($data['message_data']['text'] ?? '')) === '') {
+                return response()->json([
+                    'message' => 'O texto da mensagem não pode ficar em branco.',
+                    'errors' => ['message_data.text' => ['O texto da mensagem é obrigatório.']],
+                ], 422);
+            }
+        }
 
         $campaign = $this->campaigns->create($this->tenantId($request), $data);
 

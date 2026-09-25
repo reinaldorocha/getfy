@@ -157,13 +157,19 @@ export function defaultNodeData(type, eventClass = '') {
 /** Estrutura inicial ao trocar o tipo de mensagem no editor — evita campos undefined. */
 export function defaultModeData(mode) {
     return {
-        buttons: { title: '', footer: '', buttons: [{ type: 'reply', displayText: '' }] },
-        list: { title: '', footer: '', button_text: 'Ver opções', sections: [{ title: '', rows: [{ title: '', description: '' }] }] },
+        text: { text: 'Olá {{customer.first_name}}!' },
+        image: { text: '', caption: '', media_url: '', mime_type: '' },
+        video: { text: '', caption: '', media_url: '', mime_type: '' },
+        audio: { media_url: '', mime_type: '' },
+        document: { text: '', caption: '', media_url: '', mime_type: '' },
+        sticker: { media_url: '' },
+        buttons: { title: '', footer: '', text: 'Olá {{customer.first_name}}!', buttons: [{ type: 'reply', displayText: 'Sim' }] },
+        list: { title: '', footer: '', text: 'Olá {{customer.first_name}}!', button_text: 'Ver opções', sections: [{ title: 'Opções', rows: [{ title: 'Opção 1', description: '' }] }] },
         location: { latitude: '', longitude: '', location_name: '', address: '' },
         contact: { contact_name: '', contact_phone: '', organization: '' },
-        poll: { question: '', options: ['', ''], max_answers: 1 },
+        poll: { question: 'Qual a sua preferência?', options: ['Opção 1', 'Opção 2'], max_answers: 1 },
         link: { url: '', title: '', description: '', text: '', image_url: '' },
-    }[mode] || {};
+    }[mode] || { text: 'Olá {{customer.first_name}}!' };
 }
 
 /** Grafo inicial de um fluxo novo: gatilho → mensagem → fim. */

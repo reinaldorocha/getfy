@@ -47,11 +47,34 @@ final class SendCampaignMessageJob implements ShouldQueue
             return;
         }
 
+        $name = trim($send->name ?? '');
+        $firstName = $name !== '' ? (explode(' ', $name)[0] ?: $name) : 'Cliente';
+
         $context = [
             'phone' => $send->phone,
-            'customer' => ['name' => $send->name ?? '', 'email' => $send->email ?? '', 'phone' => $send->phone],
-            'name' => $send->name ?? '',
+            'customer' => [
+                'name' => $name,
+                'first_name' => $firstName,
+                'email' => $send->email ?? '',
+                'phone' => $send->phone,
+            ],
+            'name' => $name,
         ];
+
+        // Se a campanha estiver vinculada a um fluxo de automação, dispara o fluxo
+        if (!empty($campaign->flow_id)) {
+            \Plugins\Zaprei\Jobs\RunFlowJob::dispatchSync($this->tenantId, (int) $campaign->flow_id, $context);
+
+            $send->update([
+                'status' => CampaignSend::STATUS_SENT,
+                'message_sent' => 'Fluxo executado: ' . $campaign->name,
+                'sent_at' => now(),
+            ]);
+            $campaign->increment('sent_count');
+            $this->closeIfFinished($campaign);
+
+            return;
+        }
 
         // Não marcamos o envio como falho aqui: deixamos a exceção propagar para
         // que o worker respeite $tries/$backoff. Se todas as tentativas se

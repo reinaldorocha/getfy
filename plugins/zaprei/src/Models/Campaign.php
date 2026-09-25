@@ -11,6 +11,7 @@ namespace Plugins\Zaprei\Models;
  * @property string $message
  * @property array<string, mixed>|null $message_data
  * @property array<string, mixed> $audience_filter
+ * @property int|null $flow_id
  * @property string $status
  * @property \Illuminate\Support\Carbon|null $scheduled_at
  * @property int $total_recipients
@@ -30,10 +31,16 @@ class Campaign extends TenantScopedModel
     protected $table = 'plugin_zaprei_campaigns';
 
     protected $casts = [
+        'flow_id' => 'integer',
         'audience_filter' => 'array',
         'message_data' => 'array',
         'scheduled_at' => 'datetime',
     ];
+
+    public function flow()
+    {
+        return $this->belongsTo(Flow::class, 'flow_id');
+    }
 
     public function isCancelled(): bool
     {

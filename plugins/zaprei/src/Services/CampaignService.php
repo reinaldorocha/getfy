@@ -35,14 +35,18 @@ final class CampaignService
 
         $scheduledAt = $this->scheduledAt($data['scheduled_at'] ?? null);
         $throttle = max(self::MIN_THROTTLE_SECONDS, min(self::MAX_THROTTLE_SECONDS, (int) ($data['throttle_seconds'] ?? self::DEFAULT_THROTTLE_SECONDS)));
-        $messageData = (array) $data['message_data'];
+        $flowId = !empty($data['flow_id']) ? (int) $data['flow_id'] : null;
+        $messageData = (array) ($data['message_data'] ?? ['mode' => 'text', 'text' => '']);
+
+        $summary = $flowId
+            ? 'Fluxo: ' . (\Plugins\Zaprei\Models\Flow::forTenant($tenantId)->find($flowId)?->name ?? "Fluxo #{$flowId}")
+            : $this->summarize($messageData);
 
         $campaign = Campaign::create([
             'tenant_id' => $tenantId,
             'name' => $data['name'],
-            // Resumo em texto só para leitura (listagens/relatórios); o envio real
-            // usa message_data, que suporta os 12 tipos de mensagem do editor.
-            'message' => $this->summarize($messageData),
+            'flow_id' => $flowId,
+            'message' => $summary,
             'message_data' => $messageData,
             'audience_filter' => ['contact_ids' => $recipients->pluck('id')->all(), 'throttle_seconds' => $throttle],
             'status' => $scheduledAt === null ? Campaign::STATUS_PROCESSING : Campaign::STATUS_SCHEDULED,

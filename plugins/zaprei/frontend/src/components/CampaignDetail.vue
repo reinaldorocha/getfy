@@ -82,7 +82,8 @@ onMounted(load);
                     <div>
                         <div class="text-lg font-bold text-white">{{ campaign?.name || 'Campanha' }}</div>
                         <p class="mt-0.5 text-xs text-zinc-400">
-                            {{ campaign ? (CAMPAIGN_STATUS_LABELS[campaign.status] || campaign.status) : '—' }}
+                            <span>{{ campaign ? (CAMPAIGN_STATUS_LABELS[campaign.status] || campaign.status) : '—' }}</span>
+                            <span v-if="campaign?.message" class="text-zinc-500"> • {{ campaign.message }}</span>
                         </p>
                     </div>
                 </div>
