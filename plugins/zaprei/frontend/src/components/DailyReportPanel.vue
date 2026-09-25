@@ -1,11 +1,12 @@
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue';
-import { AlertCircle, BarChart3, CheckCircle2, Clock, Loader2, Phone, Send, Sparkles } from 'lucide-vue-next';
+import { AlertCircle, BarChart3, CheckCircle2, Clock, Loader2, Phone, RefreshCw, Send, Sparkles, Users } from 'lucide-vue-next';
 import { api } from '../api';
 
 const loading = ref(true);
 const saving = ref(false);
 const testing = ref(false);
+const loadingGroups = ref(false);
 const error = ref('');
 const notice = ref('');
 const testSuccess = ref('');
@@ -13,10 +14,15 @@ const preview = ref('');
 const reportData = ref(null);
 const showCustomEditor = ref(false);
 
+const groups = ref([]);
+const groupMode = ref('list'); // 'list' | 'manual'
+
 const form = reactive({
     enabled: false,
     time: '23:59',
+    recipient_type: 'phone', // 'phone' | 'group'
     phone: '',
+    group_id: '',
     custom_template: '',
 });
 
@@ -32,6 +38,22 @@ const TEMPLATE_TAGS = [
     { tag: '{{bumps_section}}', label: 'Order Bumps vendidos' },
 ];
 
+async function loadGroups() {
+    loadingGroups.value = true;
+    try {
+        const res = await api.groups();
+        groups.value = res.groups || [];
+        if (groups.value.length === 0) {
+            groupMode.value = 'manual';
+        }
+    } catch {
+        groups.value = [];
+        groupMode.value = 'manual';
+    } finally {
+        loadingGroups.value = false;
+    }
+}
+
 async function load() {
     loading.value = true;
     error.value = '';
@@ -39,11 +61,15 @@ async function load() {
         const res = await api.dailyReport();
         form.enabled = Boolean(res.config?.enabled);
         form.time = res.config?.time || '23:59';
+        form.recipient_type = res.config?.recipient_type || 'phone';
         form.phone = res.config?.phone || '';
+        form.group_id = res.config?.group_id || '';
         form.custom_template = res.config?.custom_template || '';
         showCustomEditor.value = Boolean(res.config?.custom_template);
         preview.value = res.preview || '';
         reportData.value = res.data || null;
+
+        await loadGroups();
     } catch (e) {
         error.value = e.message || 'Falha ao carregar configurações do relatório.';
     } finally {
@@ -59,7 +85,9 @@ async function save() {
         const res = await api.saveDailyReport({
             enabled: form.enabled,
             time: form.time,
+            recipient_type: form.recipient_type,
             phone: form.phone,
+            group_id: form.group_id,
             custom_template: showCustomEditor.value ? form.custom_template : null,
         });
         preview.value = res.preview || preview.value;
@@ -75,16 +103,27 @@ async function save() {
 }
 
 async function testSend() {
-    if (!form.phone) {
-        error.value = 'Informe o número do WhatsApp de destino antes de testar.';
-        return;
+    if (form.recipient_type === 'group') {
+        if (!form.group_id) {
+            error.value = 'Selecione ou informe o JID do grupo do WhatsApp antes de testar.';
+            return;
+        }
+    } else {
+        if (!form.phone) {
+            error.value = 'Informe o número do WhatsApp de destino antes de testar.';
+            return;
+        }
     }
 
     testing.value = true;
     error.value = '';
     testSuccess.value = '';
     try {
-        const res = await api.testDailyReport({ phone: form.phone });
+        const res = await api.testDailyReport({
+            recipient_type: form.recipient_type,
+            phone: form.phone,
+            group_id: form.group_id,
+        });
         testSuccess.value = res.message || 'Relatório de teste enviado para o WhatsApp!';
         if (res.preview) {
             preview.value = res.preview;
@@ -107,6 +146,12 @@ const formattedPreviewLines = computed(() => {
     return (preview.value || '').split('\n');
 });
 
+const selectedGroupName = computed(() => {
+    if (form.recipient_type !== 'group') return '';
+    const found = groups.value.find((g) => g.id === form.group_id);
+    return found ? found.name : (form.group_id || 'Grupo de Vendas');
+});
+
 onMounted(load);
 </script>
 
@@ -121,7 +166,7 @@ onMounted(load);
                 <div>
                     <h2 class="text-xl font-bold tracking-tight text-zinc-900 dark:text-white">Relatório Diário de Vendas no WhatsApp</h2>
                     <p class="text-xs text-zinc-600 dark:text-zinc-400">
-                        Receba automaticamente todo dia no horário escolhido (ex: 23:59) o resumo com faturamento, vendas, formas de pagamento e order bumps.
+                        Receba automaticamente todo dia no horário escolhido (ex: 23:59) o resumo de vendas para o seu número ou para um grupo da sua equipe.
                     </p>
                 </div>
             </div>
@@ -166,11 +211,44 @@ onMounted(load);
                         Agendamento & Destino
                     </h3>
                     <p class="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
-                        Defina o horário e para qual número do WhatsApp o relatório diário consolidado será entregue.
+                        Defina o horário e para quem o relatório diário consolidado será entregue (número ou grupo).
                     </p>
 
                     <div class="mt-6 space-y-4">
+                        <!-- Destinatário: Número ou Grupo -->
                         <div>
+                            <label class="block text-xs font-semibold text-zinc-700 dark:text-zinc-300">
+                                Enviar Para *
+                            </label>
+                            <div class="mt-1.5 grid grid-cols-2 gap-2">
+                                <button
+                                    type="button"
+                                    class="flex items-center justify-center gap-2 rounded-2xl border p-2.5 text-xs font-bold transition"
+                                    :class="form.recipient_type === 'phone'
+                                        ? 'border-emerald-500 bg-emerald-500/10 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300'
+                                        : 'border-zinc-200 bg-zinc-50 text-zinc-600 hover:bg-zinc-100 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-400 dark:hover:bg-zinc-900'"
+                                    @click="form.recipient_type = 'phone'"
+                                >
+                                    <Phone class="h-3.5 w-3.5" />
+                                    <span>Número Individual</span>
+                                </button>
+
+                                <button
+                                    type="button"
+                                    class="flex items-center justify-center gap-2 rounded-2xl border p-2.5 text-xs font-bold transition"
+                                    :class="form.recipient_type === 'group'
+                                        ? 'border-emerald-500 bg-emerald-500/10 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300'
+                                        : 'border-zinc-200 bg-zinc-50 text-zinc-600 hover:bg-zinc-100 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-400 dark:hover:bg-zinc-900'"
+                                    @click="() => { form.recipient_type = 'group'; if (!groups.length) loadGroups(); }"
+                                >
+                                    <Users class="h-3.5 w-3.5" />
+                                    <span>Grupo do WhatsApp</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Se número individual -->
+                        <div v-if="form.recipient_type === 'phone'">
                             <label class="block text-xs font-semibold text-zinc-700 dark:text-zinc-300">
                                 WhatsApp de Destino *
                             </label>
@@ -186,6 +264,64 @@ onMounted(load);
                             <p class="mt-1 text-[11px] text-zinc-500 dark:text-zinc-400">
                                 Seu próprio número com DDD. Aceita formato nacional com ou sem o 55.
                             </p>
+                        </div>
+
+                        <!-- Se grupo do WhatsApp -->
+                        <div v-else class="space-y-2">
+                            <div class="flex items-center justify-between">
+                                <label class="block text-xs font-semibold text-zinc-700 dark:text-zinc-300">
+                                    Grupo de Destino *
+                                </label>
+                                <div class="flex items-center gap-2">
+                                    <button
+                                        type="button"
+                                        class="flex items-center gap-1 text-[11px] font-semibold text-emerald-600 transition hover:underline dark:text-emerald-400"
+                                        :disabled="loadingGroups"
+                                        @click="loadGroups"
+                                    >
+                                        <RefreshCw class="h-3 w-3" :class="loadingGroups ? 'animate-spin' : ''" />
+                                        <span>Recarregar Grupos</span>
+                                    </button>
+                                    <span class="text-zinc-300 dark:text-zinc-700">|</span>
+                                    <button
+                                        type="button"
+                                        class="text-[11px] font-semibold text-zinc-600 transition hover:underline dark:text-zinc-400"
+                                        @click="groupMode = groupMode === 'list' ? 'manual' : 'list'"
+                                    >
+                                        {{ groupMode === 'list' ? 'Digitar JID' : 'Escolher da lista' }}
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div v-if="groupMode === 'list' && groups.length > 0">
+                                <div class="flex items-center rounded-2xl border border-zinc-200 bg-zinc-50 px-3.5 py-2.5 transition focus-within:border-emerald-500 focus-within:bg-white dark:border-zinc-800 dark:bg-zinc-950/60 dark:focus-within:bg-zinc-900">
+                                    <Users class="mr-2.5 h-4 w-4 text-zinc-400" />
+                                    <select
+                                        v-model="form.group_id"
+                                        class="w-full bg-transparent text-xs text-zinc-900 focus:outline-none dark:text-white"
+                                    >
+                                        <option value="">Selecione um grupo da Evolution GO...</option>
+                                        <option v-for="group in groups" :key="group.id" :value="group.id">
+                                            {{ group.name }}
+                                        </option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div v-else>
+                                <div class="flex items-center rounded-2xl border border-zinc-200 bg-zinc-50 px-3.5 py-2.5 transition focus-within:border-emerald-500 focus-within:bg-white dark:border-zinc-800 dark:bg-zinc-950/60 dark:focus-within:bg-zinc-900">
+                                    <Users class="mr-2.5 h-4 w-4 text-zinc-400" />
+                                    <input
+                                        v-model="form.group_id"
+                                        type="text"
+                                        placeholder="Ex: 120363025244589234@g.us"
+                                        class="w-full bg-transparent text-xs text-zinc-900 placeholder-zinc-400 focus:outline-none dark:text-white"
+                                    />
+                                </div>
+                                <p class="mt-1 text-[11px] text-zinc-500 dark:text-zinc-400">
+                                    Insira o JID oficial do grupo do WhatsApp (terminado em <code>@g.us</code>).
+                                </p>
+                            </div>
                         </div>
 
                         <div>
@@ -261,13 +397,13 @@ onMounted(load);
 
                             <button
                                 type="button"
-                                :disabled="testing || !form.phone"
+                                :disabled="testing || (form.recipient_type === 'group' ? !form.group_id : !form.phone)"
                                 class="flex items-center justify-center gap-2 rounded-2xl border border-zinc-200 bg-white px-5 py-3 text-xs font-bold text-zinc-700 shadow-xs transition hover:bg-zinc-50 disabled:opacity-50 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800"
                                 @click="testSend"
                             >
                                 <Loader2 v-if="testing" class="h-4 w-4 animate-spin text-emerald-500" />
                                 <Send v-else class="h-4 w-4 text-emerald-500" />
-                                Enviar Agora (Teste)
+                                <span>{{ form.recipient_type === 'group' ? 'Enviar Teste ao Grupo' : 'Enviar Teste' }}</span>
                             </button>
                         </div>
                     </div>
@@ -296,11 +432,16 @@ onMounted(load);
                     <!-- WhatsApp Top Bar -->
                     <div class="flex items-center gap-3 bg-[#075e54] px-4 py-3 text-white">
                         <div class="flex h-9 w-9 items-center justify-center rounded-full bg-white/20 font-bold text-xs">
-                            ZR
+                            <Users v-if="form.recipient_type === 'group'" class="h-4 w-4" />
+                            <span v-else>ZR</span>
                         </div>
                         <div class="flex-1">
-                            <div class="text-xs font-bold leading-tight">ZapRei Notificações</div>
-                            <div class="text-[10px] text-white/70">relatório diário automático</div>
+                            <div class="text-xs font-bold leading-tight">
+                                {{ form.recipient_type === 'group' ? selectedGroupName : 'ZapRei Notificações' }}
+                            </div>
+                            <div class="text-[10px] text-white/70">
+                                {{ form.recipient_type === 'group' ? 'grupo do WhatsApp' : 'relatório diário automático' }}
+                            </div>
                         </div>
                         <Sparkles class="h-4 w-4 text-emerald-300" />
                     </div>

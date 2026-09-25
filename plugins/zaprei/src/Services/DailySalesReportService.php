@@ -26,17 +26,27 @@ final class DailySalesReportService
     /**
      * Retorna as configurações do relatório diário do tenant.
      *
-     * @return array{enabled: bool, time: string, phone: string, custom_template: string|null, last_sent_date: string|null}
+     * @return array{enabled: bool, time: string, recipient_type: string, phone: string, group_id: string, custom_template: string|null, last_sent_date: string|null}
      */
     public function getConfig(int $tenantId): array
     {
         $all = Getfy::config()->get(Zaprei::SLUG, []);
         $tenantConfig = (array) ($all['daily_reports'][(string) $tenantId] ?? []);
+        $phone = (string) ($tenantConfig['phone'] ?? '');
+        $groupId = (string) ($tenantConfig['group_id'] ?? '');
+
+        // Detecção automática se um JID de grupo foi salvo anteriormente no campo phone
+        $recipientType = (string) ($tenantConfig['recipient_type'] ?? (str_contains($phone, '@g.us') ? 'group' : 'phone'));
+        if ($recipientType === 'group' && $groupId === '' && str_contains($phone, '@g.us')) {
+            $groupId = $phone;
+        }
 
         return [
             'enabled' => (bool) ($tenantConfig['enabled'] ?? false),
             'time' => (string) ($tenantConfig['time'] ?? self::DEFAULT_TIME),
-            'phone' => (string) ($tenantConfig['phone'] ?? ''),
+            'recipient_type' => $recipientType,
+            'phone' => $phone,
+            'group_id' => $groupId,
             'custom_template' => ! empty($tenantConfig['custom_template']) ? (string) $tenantConfig['custom_template'] : null,
             'last_sent_date' => ! empty($tenantConfig['last_sent_date']) ? (string) $tenantConfig['last_sent_date'] : null,
         ];
@@ -46,7 +56,7 @@ final class DailySalesReportService
      * Salva as configurações do relatório diário para o tenant.
      *
      * @param  array<string, mixed>  $data
-     * @return array{enabled: bool, time: string, phone: string, custom_template: string|null, last_sent_date: string|null}
+     * @return array{enabled: bool, time: string, recipient_type: string, phone: string, group_id: string, custom_template: string|null, last_sent_date: string|null}
      */
     public function saveConfig(int $tenantId, array $data): array
     {
@@ -57,7 +67,14 @@ final class DailySalesReportService
             $time = self::DEFAULT_TIME;
         }
 
+        $recipientType = (string) ($data['recipient_type'] ?? $current['recipient_type']);
+        if (! in_array($recipientType, ['phone', 'group'], true)) {
+            $recipientType = 'phone';
+        }
+
         $phone = trim((string) ($data['phone'] ?? $current['phone']));
+        $groupId = trim((string) ($data['group_id'] ?? $current['group_id']));
+
         $enabled = isset($data['enabled']) ? (bool) $data['enabled'] : $current['enabled'];
         $customTemplate = isset($data['custom_template']) && trim((string) $data['custom_template']) !== ''
             ? trim((string) $data['custom_template'])
@@ -66,7 +83,9 @@ final class DailySalesReportService
         $newConfig = [
             'enabled' => $enabled,
             'time' => $time,
+            'recipient_type' => $recipientType,
             'phone' => $phone,
+            'group_id' => $groupId,
             'custom_template' => $customTemplate,
             'last_sent_date' => $current['last_sent_date'],
         ];
@@ -246,25 +265,40 @@ final class DailySalesReportService
     }
 
     /**
-     * Envia o relatório de vendas via WhatsApp.
+     * Envia o relatório de vendas via WhatsApp (para número individual ou grupo).
      *
      * @throws ZapreiException
      */
-    public function sendReport(int $tenantId, ?string $destinationPhone = null, bool $isTest = false): array
+    public function sendReport(int $tenantId, ?string $destination = null, bool $isTest = false): array
     {
         $config = $this->getConfig($tenantId);
-        $phoneRaw = $destinationPhone ?: $config['phone'];
-        $phone = PhoneNumber::normalize($phoneRaw);
+        $recipientType = (string) ($config['recipient_type'] ?? 'phone');
 
-        if ($phone === null) {
-            throw new ZapreiException('Informe um número de WhatsApp válido para receber o relatório.');
+        if ($destination === null || trim($destination) === '') {
+            $destinationRaw = $recipientType === 'group' ? $config['group_id'] : $config['phone'];
+        } else {
+            $destinationRaw = trim($destination);
+        }
+
+        $isGroup = $recipientType === 'group' || str_contains($destinationRaw, '@g.us');
+
+        if ($isGroup) {
+            $recipient = $destinationRaw;
+            if ($recipient === '') {
+                throw new ZapreiException('Informe ou selecione um grupo de WhatsApp válido para receber o relatório.');
+            }
+        } else {
+            $recipient = PhoneNumber::normalize($destinationRaw);
+            if ($recipient === null) {
+                throw new ZapreiException('Informe um número de WhatsApp válido para receber o relatório.');
+            }
         }
 
         $data = $this->generateData($tenantId);
         $message = $this->renderMessage($data, $config['custom_template']);
 
         $gateway = $this->gateways->forTenant($tenantId);
-        $gateway->sendText($phone, $message);
+        $gateway->sendText($recipient, $message);
 
         if (! $isTest) {
             $all = Getfy::config()->get(Zaprei::SLUG, []);
@@ -274,7 +308,8 @@ final class DailySalesReportService
 
         return [
             'success' => true,
-            'recipient' => $phone,
+            'recipient' => $recipient,
+            'is_group' => $isGroup,
             'message' => $message,
             'data' => $data,
         ];
@@ -311,7 +346,12 @@ final class DailySalesReportService
             // Só dispara se o horário configurado já chegou e ainda não foi enviado hoje
             if ($currentTime >= $targetTime && $lastSent !== $todayDate) {
                 try {
-                    $this->sendReport($tenantId, (string) ($tenantConfig['phone'] ?? ''), false);
+                    $recipientType = (string) ($tenantConfig['recipient_type'] ?? 'phone');
+                    $destination = $recipientType === 'group'
+                        ? (string) ($tenantConfig['group_id'] ?? '')
+                        : (string) ($tenantConfig['phone'] ?? '');
+
+                    $this->sendReport($tenantId, $destination, false);
                     $sentCount++;
                     Log::info("ZapRei: Relatório diário enviado com sucesso para o tenant #{$tenantId}.");
                 } catch (Throwable $e) {

@@ -34,7 +34,9 @@ final class DailyReportController extends Controller
         $validated = $request->validate([
             'enabled' => ['required', 'boolean'],
             'time' => ['required', 'string', 'regex:/^\d{2}:\d{2}$/'],
+            'recipient_type' => ['nullable', 'string', 'in:phone,group'],
             'phone' => ['nullable', 'string', 'max:50'],
+            'group_id' => ['nullable', 'string', 'max:100'],
             'custom_template' => ['nullable', 'string', 'max:5000'],
         ]);
 
@@ -54,14 +56,23 @@ final class DailyReportController extends Controller
         $tenantId = $this->tenantId($request);
 
         $validated = $request->validate([
+            'recipient_type' => ['nullable', 'string', 'in:phone,group'],
             'phone' => ['nullable', 'string', 'max:50'],
+            'group_id' => ['nullable', 'string', 'max:100'],
+            'destination' => ['nullable', 'string', 'max:100'],
         ]);
 
+        $recipientType = (string) ($validated['recipient_type'] ?? 'phone');
+        $destination = $recipientType === 'group'
+            ? ($validated['group_id'] ?? $validated['destination'] ?? null)
+            : ($validated['phone'] ?? $validated['destination'] ?? null);
+
         try {
-            $result = $this->service->sendReport($tenantId, $validated['phone'] ?? null, true);
+            $result = $this->service->sendReport($tenantId, $destination, true);
+            $targetLabel = ! empty($result['is_group']) ? "o grupo {$result['recipient']}" : $result['recipient'];
 
             return response()->json([
-                'message' => "Relatório de teste enviado para {$result['recipient']} com sucesso!",
+                'message' => "Relatório de teste enviado para {$targetLabel} com sucesso!",
                 'preview' => $result['message'],
             ]);
         } catch (ZapreiException $e) {
