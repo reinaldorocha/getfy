@@ -58,6 +58,10 @@ export const api = {
     products: () => request('/products'),
     groups: () => request('/groups'),
 
+    dailyReport: () => request('/daily-report'),
+    saveDailyReport: (payload) => request('/daily-report', { method: 'PUT', body: payload }),
+    testDailyReport: (payload) => request('/daily-report/test', { method: 'POST', body: payload }),
+
     flows: (productId) => request('/flows', { query: { product_id: productId } }),
     createFlow: (payload) => request('/flows', { method: 'POST', body: payload }),
     updateFlow: (id, payload) => request(`/flows/${id}`, { method: 'PUT', body: payload }),

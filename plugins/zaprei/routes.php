@@ -5,6 +5,7 @@ use Plugins\Zaprei\Http\Controllers\CampaignController;
 use Plugins\Zaprei\Http\Controllers\CatalogController;
 use Plugins\Zaprei\Http\Controllers\ConnectionController;
 use Plugins\Zaprei\Http\Controllers\ContactController;
+use Plugins\Zaprei\Http\Controllers\DailyReportController;
 use Plugins\Zaprei\Http\Controllers\DashboardController;
 use Plugins\Zaprei\Http\Controllers\FlowController;
 use Plugins\Zaprei\Http\Controllers\MediaController;
@@ -25,6 +26,10 @@ Route::middleware('team.permission:plugin:zaprei:manage')->group(function (): vo
 
     Route::get('/flows', [FlowController::class, 'index'])->name('zaprei.flows.index');
     Route::get('/flows/runs', [FlowController::class, 'runs'])->name('zaprei.flows.runs');
+
+    Route::get('/daily-report', [DailyReportController::class, 'show'])->name('zaprei.daily_report.show');
+    Route::put('/daily-report', [DailyReportController::class, 'update'])->name('zaprei.daily_report.update');
+    Route::post('/daily-report/test', [DailyReportController::class, 'test'])->name('zaprei.daily_report.test');
 
     Route::middleware('throttle:60,1')->group(function (): void {
         Route::post('/flows', [FlowController::class, 'store'])->name('zaprei.flows.store');

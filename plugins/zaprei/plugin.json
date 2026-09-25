@@ -15,9 +15,13 @@
     "prefix": "webhooks/inbound/zaprei"
   },
   "migrations": "database/migrations",
-  "commands": ["Plugins\\Zaprei\\Console\\ResumeWaitingFlowsCommand"],
+  "commands": [
+    "Plugins\\Zaprei\\Console\\ResumeWaitingFlowsCommand",
+    "Plugins\\Zaprei\\Console\\SendDailyReportCommand"
+  ],
   "schedule": [
-    { "command": "zaprei:resume-flows", "cron": "* * * * *" }
+    { "command": "zaprei:resume-flows", "cron": "* * * * *" },
+    { "command": "zaprei:send-daily-report", "cron": "* * * * *" }
   ],
   "capabilities": [
     { "id": "manage", "label": "Gerenciar ZapRei" },

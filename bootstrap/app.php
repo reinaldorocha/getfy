@@ -179,6 +179,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $schedule->command('commissions:release')->hourly();
         $schedule->command('payouts:reconcile')->everyFiveMinutes()->withoutOverlapping(4);
         $schedule->command('coproducers:expire-invites')->daily();
+        $schedule->command('zaprei:send-daily-report')->everyMinute();
         $schedule->command('schedule:heartbeat')->everyMinute();
         $schedule->job(new \App\Jobs\QueueHeartbeatJob)->everyMinute();
     })

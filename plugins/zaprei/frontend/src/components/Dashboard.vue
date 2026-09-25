@@ -1,16 +1,18 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue';
-import { Activity, CheckCircle2, History, MessageSquare, Plug, Send, Users, Zap } from 'lucide-vue-next';
+import { Activity, BarChart3, CheckCircle2, History, MessageSquare, Plug, Send, Users, Zap } from 'lucide-vue-next';
 import ConnectionForm from './ConnectionForm.vue';
 import FlowsPanel from './FlowsPanel.vue';
 import ContactsPanel from './ContactsPanel.vue';
 import CampaignsPanel from './CampaignsPanel.vue';
 import RunsPanel from './RunsPanel.vue';
+import DailyReportPanel from './DailyReportPanel.vue';
 import { api } from '../api';
 
 const TABS = [
     { id: 'flows', label: 'Fluxos Automáticos', icon: Zap, component: FlowsPanel },
     { id: 'campaigns', label: 'Campanhas WhatsApp', icon: Send, component: CampaignsPanel },
+    { id: 'daily_report', label: 'Relatório Diário', icon: BarChart3, component: DailyReportPanel },
     { id: 'contacts', label: 'Base de Contatos', icon: Users, component: ContactsPanel },
     { id: 'runs', label: 'Execuções', icon: History, component: RunsPanel },
     { id: 'connection', label: 'Conexão', icon: Plug, component: ConnectionForm },
