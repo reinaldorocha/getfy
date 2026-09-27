@@ -341,6 +341,8 @@ final class DailySalesReportService
         $paymentCounts = [];
         $totalBumpsCount = 0;
         $totalBumpsAmount = 0.0;
+        $totalProductsCount = 0;
+        $totalProductsAmount = 0.0;
 
         foreach ($completedOrders as $order) {
             $orderAmount = (float) $order->lineItemsTotalAmount();
@@ -382,6 +384,8 @@ final class DailySalesReportService
                         $productCounts[$pName] ??= ['count' => 0, 'total' => 0.0];
                         $productCounts[$pName]['count']++;
                         $productCounts[$pName]['total'] += $itemAmount;
+                        $totalProductsCount++;
+                        $totalProductsAmount += $itemAmount;
                     }
                 }
             } else {
@@ -389,6 +393,8 @@ final class DailySalesReportService
                 $productCounts[$pName] ??= ['count' => 0, 'total' => 0.0];
                 $productCounts[$pName]['count']++;
                 $productCounts[$pName]['total'] += $orderAmount;
+                $totalProductsCount++;
+                $totalProductsAmount += $orderAmount;
             }
         }
 
@@ -419,28 +425,40 @@ final class DailySalesReportService
             ? implode("\n", $paymentLines)
             : "• Nenhuma venda concluída {$emptyPeriodLabel}";
 
-        // Linhas formatadas por produto
+        // Linhas formatadas por produto com total
         $productLines = [];
         foreach ($productCounts as $name => $data) {
             $formatted = self::money($data['total']);
             $vendasLabel = $data['count'] === 1 ? '1 venda' : "{$data['count']} vendas";
             $productLines[] = "• {$name}: {$vendasLabel} ({$formatted})";
         }
-        $productText = ! empty($productLines)
-            ? implode("\n", $productLines)
-            : "• Nenhum produto faturado {$emptyPeriodLabel}";
+        if (! empty($productLines)) {
+            $prodTotalFormatted = self::money($totalProductsAmount);
+            $prodVendasLabel = $totalProductsCount === 1 ? '1 venda' : "{$totalProductsCount} vendas";
+            $productLines[] = "👉 *Total Produtos Principais:* {$prodVendasLabel} ({$prodTotalFormatted})";
+            $productText = implode("\n", $productLines);
+        } else {
+            $productText = "• Nenhum produto faturado {$emptyPeriodLabel}";
+        }
 
-        // Linhas formatadas de order bumps
+        // Linhas formatadas de order bumps com total
         $bumpLines = [];
         foreach ($bumpCounts as $name => $data) {
             $formatted = self::money($data['total']);
             $vendasLabel = $data['count'] === 1 ? '1 venda' : "{$data['count']} vendas";
             $bumpLines[] = "• {$name}: {$vendasLabel} ({$formatted})";
         }
-        $bumpsText = ! empty($bumpLines) ? implode("\n", $bumpLines) : '';
-        $bumpsSection = ! empty($bumpLines)
-            ? "\n➕ *Order Bumps Vendidos:*\n".implode("\n", $bumpLines)."\n"
-            : '';
+        if (! empty($bumpLines)) {
+            $bumpsTotalFormatted = self::money($totalBumpsAmount);
+            $bumpsVendasLabel = $totalBumpsCount === 1 ? '1 venda' : "{$totalBumpsCount} vendas";
+            $bumpLinesWithTotal = $bumpLines;
+            $bumpLinesWithTotal[] = "👉 *Total Order Bumps:* {$bumpsVendasLabel} ({$bumpsTotalFormatted})";
+            $bumpsText = implode("\n", $bumpLinesWithTotal);
+            $bumpsSection = "\n➕ *Order Bumps Vendidos:*\n".$bumpsText."\n";
+        } else {
+            $bumpsText = '';
+            $bumpsSection = '';
+        }
 
         $meses = [
             1 => 'Janeiro', 2 => 'Fevereiro', 3 => 'Março', 4 => 'Abril',
@@ -495,6 +513,9 @@ final class DailySalesReportService
             'refunded_total_formatted' => self::money($totalRefunded),
             'payment_methods_text' => $paymentText,
             'products_text' => $productText,
+            'products_count' => $totalProductsCount,
+            'products_total' => $totalProductsAmount,
+            'products_total_formatted' => self::money($totalProductsAmount),
             'bumps_count' => $totalBumpsCount,
             'bumps_total' => $totalBumpsAmount,
             'bumps_total_formatted' => self::money($totalBumpsAmount),

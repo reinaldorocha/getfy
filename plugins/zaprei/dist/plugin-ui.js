@@ -13061,8 +13061,12 @@ _Notificação automática ZapRei / Getfy._`
       { tag: "{{refunded_count}}", label: "Qtd reembolsos" },
       { tag: "{{refunded_total_formatted}}", label: "Valor reembolsado" },
       { tag: "{{payment_methods_text}}", label: "Formas de pagamento" },
-      { tag: "{{products_text}}", label: "Produtos vendidos" },
-      { tag: "{{bumps_section}}", label: "Order Bumps vendidos" },
+      { tag: "{{products_text}}", label: "Lista de produtos vendidos (com total)" },
+      { tag: "{{products_total_formatted}}", label: "Total faturado em produtos principais" },
+      { tag: "{{products_count}}", label: "Qtd de produtos principais vendidos" },
+      { tag: "{{bumps_section}}", label: "Seção de Order Bumps (com total)" },
+      { tag: "{{bumps_total_formatted}}", label: "Total faturado em order bumps" },
+      { tag: "{{bumps_count}}", label: "Qtd de order bumps vendidos" },
       { tag: "{{month_name}}", label: "Nome do mês (relatório mensal)" },
       { tag: "{{year}}", label: "Ano do relatório" }
     ], k = ee(() => t.value === "weekly" ? p : t.value === "monthly" ? w : f), V = ee(() => t.value === "weekly" ? b.value : t.value === "monthly" ? P.value : y.value), D = ee(() => t.value === "weekly" ? z.value : t.value === "monthly" ? _.value : m.value), F = ee({
