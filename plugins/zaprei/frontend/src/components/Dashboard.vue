@@ -12,7 +12,7 @@ import { api } from '../api';
 const TABS = [
     { id: 'flows', label: 'Fluxos Automáticos', icon: Zap, component: FlowsPanel },
     { id: 'campaigns', label: 'Campanhas WhatsApp', icon: Send, component: CampaignsPanel },
-    { id: 'daily_report', label: 'Relatório Diário', icon: BarChart3, component: DailyReportPanel },
+    { id: 'daily_report', label: 'Relatórios de Vendas', icon: BarChart3, component: DailyReportPanel },
     { id: 'contacts', label: 'Base de Contatos', icon: Users, component: ContactsPanel },
     { id: 'runs', label: 'Execuções', icon: History, component: RunsPanel },
     { id: 'connection', label: 'Conexão', icon: Plug, component: ConnectionForm },
