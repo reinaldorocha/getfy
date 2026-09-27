@@ -179,6 +179,87 @@ final class DailySalesReportService
     }
 
     /**
+     * Retorna as configurações do relatório mensal do tenant.
+     *
+     * @return array{enabled: bool, time: string, recipient_type: string, phone: string, group_id: string, custom_template: string|null, last_sent_month: string|null}
+     */
+    public function getMonthlyConfig(int $tenantId): array
+    {
+        $all = Getfy::config()->get(Zaprei::SLUG, []);
+        $tenantConfig = (array) ($all['monthly_reports'][(string) $tenantId] ?? []);
+        $phone = (string) ($tenantConfig['phone'] ?? '');
+        $groupId = (string) ($tenantConfig['group_id'] ?? '');
+
+        // Fallback automático para o destinatário do relatório diário ou semanal se ainda não configurado
+        $dailyConfig = (array) ($all['daily_reports'][(string) $tenantId] ?? []);
+        $weeklyConfig = (array) ($all['weekly_reports'][(string) $tenantId] ?? []);
+        if ($phone === '' && $groupId === '') {
+            $phone = (string) ($dailyConfig['phone'] ?? ($weeklyConfig['phone'] ?? ''));
+            $groupId = (string) ($dailyConfig['group_id'] ?? ($weeklyConfig['group_id'] ?? ''));
+        }
+
+        $recipientType = (string) ($tenantConfig['recipient_type'] ?? ($dailyConfig['recipient_type'] ?? ($weeklyConfig['recipient_type'] ?? 'phone')));
+        if ($recipientType === 'group' && $groupId === '' && str_contains($phone, '@g.us')) {
+            $groupId = $phone;
+        }
+
+        return [
+            'enabled' => (bool) ($tenantConfig['enabled'] ?? false),
+            'time' => (string) ($tenantConfig['time'] ?? self::DEFAULT_TIME),
+            'recipient_type' => $recipientType,
+            'phone' => $phone,
+            'group_id' => $groupId,
+            'custom_template' => ! empty($tenantConfig['custom_template']) ? (string) $tenantConfig['custom_template'] : null,
+            'last_sent_month' => ! empty($tenantConfig['last_sent_month']) ? (string) $tenantConfig['last_sent_month'] : null,
+        ];
+    }
+
+    /**
+     * Salva as configurações do relatório mensal para o tenant.
+     *
+     * @param  array<string, mixed>  $data
+     * @return array{enabled: bool, time: string, recipient_type: string, phone: string, group_id: string, custom_template: string|null, last_sent_month: string|null}
+     */
+    public function saveMonthlyConfig(int $tenantId, array $data): array
+    {
+        $current = $this->getMonthlyConfig($tenantId);
+
+        $time = trim((string) ($data['time'] ?? $current['time']));
+        if (! preg_match('/^\d{2}:\d{2}$/', $time)) {
+            $time = self::DEFAULT_TIME;
+        }
+
+        $recipientType = (string) ($data['recipient_type'] ?? $current['recipient_type']);
+        if (! in_array($recipientType, ['phone', 'group'], true)) {
+            $recipientType = 'phone';
+        }
+
+        $phone = trim((string) ($data['phone'] ?? $current['phone']));
+        $groupId = trim((string) ($data['group_id'] ?? $current['group_id']));
+
+        $enabled = isset($data['enabled']) ? (bool) $data['enabled'] : $current['enabled'];
+        $customTemplate = isset($data['custom_template']) && trim((string) $data['custom_template']) !== ''
+            ? trim((string) $data['custom_template'])
+            : null;
+
+        $newConfig = [
+            'enabled' => $enabled,
+            'time' => $time,
+            'recipient_type' => $recipientType,
+            'phone' => $phone,
+            'group_id' => $groupId,
+            'custom_template' => $customTemplate,
+            'last_sent_month' => $current['last_sent_month'],
+        ];
+
+        $all = Getfy::config()->get(Zaprei::SLUG, []);
+        $all['monthly_reports'][(string) $tenantId] = $newConfig;
+        Getfy::config()->set(Zaprei::SLUG, $all);
+
+        return $newConfig;
+    }
+
+    /**
      * Coleta as métricas consolidadas de vendas do dia para o tenant.
      *
      * @return array<string, mixed>
@@ -204,6 +285,20 @@ final class DailySalesReportService
         $end = $now->copy()->endOfWeek(Carbon::SUNDAY)->endOfDay();
 
         return $this->generateDataForPeriod($tenantId, $start, $end, 'weekly', $now);
+    }
+
+    /**
+     * Coleta as métricas consolidadas de vendas do mês (1º ao último dia) para o tenant.
+     *
+     * @return array<string, mixed>
+     */
+    public function generateMonthlyData(int $tenantId, ?Carbon $referenceDate = null): array
+    {
+        $now = $referenceDate ?? ReportingPeriod::now();
+        $start = $now->copy()->startOfMonth()->startOfDay();
+        $end = $now->copy()->endOfMonth()->endOfDay();
+
+        return $this->generateDataForPeriod($tenantId, $start, $end, 'monthly', $now);
     }
 
     /**
@@ -307,7 +402,11 @@ final class DailySalesReportService
         $totalRefunded = (float) $refundedOrders->sum(fn ($o) => (float) $o->lineItemsTotalAmount());
         $refundedCount = $refundedOrders->count();
 
-        $emptyPeriodLabel = $type === 'weekly' ? 'na semana' : 'hoje';
+        $emptyPeriodLabel = match ($type) {
+            'weekly' => 'na semana',
+            'monthly' => 'no mês',
+            default => 'hoje',
+        };
 
         // Linhas formatadas por método de pagamento
         $paymentLines = [];
@@ -343,22 +442,37 @@ final class DailySalesReportService
             ? "\n➕ *Order Bumps Vendidos:*\n".implode("\n", $bumpLines)."\n"
             : '';
 
-        $dateLabel = $type === 'weekly'
-            ? "{$start->format('d/m/Y')} a {$end->format('d/m/Y')}"
-            : $now->format('d/m/Y');
+        $meses = [
+            1 => 'Janeiro', 2 => 'Fevereiro', 3 => 'Março', 4 => 'Abril',
+            5 => 'Maio', 6 => 'Junho', 7 => 'Julho', 8 => 'Agosto',
+            9 => 'Setembro', 10 => 'Outubro', 11 => 'Novembro', 12 => 'Dezembro',
+        ];
+        $nomeMes = $meses[(int) $now->format('n')] ?? $now->format('F');
 
-        $periodLabel = $type === 'weekly'
-            ? "{$start->format('d/m/Y')} a {$end->format('d/m/Y')} (Segunda a Domingo)"
-            : "{$now->format('d/m/Y')} (Hoje)";
+        $dateLabel = match ($type) {
+            'weekly' => "{$start->format('d/m/Y')} a {$end->format('d/m/Y')}",
+            'monthly' => "{$start->format('d/m/Y')} a {$end->format('d/m/Y')}",
+            default => $now->format('d/m/Y'),
+        };
 
-        $refDate = $type === 'weekly'
-            ? $end->format('o-W') // Identificador ISO da semana, ex: 2026-W39
-            : $now->format('Y-m-d');
+        $periodLabel = match ($type) {
+            'weekly' => "{$start->format('d/m/Y')} a {$end->format('d/m/Y')} (Segunda a Domingo)",
+            'monthly' => "{$start->format('d/m/Y')} a {$end->format('d/m/Y')} ({$nomeMes}/{$now->format('Y')})",
+            default => "{$now->format('d/m/Y')} (Hoje)",
+        };
+
+        $refDate = match ($type) {
+            'weekly' => $end->format('o-W'), // Ex: 2026-W39
+            'monthly' => $now->format('Y-m'), // Ex: 2026-09
+            default => $now->format('Y-m-d'),
+        };
 
         return [
             'type' => $type,
             'date' => $dateLabel,
             'period' => $periodLabel,
+            'month_name' => $nomeMes,
+            'year' => $now->format('Y'),
             'reference_date' => $refDate,
             'start_date' => $start->format('d/m/Y'),
             'end_date' => $end->format('d/m/Y'),
@@ -433,6 +547,31 @@ final class DailySalesReportService
             ."📦 *Produtos Vendidos:*\n{$data['products_text']}\n"
             ."{$data['bumps_section']}\n"
             .'_Relatório semanal automático ZapRei / Getfy._';
+    }
+
+    /**
+     * Renderiza o texto final do relatório mensal (padrão ou personalizado).
+     */
+    public function renderMonthlyMessage(array $data, ?string $customTemplate = null): string
+    {
+        if ($customTemplate !== null && trim($customTemplate) !== '') {
+            return $this->templates->render($customTemplate, ['report' => $data, ...$data]);
+        }
+
+        $mesAno = ! empty($data['month_name']) ? "({$data['month_name']}/{$data['year']})" : '';
+
+        return "📊 *RELATÓRIO MENSAL DE VENDAS* 🚀\n"
+            ."📅 *Período:* {$data['date']} {$mesAno}\n\n"
+            ."💰 *Faturamento Total:* {$data['total_formatted']}\n"
+            ."💵 *Valor Líquido:* {$data['net_total_formatted']}\n"
+            ."✅ *Vendas Aprovadas:* {$data['orders_count']}\n"
+            ."💳 *Ticket Médio:* {$data['ticket_medio_formatted']}\n"
+            ."⏳ *Vendas Pendentes:* {$data['pending_total_formatted']} ({$data['pending_count']} pedidos)\n"
+            ."🔄 *Reembolsos:* {$data['refunded_count']} ({$data['refunded_total_formatted']})\n\n"
+            ."💳 *Formas de Pagamento:*\n{$data['payment_methods_text']}\n\n"
+            ."📦 *Produtos Vendidos:*\n{$data['products_text']}\n"
+            ."{$data['bumps_section']}\n"
+            .'_Relatório mensal automático ZapRei / Getfy._';
     }
 
     /**
@@ -538,7 +677,58 @@ final class DailySalesReportService
     }
 
     /**
-     * Executado pelo comando de cron para verificar e despachar relatórios vencidos (diários e semanais).
+     * Envia o relatório de vendas mensal via WhatsApp (para número individual ou grupo).
+     *
+     * @throws ZapreiException
+     */
+    public function sendMonthlyReport(int $tenantId, ?string $destination = null, bool $isTest = false): array
+    {
+        $config = $this->getMonthlyConfig($tenantId);
+        $recipientType = (string) ($config['recipient_type'] ?? 'phone');
+
+        if ($destination === null || trim($destination) === '') {
+            $destinationRaw = $recipientType === 'group' ? $config['group_id'] : $config['phone'];
+        } else {
+            $destinationRaw = trim($destination);
+        }
+
+        $isGroup = $recipientType === 'group' || str_contains($destinationRaw, '@g.us');
+
+        if ($isGroup) {
+            $recipient = $destinationRaw;
+            if ($recipient === '') {
+                throw new ZapreiException('Informe ou selecione um grupo de WhatsApp válido para receber o relatório mensal.');
+            }
+        } else {
+            $recipient = PhoneNumber::normalize($destinationRaw);
+            if ($recipient === null) {
+                throw new ZapreiException('Informe um número de WhatsApp válido para receber o relatório mensal.');
+            }
+        }
+
+        $data = $this->generateMonthlyData($tenantId);
+        $message = $this->renderMonthlyMessage($data, $config['custom_template']);
+
+        $gateway = $this->gateways->forTenant($tenantId);
+        $gateway->sendText($recipient, $message);
+
+        if (! $isTest) {
+            $all = Getfy::config()->get(Zaprei::SLUG, []);
+            $all['monthly_reports'][(string) $tenantId]['last_sent_month'] = $data['reference_date'];
+            Getfy::config()->set(Zaprei::SLUG, $all);
+        }
+
+        return [
+            'success' => true,
+            'recipient' => $recipient,
+            'is_group' => $isGroup,
+            'message' => $message,
+            'data' => $data,
+        ];
+    }
+
+    /**
+     * Executado pelo comando de cron para verificar e despachar relatórios vencidos (diários, semanais e mensais).
      *
      * @return int número de relatórios enviados
      */
@@ -546,8 +736,9 @@ final class DailySalesReportService
     {
         $dailySent = $this->checkAndSendDueDailyReports();
         $weeklySent = $this->checkAndSendDueWeeklyReports();
+        $monthlySent = $this->checkAndSendDueMonthlyReports();
 
-        return $dailySent + $weeklySent;
+        return $dailySent + $weeklySent + $monthlySent;
     }
 
     /**
@@ -646,6 +837,62 @@ final class DailySalesReportService
                     Log::info("ZapRei: Relatório semanal enviado com sucesso para o tenant #{$tenantId}.");
                 } catch (Throwable $e) {
                     Log::warning("ZapRei: Falha ao enviar relatório semanal para o tenant #{$tenantId}.", [
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+            }
+        }
+
+        return $sentCount;
+    }
+
+    /**
+     * Verifica e envia relatórios mensais pendentes (executado no último dia do mês).
+     *
+     * @return int número de relatórios enviados
+     */
+    public function checkAndSendDueMonthlyReports(): int
+    {
+        $all = Getfy::config()->get(Zaprei::SLUG, []);
+        $monthlyReports = (array) ($all['monthly_reports'] ?? []);
+
+        if (empty($monthlyReports)) {
+            return 0;
+        }
+
+        $now = ReportingPeriod::now();
+        // Disparo exclusivo no último dia do mês
+        $isLastDayOfMonth = $now->format('Y-m-d') === $now->copy()->endOfMonth()->format('Y-m-d');
+        if (! $isLastDayOfMonth) {
+            return 0;
+        }
+
+        $currentTime = $now->format('H:i');
+        $currentMonthId = $now->format('Y-m');
+        $sentCount = 0;
+
+        foreach ($monthlyReports as $tenantIdStr => $tenantConfig) {
+            $tenantId = (int) $tenantIdStr;
+            if ($tenantId < 1 || empty($tenantConfig['enabled'])) {
+                continue;
+            }
+
+            $targetTime = (string) ($tenantConfig['time'] ?? self::DEFAULT_TIME);
+            $lastSent = (string) ($tenantConfig['last_sent_month'] ?? '');
+
+            // Só dispara no último dia do mês a partir do horário configurado e se ainda não foi enviado neste mês
+            if ($currentTime >= $targetTime && $lastSent !== $currentMonthId) {
+                try {
+                    $recipientType = (string) ($tenantConfig['recipient_type'] ?? 'phone');
+                    $destination = $recipientType === 'group'
+                        ? (string) ($tenantConfig['group_id'] ?? '')
+                        : (string) ($tenantConfig['phone'] ?? '');
+
+                    $this->sendMonthlyReport($tenantId, $destination, false);
+                    $sentCount++;
+                    Log::info("ZapRei: Relatório mensal enviado com sucesso para o tenant #{$tenantId}.");
+                } catch (Throwable $e) {
+                    Log::warning("ZapRei: Falha ao enviar relatório mensal para o tenant #{$tenantId}.", [
                         'error' => $e->getMessage(),
                     ]);
                 }

@@ -5,6 +5,7 @@ import {
     BarChart3,
     Calendar,
     CalendarDays,
+    CalendarRange,
     CheckCircle2,
     Clock,
     DollarSign,
@@ -19,7 +20,7 @@ import {
 } from 'lucide-vue-next';
 import { api } from '../api';
 
-const activeTab = ref('daily'); // 'daily' | 'weekly'
+const activeTab = ref('daily'); // 'daily' | 'weekly' | 'monthly'
 const loading = ref(true);
 const saving = ref(false);
 const testing = ref(false);
@@ -55,6 +56,18 @@ const showWeeklyCustom = ref(false);
 const weeklyPreview = ref('');
 const weeklyData = ref(null);
 
+const monthlyForm = reactive({
+    enabled: false,
+    time: '23:59',
+    recipient_type: 'phone', // 'phone' | 'group'
+    phone: '',
+    group_id: '',
+    custom_template: '',
+});
+const showMonthlyCustom = ref(false);
+const monthlyPreview = ref('');
+const monthlyData = ref(null);
+
 const TEMPLATE_TAGS = [
     { tag: '{{date}}', label: 'Data / Período do relatório' },
     { tag: '{{total_formatted}}', label: 'Faturamento bruto total' },
@@ -69,18 +82,41 @@ const TEMPLATE_TAGS = [
     { tag: '{{payment_methods_text}}', label: 'Formas de pagamento' },
     { tag: '{{products_text}}', label: 'Produtos vendidos' },
     { tag: '{{bumps_section}}', label: 'Order Bumps vendidos' },
+    { tag: '{{month_name}}', label: 'Nome do mês (relatório mensal)' },
+    { tag: '{{year}}', label: 'Ano do relatório' },
 ];
 
-const currentForm = computed(() => (activeTab.value === 'daily' ? dailyForm : weeklyForm));
-const currentPreview = computed(() => (activeTab.value === 'daily' ? dailyPreview.value : weeklyPreview.value));
-const currentData = computed(() => (activeTab.value === 'daily' ? dailyData.value : weeklyData.value));
+const currentForm = computed(() => {
+    if (activeTab.value === 'weekly') return weeklyForm;
+    if (activeTab.value === 'monthly') return monthlyForm;
+    return dailyForm;
+});
+
+const currentPreview = computed(() => {
+    if (activeTab.value === 'weekly') return weeklyPreview.value;
+    if (activeTab.value === 'monthly') return monthlyPreview.value;
+    return dailyPreview.value;
+});
+
+const currentData = computed(() => {
+    if (activeTab.value === 'weekly') return weeklyData.value;
+    if (activeTab.value === 'monthly') return monthlyData.value;
+    return dailyData.value;
+});
+
 const currentShowCustom = computed({
-    get: () => (activeTab.value === 'daily' ? showDailyCustom.value : showWeeklyCustom.value),
+    get: () => {
+        if (activeTab.value === 'weekly') return showWeeklyCustom.value;
+        if (activeTab.value === 'monthly') return showMonthlyCustom.value;
+        return showDailyCustom.value;
+    },
     set: (val) => {
-        if (activeTab.value === 'daily') {
-            showDailyCustom.value = val;
-        } else {
+        if (activeTab.value === 'weekly') {
             showWeeklyCustom.value = val;
+        } else if (activeTab.value === 'monthly') {
+            showMonthlyCustom.value = val;
+        } else {
+            showDailyCustom.value = val;
         }
     },
 });
@@ -130,6 +166,18 @@ async function load() {
         weeklyPreview.value = res.weekly_preview || '';
         weeklyData.value = res.weekly_data || null;
 
+        // Dados mensais
+        const moConfig = res.monthly_config || {};
+        monthlyForm.enabled = Boolean(moConfig.enabled);
+        monthlyForm.time = moConfig.time || '23:59';
+        monthlyForm.recipient_type = moConfig.recipient_type || (dailyForm.recipient_type || 'phone');
+        monthlyForm.phone = moConfig.phone || dailyForm.phone || '';
+        monthlyForm.group_id = moConfig.group_id || dailyForm.group_id || '';
+        monthlyForm.custom_template = moConfig.custom_template || '';
+        showMonthlyCustom.value = Boolean(moConfig.custom_template);
+        monthlyPreview.value = res.monthly_preview || '';
+        monthlyData.value = res.monthly_data || null;
+
         await loadGroups();
     } catch (e) {
         error.value = e.message || 'Falha ao carregar configurações dos relatórios.';
@@ -154,7 +202,7 @@ async function save() {
             });
             dailyPreview.value = res.preview || dailyPreview.value;
             notice.value = 'Configurações do relatório diário salvas com sucesso!';
-        } else {
+        } else if (activeTab.value === 'weekly') {
             const res = await api.saveWeeklyReport({
                 enabled: weeklyForm.enabled,
                 time: weeklyForm.time,
@@ -165,6 +213,17 @@ async function save() {
             });
             weeklyPreview.value = res.preview || weeklyPreview.value;
             notice.value = 'Configurações do relatório semanal (segunda a domingo) salvas com sucesso!';
+        } else {
+            const res = await api.saveMonthlyReport({
+                enabled: monthlyForm.enabled,
+                time: monthlyForm.time,
+                recipient_type: monthlyForm.recipient_type,
+                phone: monthlyForm.phone,
+                group_id: monthlyForm.group_id,
+                custom_template: showMonthlyCustom.value ? monthlyForm.custom_template : null,
+            });
+            monthlyPreview.value = res.preview || monthlyPreview.value;
+            notice.value = 'Configurações do relatório mensal (fechamento do mês) salvas com sucesso!';
         }
 
         setTimeout(() => {
@@ -206,7 +265,7 @@ async function testSend() {
             if (res.preview) {
                 dailyPreview.value = res.preview;
             }
-        } else {
+        } else if (activeTab.value === 'weekly') {
             const res = await api.testWeeklyReport({
                 recipient_type: form.recipient_type,
                 phone: form.phone,
@@ -215,6 +274,16 @@ async function testSend() {
             testSuccess.value = res.message || 'Relatório semanal de teste enviado para o WhatsApp!';
             if (res.preview) {
                 weeklyPreview.value = res.preview;
+            }
+        } else {
+            const res = await api.testMonthlyReport({
+                recipient_type: form.recipient_type,
+                phone: form.phone,
+                group_id: form.group_id,
+            });
+            testSuccess.value = res.message || 'Relatório mensal de teste enviado para o WhatsApp!';
+            if (res.preview) {
+                monthlyPreview.value = res.preview;
             }
         }
 
@@ -231,8 +300,10 @@ async function testSend() {
 function insertTag(tag) {
     if (activeTab.value === 'daily') {
         dailyForm.custom_template = (dailyForm.custom_template || '') + ' ' + tag;
-    } else {
+    } else if (activeTab.value === 'weekly') {
         weeklyForm.custom_template = (weeklyForm.custom_template || '') + ' ' + tag;
+    } else {
+        monthlyForm.custom_template = (monthlyForm.custom_template || '') + ' ' + tag;
     }
 }
 
@@ -251,12 +322,12 @@ onMounted(load);
 
 <template>
     <div class="mx-auto max-w-6xl space-y-6">
-        <!-- Sub-tabs switcher -->
+        <!-- Sub-tabs switcher: Diário, Semanal e Mensal -->
         <div class="flex items-center justify-between">
             <div class="inline-flex rounded-2xl border border-zinc-200 bg-zinc-100/80 p-1.5 dark:border-zinc-800 dark:bg-zinc-900">
                 <button
                     type="button"
-                    class="flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold transition"
+                    class="flex items-center gap-2 rounded-xl px-3.5 py-2 text-xs font-bold transition"
                     :class="activeTab === 'daily'
                         ? 'bg-white text-emerald-600 shadow-xs dark:bg-zinc-800 dark:text-emerald-400'
                         : 'text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white'"
@@ -268,7 +339,7 @@ onMounted(load);
 
                 <button
                     type="button"
-                    class="flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold transition"
+                    class="flex items-center gap-2 rounded-xl px-3.5 py-2 text-xs font-bold transition"
                     :class="activeTab === 'weekly'
                         ? 'bg-white text-emerald-600 shadow-xs dark:bg-zinc-800 dark:text-emerald-400'
                         : 'text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white'"
@@ -276,6 +347,18 @@ onMounted(load);
                 >
                     <CalendarDays class="h-4 w-4" />
                     <span>Relatório Semanal (Domingos)</span>
+                </button>
+
+                <button
+                    type="button"
+                    class="flex items-center gap-2 rounded-xl px-3.5 py-2 text-xs font-bold transition"
+                    :class="activeTab === 'monthly'
+                        ? 'bg-white text-emerald-600 shadow-xs dark:bg-zinc-800 dark:text-emerald-400'
+                        : 'text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white'"
+                    @click="activeTab = 'monthly'"
+                >
+                    <CalendarRange class="h-4 w-4" />
+                    <span>Relatório Mensal (Último Dia)</span>
                 </button>
             </div>
 
@@ -290,18 +373,24 @@ onMounted(load);
             <div class="flex items-center gap-4">
                 <div class="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-emerald-500/20 text-emerald-600 dark:bg-emerald-500/25 dark:text-emerald-400">
                     <BarChart3 v-if="activeTab === 'daily'" class="h-7 w-7" />
-                    <CalendarDays v-else class="h-7 w-7" />
+                    <CalendarDays v-else-if="activeTab === 'weekly'" class="h-7 w-7" />
+                    <CalendarRange v-else class="h-7 w-7" />
                 </div>
                 <div>
                     <h2 class="text-xl font-bold tracking-tight text-zinc-900 dark:text-white">
-                        {{ activeTab === 'daily' ? 'Relatório Diário de Vendas no WhatsApp' : 'Relatório Semanal de Vendas no WhatsApp' }}
+                        <template v-if="activeTab === 'daily'">Relatório Diário de Vendas no WhatsApp</template>
+                        <template v-else-if="activeTab === 'weekly'">Relatório Semanal de Vendas no WhatsApp</template>
+                        <template v-else>Relatório Mensal de Vendas no WhatsApp</template>
                     </h2>
                     <p class="text-xs text-zinc-600 dark:text-zinc-400">
                         <template v-if="activeTab === 'daily'">
                             Receba automaticamente todo dia no horário escolhido (ex: 23:59) o resumo de vendas com <strong>faturamento bruto e valor líquido</strong>.
                         </template>
-                        <template v-else>
+                        <template v-else-if="activeTab === 'weekly'">
                             Receba automaticamente todo <strong>domingo às 23:59</strong> o consolidado de vendas de <strong>segunda-feira a domingo</strong> com faturamento bruto e líquido.
+                        </template>
+                        <template v-else>
+                            Receba automaticamente no <strong>último dia do mês às 23:59</strong> o fechamento consolidado completo de vendas do mês inteiro (1º ao último dia).
                         </template>
                     </p>
                 </div>
@@ -344,13 +433,20 @@ onMounted(load);
                 <div class="rounded-3xl border border-zinc-200 bg-white p-6 shadow-xs dark:border-zinc-800 dark:bg-zinc-900">
                     <h3 class="flex items-center gap-2 text-sm font-bold text-zinc-900 dark:text-white">
                         <Clock class="h-4 w-4 text-emerald-500" />
-                        {{ activeTab === 'daily' ? 'Agendamento & Destino Diário' : 'Agendamento & Destino Semanal' }}
+                        <template v-if="activeTab === 'daily'">Agendamento & Destino Diário</template>
+                        <template v-else-if="activeTab === 'weekly'">Agendamento & Destino Semanal</template>
+                        <template v-else>Agendamento & Destino Mensal</template>
                     </h3>
                     <p class="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
-                        {{ activeTab === 'daily'
-                            ? 'Defina o horário e para quem o relatório diário consolidado será entregue (número ou grupo).'
-                            : 'O relatório semanal é disparado todo domingo com o acumulado de vendas de segunda a domingo.'
-                        }}
+                        <template v-if="activeTab === 'daily'">
+                            Defina o horário e para quem o relatório diário consolidado será entregue (número ou grupo).
+                        </template>
+                        <template v-else-if="activeTab === 'weekly'">
+                            O relatório semanal é disparado todo domingo com o acumulado de vendas de segunda a domingo.
+                        </template>
+                        <template v-else>
+                            O relatório mensal é disparado no último dia do mês com o consolidado de vendas do mês inteiro.
+                        </template>
                     </p>
 
                     <div class="mt-6 space-y-4">
@@ -465,7 +561,9 @@ onMounted(load);
 
                         <div>
                             <label class="block text-xs font-semibold text-zinc-700 dark:text-zinc-300">
-                                {{ activeTab === 'daily' ? 'Horário de Disparo Diário *' : 'Horário de Disparo aos Domingos *' }}
+                                <template v-if="activeTab === 'daily'">Horário de Disparo Diário *</template>
+                                <template v-else-if="activeTab === 'weekly'">Horário de Disparo aos Domingos *</template>
+                                <template v-else>Horário de Disparo no Último Dia do Mês *</template>
                             </label>
                             <div class="mt-1.5 flex items-center rounded-2xl border border-zinc-200 bg-zinc-50 px-3.5 py-2.5 transition focus-within:border-emerald-500 focus-within:bg-white dark:border-zinc-800 dark:bg-zinc-950/60 dark:focus-within:bg-zinc-900">
                                 <Clock class="mr-2.5 h-4 w-4 text-zinc-400" />
@@ -479,8 +577,11 @@ onMounted(load);
                                 <template v-if="activeTab === 'daily'">
                                     Padrão sugerido: <strong>23:59</strong> (Horário oficial de Brasília). O relatório incluirá todas as vendas das 00:00 até as 23:59 do dia.
                                 </template>
-                                <template v-else>
+                                <template v-else-if="activeTab === 'weekly'">
                                     Padrão sugerido: <strong>23:59 aos domingos</strong>. O relatório consolidará as vendas de <strong>segunda-feira a domingo</strong>.
+                                </template>
+                                <template v-else>
+                                    Padrão sugerido: <strong>23:59 no último dia do mês</strong>. O relatório consolidará as vendas de todo o mês (do dia 1º ao último dia).
                                 </template>
                             </p>
                         </div>
@@ -557,7 +658,9 @@ onMounted(load);
                 <div v-if="currentData" class="grid grid-cols-2 gap-3 sm:grid-cols-4">
                     <div class="rounded-2xl border border-zinc-200 bg-white p-3.5 text-center shadow-xs dark:border-zinc-800 dark:bg-zinc-900">
                         <span class="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase">
-                            {{ activeTab === 'daily' ? 'Bruto Hoje' : 'Bruto Semana' }}
+                            <template v-if="activeTab === 'daily'">Bruto Hoje</template>
+                            <template v-else-if="activeTab === 'weekly'">Bruto Semana</template>
+                            <template v-else>Bruto Mês</template>
                         </span>
                         <div class="mt-1 text-sm font-black text-zinc-900 dark:text-white">
                             {{ currentData.total_formatted }}
@@ -567,7 +670,9 @@ onMounted(load);
                     <div class="rounded-2xl border border-emerald-500/30 bg-emerald-500/5 p-3.5 text-center shadow-xs dark:border-emerald-500/30 dark:bg-emerald-500/10">
                         <span class="text-[10px] font-semibold text-emerald-700 dark:text-emerald-400 uppercase flex items-center justify-center gap-1">
                             <Wallet class="h-3 w-3" />
-                            {{ activeTab === 'daily' ? 'Líquido Hoje' : 'Líquido Semana' }}
+                            <template v-if="activeTab === 'daily'">Líquido Hoje</template>
+                            <template v-else-if="activeTab === 'weekly'">Líquido Semana</template>
+                            <template v-else>Líquido Mês</template>
                         </span>
                         <div class="mt-1 text-sm font-black text-emerald-600 dark:text-emerald-400">
                             {{ currentData.net_total_formatted }}
@@ -608,10 +713,10 @@ onMounted(load);
                                 {{ currentForm.recipient_type === 'group' ? selectedGroupName : 'ZapRei Notificações' }}
                             </div>
                             <div class="text-[10px] text-white/70">
-                                {{ currentForm.recipient_type === 'group'
-                                    ? 'grupo do WhatsApp'
-                                    : (activeTab === 'daily' ? 'relatório diário automático' : 'relatório semanal aos domingos')
-                                }}
+                                <template v-if="currentForm.recipient_type === 'group'">grupo do WhatsApp</template>
+                                <template v-else-if="activeTab === 'daily'">relatório diário automático</template>
+                                <template v-else-if="activeTab === 'weekly'">relatório semanal aos domingos</template>
+                                <template v-else>relatório mensal no último dia</template>
                             </div>
                         </div>
                         <Sparkles class="h-4 w-4 text-emerald-300" />
@@ -638,8 +743,11 @@ onMounted(load);
                         <template v-if="activeTab === 'daily'">
                             Disparo automático diário via <strong>Evolution GO</strong> às {{ dailyForm.time }}
                         </template>
-                        <template v-else>
+                        <template v-else-if="activeTab === 'weekly'">
                             Disparo automático aos <strong>domingos</strong> via <strong>Evolution GO</strong> às {{ weeklyForm.time }} (vendas de segunda a domingo)
+                        </template>
+                        <template v-else>
+                            Disparo automático no <strong>último dia do mês</strong> via <strong>Evolution GO</strong> às {{ monthlyForm.time }} (vendas do mês inteiro)
                         </template>
                     </div>
                 </div>

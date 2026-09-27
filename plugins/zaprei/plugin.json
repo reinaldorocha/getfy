@@ -18,7 +18,8 @@
   "commands": [
     "Plugins\\Zaprei\\Console\\ResumeWaitingFlowsCommand",
     "Plugins\\Zaprei\\Console\\SendDailyReportCommand",
-    "Plugins\\Zaprei\\Console\\SendWeeklyReportCommand"
+    "Plugins\\Zaprei\\Console\\SendWeeklyReportCommand",
+    "Plugins\\Zaprei\\Console\\SendMonthlyReportCommand"
   ],
   "schedule": [
     { "command": "zaprei:resume-flows", "cron": "* * * * *" },
