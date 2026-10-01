@@ -473,11 +473,12 @@ class VendasController extends Controller
                 'status' => $this->statusLabel($o->status),
                 'gateway' => $o->paymentMethodDisplayLabel(),
                 'moeda' => $o->getCurrencyOrDefault(),
+                'valor_bruto' => number_format((float) ($display['gross_total'] ?? $o->lineItemsTotalAmount()), 2, ',', '.'),
                 'valor_liquido' => number_format($display['amount'], 2, ',', '.'),
             ];
         })->all();
 
-        $headers = ['Data', 'Produto', 'Cliente', 'E-mail', 'Status', 'Método', 'Moeda', 'Valor líquido'];
+        $headers = ['Data', 'Produto', 'Cliente', 'E-mail', 'Status', 'Método', 'Moeda', 'Valor bruto', 'Valor líquido'];
 
         if ($format === 'csv') {
             $filename = 'vendas_'.date('Y-m-d_His').'.csv';
