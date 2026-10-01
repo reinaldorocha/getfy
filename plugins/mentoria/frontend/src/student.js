@@ -750,9 +750,10 @@ export const MentoriaStudent = {
 
         function nextQuestion(total) {
             questionIndex.value=Math.min(total,questionIndex.value+1);
-            answerDrafts.value={};
-            questionResults.value={};
-            questionHistory.value={};
+        }
+
+        function prevQuestion() {
+            questionIndex.value=Math.max(0,questionIndex.value-1);
         }
 
         async function loadQuestionStats() {
@@ -1294,9 +1295,12 @@ export const MentoriaStudent = {
                             h('strong',{class:'mentoria-question-feedback__title'},result.correct?'✓ Acerto':'✕ Erro'),!result.correct?h('div',{class:'mentoria-question-feedback__answer'},'Resposta correta: '+result.correct_answer):null,result.explanation?h('p',{class:'mentoria-question-feedback__explanation'},result.explanation):null,
                         ]):null,
                         h('div',{class:'mt-3 flex flex-wrap gap-2'},[
-                            btn(result?(questionIndex.value+1<filtered.length?'Próxima questão':'Concluir sessão'):'Responder',()=>result?nextQuestion(filtered.length):answerQuestion(q),'primary'),
-                            btn(history?'Ocultar histórico':'Histórico',()=>loadQuestionHistory(q),'ghost'),
+                            !result?btn('Responder',()=>answerQuestion(q),'primary'):null,
+                            questionIndex.value>0?btn('Anterior',()=>prevQuestion(),'ghost'):null,
+                            !result?btn(questionIndex.value+1<filtered.length?'Próxima':'Concluir sessão',()=>nextQuestion(filtered.length),'secondary'):null,
+                            result?btn(questionIndex.value+1<filtered.length?'Próxima questão':'Concluir sessão',()=>nextQuestion(filtered.length),'primary'):null,
                             result?btn('Refazer',()=>{const nr={...questionResults.value};delete nr[q.id];questionResults.value=nr;answerDrafts.value[q.id]='';},'soft'):null,
+                            btn(history?'Ocultar histórico':'Histórico',()=>loadQuestionHistory(q),'ghost'),
                         ]),
                         history?h('div',{class:'mt-3 space-y-1 rounded-lg bg-zinc-50 p-3 text-xs dark:bg-zinc-800'},history.length?history.map(a=>h('div',{class:'flex justify-between gap-2 border-b border-zinc-200 py-1 last:border-0 dark:border-zinc-700'},[
                             h('span',(a.is_correct?'✓ Acerto':'✕ Erro')+' · '+a.answer),h('span',{class:'text-zinc-500'},fmtDateTime(a.answered_at)),
