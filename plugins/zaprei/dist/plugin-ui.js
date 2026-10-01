@@ -12690,13 +12690,13 @@ _Notificação automática ZapRei / Getfy._`
 }, U3 = {
   key: 4,
   class: "grid grid-cols-1 gap-6 lg:grid-cols-12"
-}, V3 = { class: "space-y-6 lg:col-span-7" }, q3 = { class: "rounded-3xl border border-amber-300/80 bg-gradient-to-b from-amber-500/10 via-white to-white p-6 shadow-sm dark:border-amber-500/30 dark:from-amber-500/15 dark:via-zinc-900 dark:bg-zinc-900" }, j3 = { class: "flex items-start justify-between gap-4" }, H3 = { class: "flex items-center gap-2" }, G3 = { class: "inline-flex items-center gap-1.5 rounded-xl bg-amber-500/20 px-2.5 py-1 text-[11px] font-bold text-amber-800 dark:bg-amber-500/25 dark:text-amber-300" }, W3 = { class: "mt-2 text-sm font-bold text-zinc-900 dark:text-white" }, Y3 = {
+}, V3 = { class: "space-y-6 lg:col-span-7" }, q3 = { class: "rounded-3xl border border-zinc-200 bg-white p-6 dark:border-zinc-800 dark:bg-zinc-900" }, j3 = { class: "flex items-start justify-between gap-4" }, H3 = { class: "flex items-center gap-2" }, G3 = { class: "inline-flex items-center gap-1.5 rounded-xl bg-amber-500/20 px-2.5 py-1 text-[11px] font-bold text-amber-800 dark:bg-amber-500/25 dark:text-amber-300" }, W3 = { class: "mt-2 text-sm font-bold text-zinc-900 dark:text-white" }, Y3 = {
   key: 0,
   class: "mt-4 flex items-center gap-3 rounded-2xl border border-emerald-500/40 bg-emerald-500/15 p-3.5 text-xs font-semibold text-emerald-800 dark:text-emerald-300"
 }, X3 = {
   key: 1,
   class: "mt-4 flex items-start gap-3 rounded-2xl border border-rose-500/40 bg-rose-500/15 p-3.5 text-xs font-semibold text-rose-800 dark:text-rose-300"
-}, K3 = { class: "space-y-1" }, Z3 = { class: "mt-5 rounded-2xl border border-amber-200/60 bg-amber-50/50 p-4 dark:border-amber-500/20 dark:bg-amber-950/20" }, J3 = {
+}, K3 = { class: "space-y-1" }, Z3 = { class: "mt-5 rounded-2xl border border-zinc-200 bg-zinc-50/60 p-4 dark:border-zinc-800 dark:bg-zinc-950/50" }, J3 = {
   key: 0,
   class: "space-y-3"
 }, Q3 = { class: "flex flex-wrap gap-2" }, e4 = { class: "flex items-center gap-2" }, t4 = { class: "flex flex-1 items-center rounded-2xl border border-zinc-200 bg-white px-3.5 py-2 dark:border-zinc-700 dark:bg-zinc-900" }, n4 = ["max"], r4 = ["disabled"], o4 = {
@@ -13203,17 +13203,17 @@ _Notificação automática ZapRei / Getfy._`
                 s("div", Q3, [
                   s("button", {
                     type: "button",
-                    class: W(["rounded-xl border px-3 py-1.5 text-xs font-bold transition", S.value === N(T) ? "border-amber-500 bg-amber-500 text-white shadow-xs" : "border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700"]),
+                    class: W(["rounded-xl border px-3 py-1.5 text-xs font-bold transition", S.value === N(T) ? "border-amber-500 bg-amber-500 text-white" : "border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700"]),
                     onClick: P[5] || (P[5] = (oe) => Be("today"))
                   }, " Hoje ", 2),
                   s("button", {
                     type: "button",
-                    class: W(["rounded-xl border px-3 py-1.5 text-xs font-bold transition", S.value === m() ? "border-amber-500 bg-amber-500 text-white shadow-xs" : "border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700"]),
+                    class: W(["rounded-xl border px-3 py-1.5 text-xs font-bold transition", S.value === m() ? "border-amber-500 bg-amber-500 text-white" : "border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700"]),
                     onClick: P[6] || (P[6] = (oe) => Be("yesterday"))
                   }, " Ontem ", 2),
                   s("button", {
                     type: "button",
-                    class: W(["rounded-xl border px-3 py-1.5 text-xs font-bold transition", S.value === y() ? "border-amber-500 bg-amber-500 text-white shadow-xs" : "border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700"]),
+                    class: W(["rounded-xl border px-3 py-1.5 text-xs font-bold transition", S.value === y() ? "border-amber-500 bg-amber-500 text-white" : "border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700"]),
                     onClick: P[7] || (P[7] = (oe) => Be("before_yesterday"))
                   }, " Anteontem ", 2)
                 ]),
@@ -13233,7 +13233,7 @@ _Notificação automática ZapRei / Getfy._`
                   s("button", {
                     type: "button",
                     disabled: i.value,
-                    class: "flex items-center gap-1.5 rounded-2xl border border-zinc-200 bg-white px-3.5 py-2.5 text-xs font-bold text-zinc-700 shadow-xs transition hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700",
+                    class: "flex items-center gap-1.5 rounded-2xl border border-zinc-200 bg-white px-3.5 py-2.5 text-xs font-bold text-zinc-700 transition hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700",
                     onClick: ke
                   }, [
                     i.value ? (w(), Ae(N(ht), {
@@ -13254,12 +13254,12 @@ _Notificação automática ZapRei / Getfy._`
                 s("div", a4, [
                   s("button", {
                     type: "button",
-                    class: W(["rounded-xl border px-3 py-1.5 text-xs font-bold transition", L.value === N(C) ? "border-amber-500 bg-amber-500 text-white shadow-xs" : "border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700"]),
+                    class: W(["rounded-xl border px-3 py-1.5 text-xs font-bold transition", L.value === N(C) ? "border-amber-500 bg-amber-500 text-white" : "border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700"]),
                     onClick: P[9] || (P[9] = (oe) => bt("current"))
                   }, " Mês Atual ", 2),
                   s("button", {
                     type: "button",
-                    class: W(["rounded-xl border px-3 py-1.5 text-xs font-bold transition", L.value === k() ? "border-amber-500 bg-amber-500 text-white shadow-xs" : "border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700"]),
+                    class: W(["rounded-xl border px-3 py-1.5 text-xs font-bold transition", L.value === k() ? "border-amber-500 bg-amber-500 text-white" : "border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700"]),
                     onClick: P[10] || (P[10] = (oe) => bt("previous"))
                   }, " Mês Anterior ", 2)
                 ]),
@@ -13279,7 +13279,7 @@ _Notificação automática ZapRei / Getfy._`
                   s("button", {
                     type: "button",
                     disabled: i.value,
-                    class: "flex items-center gap-1.5 rounded-2xl border border-zinc-200 bg-white px-3.5 py-2.5 text-xs font-bold text-zinc-700 shadow-xs transition hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700",
+                    class: "flex items-center gap-1.5 rounded-2xl border border-zinc-200 bg-white px-3.5 py-2.5 text-xs font-bold text-zinc-700 transition hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700",
                     onClick: ke
                   }, [
                     i.value ? (w(), Ae(N(ht), {
@@ -13301,7 +13301,7 @@ _Notificação automática ZapRei / Getfy._`
                   (w(), z(ee, null, De(g, (oe) => s("button", {
                     key: oe,
                     type: "button",
-                    class: W(["rounded-xl border px-3 py-1.5 text-xs font-bold transition", F.value === oe.toString() ? "border-amber-500 bg-amber-500 text-white shadow-xs" : "border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700"]),
+                    class: W(["rounded-xl border px-3 py-1.5 text-xs font-bold transition", F.value === oe.toString() ? "border-amber-500 bg-amber-500 text-white" : "border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700"]),
                     onClick: (Ee) => ft(oe)
                   }, " Ano " + q(oe), 11, f4)), 64))
                 ]),
@@ -13324,7 +13324,7 @@ _Notificação automática ZapRei / Getfy._`
                   s("button", {
                     type: "button",
                     disabled: i.value,
-                    class: "flex items-center gap-1.5 rounded-2xl border border-zinc-200 bg-white px-3.5 py-2.5 text-xs font-bold text-zinc-700 shadow-xs transition hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700",
+                    class: "flex items-center gap-1.5 rounded-2xl border border-zinc-200 bg-white px-3.5 py-2.5 text-xs font-bold text-zinc-700 transition hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700",
                     onClick: ke
                   }, [
                     i.value ? (w(), Ae(N(ht), {
@@ -13345,12 +13345,12 @@ _Notificação automática ZapRei / Getfy._`
                 s("div", y4, [
                   s("button", {
                     type: "button",
-                    class: W(["rounded-xl border px-3 py-1.5 text-xs font-bold transition", O.value === "previous_week" ? "border-amber-500 bg-amber-500 text-white shadow-xs" : "border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700"]),
+                    class: W(["rounded-xl border px-3 py-1.5 text-xs font-bold transition", O.value === "previous_week" ? "border-amber-500 bg-amber-500 text-white" : "border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700"]),
                     onClick: P[13] || (P[13] = (oe) => er("previous_week"))
                   }, " Semana Passada (Fechada) ", 2),
                   s("button", {
                     type: "button",
-                    class: W(["rounded-xl border px-3 py-1.5 text-xs font-bold transition", O.value === "this_week" ? "border-amber-500 bg-amber-500 text-white shadow-xs" : "border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700"]),
+                    class: W(["rounded-xl border px-3 py-1.5 text-xs font-bold transition", O.value === "this_week" ? "border-amber-500 bg-amber-500 text-white" : "border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700"]),
                     onClick: P[14] || (P[14] = (oe) => er("this_week"))
                   }, " Esta Semana (Em Andamento) ", 2)
                 ])
@@ -13452,7 +13452,7 @@ _Notificação automática ZapRei / Getfy._`
               s("button", {
                 type: "button",
                 disabled: a.value || i.value,
-                class: "flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-amber-600 to-amber-500 px-5 py-3.5 text-xs font-bold text-white shadow-sm transition hover:from-amber-500 hover:to-amber-400 disabled:opacity-50",
+                class: "flex w-full items-center justify-center gap-2 rounded-2xl bg-amber-600 px-5 py-3.5 text-xs font-bold text-white transition hover:bg-amber-500 disabled:opacity-50",
                 onClick: Er
               }, [
                 a.value ? (w(), Ae(N(ht), {

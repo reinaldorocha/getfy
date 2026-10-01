@@ -712,7 +712,7 @@ onMounted(load);
             <div class="space-y-6 lg:col-span-7">
 
                 <!-- CARD DE REENVIO SOB DEMANDA & CONTINGÊNCIA (Caso a API caia) -->
-                <div class="rounded-3xl border border-amber-300/80 bg-gradient-to-b from-amber-500/10 via-white to-white p-6 shadow-sm dark:border-amber-500/30 dark:from-amber-500/15 dark:via-zinc-900 dark:bg-zinc-900">
+                <div class="rounded-3xl border border-zinc-200 bg-white p-6 dark:border-zinc-800 dark:bg-zinc-900">
                     <div class="flex items-start justify-between gap-4">
                         <div>
                             <div class="flex items-center gap-2">
@@ -750,7 +750,7 @@ onMounted(load);
                     </div>
 
                     <!-- Seletor do Período -->
-                    <div class="mt-5 rounded-2xl border border-amber-200/60 bg-amber-50/50 p-4 dark:border-amber-500/20 dark:bg-amber-950/20">
+                    <div class="mt-5 rounded-2xl border border-zinc-200 bg-zinc-50/60 p-4 dark:border-zinc-800 dark:bg-zinc-950/50">
                         <!-- DIÁRIO: Seletor de dia -->
                         <div v-if="activeTab === 'daily'" class="space-y-3">
                             <div class="flex items-center justify-between">
@@ -768,7 +768,7 @@ onMounted(load);
                                     type="button"
                                     class="rounded-xl border px-3 py-1.5 text-xs font-bold transition"
                                     :class="selectedDailyDate === todayDateString
-                                        ? 'border-amber-500 bg-amber-500 text-white shadow-xs'
+                                        ? 'border-amber-500 bg-amber-500 text-white'
                                         : 'border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700'"
                                     @click="setQuickDaily('today')"
                                 >
@@ -778,7 +778,7 @@ onMounted(load);
                                     type="button"
                                     class="rounded-xl border px-3 py-1.5 text-xs font-bold transition"
                                     :class="selectedDailyDate === getYesterdayIso()
-                                        ? 'border-amber-500 bg-amber-500 text-white shadow-xs'
+                                        ? 'border-amber-500 bg-amber-500 text-white'
                                         : 'border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700'"
                                     @click="setQuickDaily('yesterday')"
                                 >
@@ -788,7 +788,7 @@ onMounted(load);
                                     type="button"
                                     class="rounded-xl border px-3 py-1.5 text-xs font-bold transition"
                                     :class="selectedDailyDate === getBeforeYesterdayIso()
-                                        ? 'border-amber-500 bg-amber-500 text-white shadow-xs'
+                                        ? 'border-amber-500 bg-amber-500 text-white'
                                         : 'border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700'"
                                     @click="setQuickDaily('before_yesterday')"
                                 >
@@ -810,7 +810,7 @@ onMounted(load);
                                 <button
                                     type="button"
                                     :disabled="loadingPeriodPreview"
-                                    class="flex items-center gap-1.5 rounded-2xl border border-zinc-200 bg-white px-3.5 py-2.5 text-xs font-bold text-zinc-700 shadow-xs transition hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
+                                    class="flex items-center gap-1.5 rounded-2xl border border-zinc-200 bg-white px-3.5 py-2.5 text-xs font-bold text-zinc-700 transition hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
                                     @click="loadPeriodPreview"
                                 >
                                     <Loader2 v-if="loadingPeriodPreview" class="h-3.5 w-3.5 animate-spin text-amber-500" />
@@ -837,7 +837,7 @@ onMounted(load);
                                     type="button"
                                     class="rounded-xl border px-3 py-1.5 text-xs font-bold transition"
                                     :class="selectedMonthlyDate === currentMonthString
-                                        ? 'border-amber-500 bg-amber-500 text-white shadow-xs'
+                                        ? 'border-amber-500 bg-amber-500 text-white'
                                         : 'border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700'"
                                     @click="setQuickMonthly('current')"
                                 >
@@ -847,7 +847,7 @@ onMounted(load);
                                     type="button"
                                     class="rounded-xl border px-3 py-1.5 text-xs font-bold transition"
                                     :class="selectedMonthlyDate === getPreviousMonthIso()
-                                        ? 'border-amber-500 bg-amber-500 text-white shadow-xs'
+                                        ? 'border-amber-500 bg-amber-500 text-white'
                                         : 'border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700'"
                                     @click="setQuickMonthly('previous')"
                                 >
@@ -869,7 +869,7 @@ onMounted(load);
                                 <button
                                     type="button"
                                     :disabled="loadingPeriodPreview"
-                                    class="flex items-center gap-1.5 rounded-2xl border border-zinc-200 bg-white px-3.5 py-2.5 text-xs font-bold text-zinc-700 shadow-xs transition hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
+                                    class="flex items-center gap-1.5 rounded-2xl border border-zinc-200 bg-white px-3.5 py-2.5 text-xs font-bold text-zinc-700 transition hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
                                     @click="loadPeriodPreview"
                                 >
                                     <Loader2 v-if="loadingPeriodPreview" class="h-3.5 w-3.5 animate-spin text-amber-500" />
@@ -898,7 +898,7 @@ onMounted(load);
                                     type="button"
                                     class="rounded-xl border px-3 py-1.5 text-xs font-bold transition"
                                     :class="selectedYearlyDate === yr.toString()
-                                        ? 'border-amber-500 bg-amber-500 text-white shadow-xs'
+                                        ? 'border-amber-500 bg-amber-500 text-white'
                                         : 'border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700'"
                                     @click="setQuickYearly(yr)"
                                 >
@@ -915,14 +915,14 @@ onMounted(load);
                                         @change="loadPeriodPreview"
                                     >
                                         <option v-for="yr in recentYears" :key="yr" :value="yr.toString()">
-                                            Ano {{ yr }} (01/01 a 31/12)
+                                             Ano {{ yr }} (01/01 a 31/12)
                                         </option>
                                     </select>
                                 </div>
                                 <button
                                     type="button"
                                     :disabled="loadingPeriodPreview"
-                                    class="flex items-center gap-1.5 rounded-2xl border border-zinc-200 bg-white px-3.5 py-2.5 text-xs font-bold text-zinc-700 shadow-xs transition hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
+                                    class="flex items-center gap-1.5 rounded-2xl border border-zinc-200 bg-white px-3.5 py-2.5 text-xs font-bold text-zinc-700 transition hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
                                     @click="loadPeriodPreview"
                                 >
                                     <Loader2 v-if="loadingPeriodPreview" class="h-3.5 w-3.5 animate-spin text-amber-500" />
@@ -948,7 +948,7 @@ onMounted(load);
                                     type="button"
                                     class="rounded-xl border px-3 py-1.5 text-xs font-bold transition"
                                     :class="selectedWeeklyPreset === 'previous_week'
-                                        ? 'border-amber-500 bg-amber-500 text-white shadow-xs'
+                                        ? 'border-amber-500 bg-amber-500 text-white'
                                         : 'border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700'"
                                     @click="setQuickWeekly('previous_week')"
                                 >
@@ -958,7 +958,7 @@ onMounted(load);
                                     type="button"
                                     class="rounded-xl border px-3 py-1.5 text-xs font-bold transition"
                                     :class="selectedWeeklyPreset === 'this_week'
-                                        ? 'border-amber-500 bg-amber-500 text-white shadow-xs'
+                                        ? 'border-amber-500 bg-amber-500 text-white'
                                         : 'border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700'"
                                     @click="setQuickWeekly('this_week')"
                                 >
@@ -1071,7 +1071,7 @@ onMounted(load);
                         <button
                             type="button"
                             :disabled="resending || loadingPeriodPreview"
-                            class="flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-amber-600 to-amber-500 px-5 py-3.5 text-xs font-bold text-white shadow-sm transition hover:from-amber-500 hover:to-amber-400 disabled:opacity-50"
+                            class="flex w-full items-center justify-center gap-2 rounded-2xl bg-amber-600 px-5 py-3.5 text-xs font-bold text-white transition hover:bg-amber-500 disabled:opacity-50"
                             @click="resendReportAction"
                         >
                             <Loader2 v-if="resending" class="h-4 w-4 animate-spin text-white" />
