@@ -99,21 +99,12 @@ final class OrderReader
             return null;
         }
 
-        $relations = [
+        $subject->loadMissing(array_values(array_filter([
             self::hasRelation($subject, 'product') ? 'product' : null,
             self::hasRelation($subject, 'user') ? 'user' : null,
             self::hasRelation($subject, 'subscriptionPlan') ? 'subscriptionPlan' : null,
             self::hasRelation($subject, 'productOffer') ? 'productOffer' : null,
-        ];
-
-        if (self::hasRelation($subject, 'orderItems')) {
-            $relations[] = 'orderItems';
-            $relations[] = 'orderItems.product';
-            $relations[] = 'orderItems.productOrderBump';
-            $relations[] = 'orderItems.productOffer';
-        }
-
-        $subject->loadMissing(array_values(array_filter($relations)));
+        ])));
 
         $metadata = is_array($subject->metadata ?? null) ? $subject->metadata : [];
         $name = trim((string) (
@@ -134,74 +125,8 @@ final class OrderReader
         $currency = strtoupper(trim((string) (
             $subject->currency ?? $priceSource?->currency ?? 'BRL'
         ))) ?: 'BRL';
-
-        $rawAmount = (float) ($subject->amount ?? $priceSource?->price ?? 0);
-
-        // Valor da venda equivalente ao enviado para a Utmify e relatórios de vendas
-        // (total dos itens do produto/bumps, sem juros de parcelamento do cartão assumidos pelo cliente)
-        $amount = $rawAmount;
-        if ($subject instanceof \App\Models\Order || (is_object($subject) && method_exists($subject, 'lineItemsTotalAmount'))) {
-            $amount = (float) $subject->lineItemsTotalAmount();
-        }
-
+        $amount = (float) ($subject->amount ?? $priceSource?->price ?? 0);
         $product = $subject->product ?? null;
-
-        // Processamento de itens do pedido e order bumps
-        $bumps = [];
-        $bumpsFormattedList = [];
-        $bumpsNames = [];
-        $bumpsTotal = 0.0;
-        $allItemsFormattedList = [];
-
-        $items = ($subject instanceof \App\Models\Order || isset($subject->orderItems))
-            ? ($subject->orderItems ?? collect())
-            : collect();
-
-        if ($items->isNotEmpty()) {
-            foreach ($items as $item) {
-                $isBump = ($item->product_order_bump_id !== null) || ((int) ($item->position ?? 0) > 0);
-                $itemAmount = (float) ($item->amount ?? 0);
-                $itemAmountFormatted = self::money($itemAmount, $currency);
-
-                // Nome do item: preferência pelo nome do produto alvo ou título do order bump
-                $itemName = trim((string) (
-                    $item->product?->name
-                    ?? $item->productOrderBump?->title
-                    ?? $item->productOffer?->name
-                    ?? ''
-                ));
-
-                if ($itemName === '') {
-                    $itemName = $isBump ? 'Order Bump' : ($product?->name ?? 'Produto Principal');
-                }
-
-                $allItemsFormattedList[] = "• {$itemName} ({$itemAmountFormatted})";
-
-                if ($isBump) {
-                    $bumpsTotal += $itemAmount;
-                    $bumpsNames[] = $itemName;
-                    $bumpsFormattedList[] = "• {$itemName} ({$itemAmountFormatted})";
-                    $bumps[] = [
-                        'id' => $item->id,
-                        'product_id' => $item->product_id,
-                        'name' => $itemName,
-                        'title' => (string) ($item->productOrderBump?->title ?? $itemName),
-                        'amount' => $itemAmount,
-                        'amount_formatted' => $itemAmountFormatted,
-                    ];
-                }
-            }
-        } elseif ($product) {
-            $allItemsFormattedList[] = "• {$product->name} (".self::money($amount, $currency).')';
-        }
-
-        $bumpsCount = count($bumps);
-        $hasBumps = $bumpsCount > 0;
-        $bumpsList = implode("\n", $bumpsFormattedList);
-        $bumpsSection = $hasBumps ? "➕ *Order Bump(s):*\n".implode("\n", $bumpsFormattedList)."\n" : '';
-        $bumpsNamesStr = implode(', ', $bumpsNames);
-        $allItemsList = implode("\n", $allItemsFormattedList);
-        $firstBump = $bumps[0] ?? null;
 
         return [
             'tenant_id' => $tenantId,
@@ -225,14 +150,10 @@ final class OrderReader
             'order' => [
                 'id' => $subject->id ?? null,
                 'status' => (string) ($subject->status ?? ''),
-                // Valor igual ao da Utmify (sem acréscimo de taxas de parcelamento do cartão)
                 'amount' => $amount,
                 'amount_formatted' => self::money($amount, $currency),
                 'total_amount' => $amount,
                 'total_amount_formatted' => self::money($amount, $currency),
-                // Valor total bruto pago pelo cliente (com juros de parcelamento do cartão, se houver)
-                'paid_amount' => $rawAmount,
-                'paid_amount_formatted' => self::money($rawAmount, $currency),
                 'currency' => $currency,
                 'gateway' => (string) ($subject->gateway ?? ''),
                 // pix/pix_auto/card/boleto/... — método real do checkout, não o slug do gateway.
@@ -243,31 +164,12 @@ final class OrderReader
                     'id' => $product?->id,
                     'name' => (string) ($product?->name ?? ''),
                 ],
-                // Order Bumps
-                'has_bumps' => $hasBumps ? 'Sim' : 'Não',
-                'has_bumps_bool' => $hasBumps,
-                'bumps_count' => $bumpsCount,
-                'bumps' => $bumpsList,
-                'bumps_list' => $bumpsList,
-                'bumps_section' => $bumpsSection,
-                'bumps_names' => $bumpsNamesStr,
-                'bumps_total' => $bumpsTotal,
-                'bumps_total_formatted' => self::money($bumpsTotal, $currency),
-                'items_list' => $allItemsList,
-                'first_bump' => $firstBump ?? [],
-                'bumps_items' => $bumps,
             ],
             'product' => [
                 'id' => $product?->id,
                 'name' => (string) ($product?->name ?? ''),
             ],
             'checkout_link' => self::checkoutLink($subject, $product),
-            // Atalhos diretos de bumps
-            'bumps' => $bumpsList,
-            'bumps_list' => $bumpsList,
-            'bumps_section' => $bumpsSection,
-            'bumps_names' => $bumpsNamesStr,
-            'order_bumps' => $bumpsList,
         ];
     }
 

@@ -45,12 +45,7 @@ final class MessageDispatcher
     {
         $text = $this->templates->render((string) ($data['text'] ?? ''), $context);
         if (trim($text) === '') {
-            $raw = trim((string) ($data['text'] ?? ''));
-            if ($raw === '') {
-                throw new ZapreiException('Bloco de mensagem sem texto definido.');
-            }
-
-            throw new ZapreiException('O texto da mensagem continha apenas variáveis que retornaram vazias para este destinatário.');
+            throw new ZapreiException('Bloco de mensagem sem texto.');
         }
         $gateway->sendText($recipient, $text);
     }

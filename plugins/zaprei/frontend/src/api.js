@@ -70,6 +70,13 @@ export const api = {
     saveMonthlyReport: (payload) => request('/monthly-report', { method: 'PUT', body: payload }),
     testMonthlyReport: (payload) => request('/monthly-report/test', { method: 'POST', body: payload }),
 
+    yearlyReport: () => request('/yearly-report'),
+    saveYearlyReport: (payload) => request('/yearly-report', { method: 'PUT', body: payload }),
+    testYearlyReport: (payload) => request('/yearly-report/test', { method: 'POST', body: payload }),
+
+    previewReport: (params) => request('/daily-report/preview', { query: params }),
+    resendReport: (payload) => request('/daily-report/resend', { method: 'POST', body: payload }),
+
     flows: (productId) => request('/flows', { query: { product_id: productId } }),
     createFlow: (payload) => request('/flows', { method: 'POST', body: payload }),
     updateFlow: (id, payload) => request(`/flows/${id}`, { method: 'PUT', body: payload }),

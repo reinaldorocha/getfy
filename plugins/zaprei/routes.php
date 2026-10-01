@@ -30,6 +30,8 @@ Route::middleware('team.permission:plugin:zaprei:manage')->group(function (): vo
     Route::get('/daily-report', [DailyReportController::class, 'show'])->name('zaprei.daily_report.show');
     Route::put('/daily-report', [DailyReportController::class, 'update'])->name('zaprei.daily_report.update');
     Route::post('/daily-report/test', [DailyReportController::class, 'test'])->name('zaprei.daily_report.test');
+    Route::get('/daily-report/preview', [DailyReportController::class, 'preview'])->name('zaprei.daily_report.preview');
+    Route::post('/daily-report/resend', [DailyReportController::class, 'resend'])->name('zaprei.daily_report.resend');
 
     Route::get('/weekly-report', [DailyReportController::class, 'showWeekly'])->name('zaprei.weekly_report.show');
     Route::put('/weekly-report', [DailyReportController::class, 'updateWeekly'])->name('zaprei.weekly_report.update');
@@ -38,6 +40,10 @@ Route::middleware('team.permission:plugin:zaprei:manage')->group(function (): vo
     Route::get('/monthly-report', [DailyReportController::class, 'showMonthly'])->name('zaprei.monthly_report.show');
     Route::put('/monthly-report', [DailyReportController::class, 'updateMonthly'])->name('zaprei.monthly_report.update');
     Route::post('/monthly-report/test', [DailyReportController::class, 'testMonthly'])->name('zaprei.monthly_report.test');
+
+    Route::get('/yearly-report', [DailyReportController::class, 'showYearly'])->name('zaprei.yearly_report.show');
+    Route::put('/yearly-report', [DailyReportController::class, 'updateYearly'])->name('zaprei.yearly_report.update');
+    Route::post('/yearly-report/test', [DailyReportController::class, 'testYearly'])->name('zaprei.yearly_report.test');
 
     Route::middleware('throttle:60,1')->group(function (): void {
         Route::post('/flows', [FlowController::class, 'store'])->name('zaprei.flows.store');
