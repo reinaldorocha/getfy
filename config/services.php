@@ -67,4 +67,15 @@ return [
         'base_url' => rtrim(env('PAGARME_API_BASE_URL', 'https://api.pagar.me/core/v5'), '/'),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | utm-track API (Meta Ads Ad Spend & Analytics)
+    |--------------------------------------------------------------------------
+    */
+    'utm_track' => [
+        'url' => env('UTM_TRACK_URL', 'https://utm.profjonathanrocha.com.br'),
+        'token' => env('UTM_TRACK_TOKEN'),
+    ],
+
 ];
+

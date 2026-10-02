@@ -7,6 +7,7 @@ use App\PluginSdk\Getfy;
 use App\Services\NetAmountCalculator;
 use App\Support\ReportingPeriod;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Plugins\Zaprei\Contracts\WhatsappGateway;
 use Plugins\Zaprei\Exceptions\ZapreiException;
@@ -503,6 +504,33 @@ final class DailySalesReportService
         $totalRefunded = (float) $refundedOrders->sum(fn ($o) => (float) $o->lineItemsTotalAmount());
         $refundedCount = $refundedOrders->count();
 
+        $adSpend = 0.0;
+        try {
+            $utmUrl = rtrim((string) (config('services.utm_track.url') ?: env('UTM_TRACK_URL', '')), '/');
+            $utmToken = (string) (config('services.utm_track.token') ?: env('UTM_TRACK_TOKEN', ''));
+            if (! empty($utmUrl) && ! empty($utmToken)) {
+                $response = Http::timeout(3)
+                    ->withHeaders([
+                        'X-API-KEY' => $utmToken,
+                        'Accept' => 'application/json',
+                    ])
+                    ->get("{$utmUrl}/api/reports/ad-spend", [
+                        'start' => $start->format('Y-m-d'),
+                        'end' => $end->format('Y-m-d'),
+                    ]);
+                if ($response->successful()) {
+                    $adSpend = (float) ($response->json('ad_spend') ?? 0.0);
+                }
+            }
+        } catch (Throwable $e) {
+            Log::warning('[ZapRei] Falha ao consultar ad_spend no utm-track: '.$e->getMessage());
+        }
+
+        $lucroReal = $totalNetCompleted - $adSpend;
+        $roas = $adSpend > 0 ? round($totalCompleted / $adSpend, 2) : 0.0;
+        $cpa = $completedCount > 0 && $adSpend > 0 ? round($adSpend / $completedCount, 2) : 0.0;
+
+
         $emptyPeriodLabel = match ($type) {
             'weekly' => 'na semana',
             'monthly' => 'no mês',
@@ -606,6 +634,13 @@ final class DailySalesReportService
             'net_total_formatted' => self::money($totalNetCompleted),
             'valor_liquido' => self::money($totalNetCompleted),
             'lucro_liquido' => self::money($totalNetCompleted),
+            'ad_spend' => $adSpend,
+            'ad_spend_formatted' => self::money($adSpend),
+            'lucro_real' => $lucroReal,
+            'lucro_real_formatted' => self::money($lucroReal),
+            'roas' => $roas,
+            'cpa' => $cpa,
+            'cpa_formatted' => self::money($cpa),
             'ticket_medio' => $ticketMedio,
             'ticket_medio_formatted' => self::money($ticketMedio),
             'ticket_medio_liquido' => $ticketMedioLiquido,
@@ -639,11 +674,13 @@ final class DailySalesReportService
         }
 
         $diaLabel = $data['date'].($data['day_suffix'] ?? '');
+        $adSection = $this->formatAdSection($data);
 
         return "📊 *RELATÓRIO DIÁRIO DE VENDAS* 🚀\n"
             ."📅 *Data:* {$diaLabel}\n\n"
             ."💰 *Faturamento Total:* {$data['total_formatted']}\n"
             ."💵 *Valor Líquido:* {$data['net_total_formatted']}\n"
+            .$adSection
             ."✅ *Vendas Aprovadas:* {$data['orders_count']}\n"
             ."💳 *Ticket Médio:* {$data['ticket_medio_formatted']}\n"
             ."⏳ *Vendas Pendentes:* {$data['pending_total_formatted']} ({$data['pending_count']} pedidos)\n"
@@ -663,10 +700,13 @@ final class DailySalesReportService
             return $this->templates->render($customTemplate, ['report' => $data, ...$data]);
         }
 
+        $adSection = $this->formatAdSection($data);
+
         return "📊 *RELATÓRIO SEMANAL DE VENDAS* 🚀\n"
             ."📅 *Período:* {$data['date']} (Segunda a Domingo)\n\n"
             ."💰 *Faturamento Total:* {$data['total_formatted']}\n"
             ."💵 *Valor Líquido:* {$data['net_total_formatted']}\n"
+            .$adSection
             ."✅ *Vendas Aprovadas:* {$data['orders_count']}\n"
             ."💳 *Ticket Médio:* {$data['ticket_medio_formatted']}\n"
             ."⏳ *Vendas Pendentes:* {$data['pending_total_formatted']} ({$data['pending_count']} pedidos)\n"
@@ -687,11 +727,13 @@ final class DailySalesReportService
         }
 
         $mesAno = ! empty($data['month_name']) ? "({$data['month_name']}/{$data['year']})" : '';
+        $adSection = $this->formatAdSection($data);
 
         return "📊 *RELATÓRIO MENSAL DE VENDAS* 🚀\n"
             ."📅 *Período:* {$data['date']} {$mesAno}\n\n"
             ."💰 *Faturamento Total:* {$data['total_formatted']}\n"
             ."💵 *Valor Líquido:* {$data['net_total_formatted']}\n"
+            .$adSection
             ."✅ *Vendas Aprovadas:* {$data['orders_count']}\n"
             ."💳 *Ticket Médio:* {$data['ticket_medio_formatted']}\n"
             ."⏳ *Vendas Pendentes:* {$data['pending_total_formatted']} ({$data['pending_count']} pedidos)\n"
@@ -711,10 +753,13 @@ final class DailySalesReportService
             return $this->templates->render($customTemplate, ['report' => $data, ...$data]);
         }
 
+        $adSection = $this->formatAdSection($data);
+
         return "📊 *RELATÓRIO ANUAL DE VENDAS* 🚀\n"
             ."📅 *Período:* {$data['date']} ({$data['year']})\n\n"
             ."💰 *Faturamento Total:* {$data['total_formatted']}\n"
             ."💵 *Valor Líquido:* {$data['net_total_formatted']}\n"
+            .$adSection
             ."✅ *Vendas Aprovadas:* {$data['orders_count']}\n"
             ."💳 *Ticket Médio:* {$data['ticket_medio_formatted']}\n"
             ."⏳ *Vendas Pendentes:* {$data['pending_total_formatted']} ({$data['pending_count']} pedidos)\n"
@@ -723,6 +768,23 @@ final class DailySalesReportService
             ."📦 *Produtos Vendidos:*\n{$data['products_text']}\n"
             ."{$data['bumps_section']}\n"
             .'_Relatório anual automático ZapRei / Getfy._';
+    }
+
+    /**
+     * Formata o bloco de inteligência de tráfego pago (Meta Ads) caso haja investimento no período.
+     */
+    private function formatAdSection(array $data): string
+    {
+        if (! empty($data['ad_spend']) && (float) $data['ad_spend'] > 0) {
+            return "🎯 *Investimento Meta Ads:* {$data['ad_spend_formatted']}\n"
+                ."───────────────────────\n"
+                ."🟢 *LUCRO LÍQUIDO REAL:* {$data['lucro_real_formatted']}\n"
+                ."📈 *ROAS Real:* {$data['roas']}x\n"
+                ."🎯 *CPA Médio:* {$data['cpa_formatted']} / venda\n"
+                ."───────────────────────\n";
+        }
+
+        return '';
     }
 
     /**
