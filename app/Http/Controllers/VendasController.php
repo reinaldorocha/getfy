@@ -453,8 +453,13 @@ class VendasController extends Controller
         $vendas = $filteredQuery
             ->with([
                 'product:id,name',
+                'productOffer:id,name',
+                'subscriptionPlan:id,name',
                 'user:id,name,email',
-                'orderItems:id,order_id,amount',
+                'orderItems.product:id,name',
+                'orderItems.productOffer:id,name',
+                'orderItems.subscriptionPlan:id,name',
+                'orderItems.productOrderBump:id,title',
                 'commissionEntries:id,order_id,role,commission_amount',
             ])
             ->orderByDesc('created_at')
@@ -462,10 +467,50 @@ class VendasController extends Controller
 
         $producerSaleAmount = app(ProducerSaleAmount::class);
 
-        $rows = $vendas->map(function (Order $o) use ($producerSaleAmount) {
+        $rows = $vendas->flatMap(function (Order $o) use ($producerSaleAmount) {
             $display = $producerSaleAmount->forOrder($o);
+            $totalOrderGross = (float) ($display['gross_total'] ?? $o->lineItemsTotalAmount());
+            $totalOrderNet = (float) $display['amount'];
+            $items = $o->orderItems;
 
-            return [
+            if ($items && $items->count() > 1) {
+                $allocatedNet = 0.0;
+                $itemsCount = $items->count();
+
+                return $items->values()->map(function (OrderItem $item, int $index) use (
+                    $o,
+                    $itemsCount,
+                    $totalOrderGross,
+                    $totalOrderNet,
+                    &$allocatedNet
+                ) {
+                    $isLast = ($index === $itemsCount - 1);
+                    $itemGross = (float) ($item->amount ?? 0);
+
+                    if ($isLast) {
+                        $itemNet = round($totalOrderNet - $allocatedNet, 2);
+                    } else {
+                        $itemNet = $totalOrderGross > 0
+                            ? round($totalOrderNet * ($itemGross / $totalOrderGross), 2)
+                            : 0.0;
+                        $allocatedNet += $itemNet;
+                    }
+
+                    return [
+                        'data' => $o->created_at?->format('d/m/Y H:i'),
+                        'produto' => $this->orderItemDisplayName($item, $o),
+                        'cliente' => $o->user?->name ?? $o->email ?? '–',
+                        'email' => $o->email ?? '–',
+                        'status' => $this->statusLabel($o->status),
+                        'gateway' => $o->paymentMethodDisplayLabel(),
+                        'moeda' => $o->getCurrencyOrDefault(),
+                        'valor_bruto' => number_format($itemGross, 2, ',', '.'),
+                        'valor_liquido' => number_format($itemNet, 2, ',', '.'),
+                    ];
+                });
+            }
+
+            return [[
                 'data' => $o->created_at?->format('d/m/Y H:i'),
                 'produto' => $this->productDisplayName($o),
                 'cliente' => $o->user?->name ?? $o->email ?? '–',
@@ -473,10 +518,10 @@ class VendasController extends Controller
                 'status' => $this->statusLabel($o->status),
                 'gateway' => $o->paymentMethodDisplayLabel(),
                 'moeda' => $o->getCurrencyOrDefault(),
-                'valor_bruto' => number_format((float) ($display['gross_total'] ?? $o->lineItemsTotalAmount()), 2, ',', '.'),
-                'valor_liquido' => number_format($display['amount'], 2, ',', '.'),
-            ];
-        })->all();
+                'valor_bruto' => number_format($totalOrderGross, 2, ',', '.'),
+                'valor_liquido' => number_format($totalOrderNet, 2, ',', '.'),
+            ]];
+        })->values()->all();
 
         $headers = ['Data', 'Produto', 'Cliente', 'E-mail', 'Status', 'Método', 'Moeda', 'Valor bruto', 'Valor líquido'];
 
@@ -808,6 +853,34 @@ class VendasController extends Controller
         }
 
         return $name;
+    }
+
+    private function orderItemDisplayName(OrderItem $item, Order $order): string
+    {
+        $isBump = ($item->product_order_bump_id !== null) || ((int) ($item->position ?? 0) > 0);
+
+        if (! $isBump && (int) ($item->position ?? 0) === 0) {
+            return $this->productDisplayName($order);
+        }
+
+        $baseName = $item->product?->name;
+        if ($baseName) {
+            if ($item->productOffer?->name) {
+                $baseName .= ' - '.$item->productOffer->name;
+            } elseif ($item->subscriptionPlan?->name) {
+                $baseName .= ' - '.$item->subscriptionPlan->name;
+            }
+        } elseif ($item->productOrderBump?->title) {
+            $baseName = $item->productOrderBump->title;
+        } else {
+            $baseName = 'Order Bump';
+        }
+
+        if ($isBump && ! str_contains(mb_strtolower($baseName), 'bump')) {
+            $baseName .= ' (Order Bump)';
+        }
+
+        return $baseName;
     }
 
     private function paymentTypeLabel(Order $order): string
