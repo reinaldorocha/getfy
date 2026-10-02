@@ -104,6 +104,7 @@ final class OrderReader
             self::hasRelation($subject, 'user') ? 'user' : null,
             self::hasRelation($subject, 'subscriptionPlan') ? 'subscriptionPlan' : null,
             self::hasRelation($subject, 'productOffer') ? 'productOffer' : null,
+            self::hasRelation($subject, 'orderItems') ? 'orderItems.product' : null,
         ])));
 
         $metadata = is_array($subject->metadata ?? null) ? $subject->metadata : [];
@@ -125,8 +126,23 @@ final class OrderReader
         $currency = strtoupper(trim((string) (
             $subject->currency ?? $priceSource?->currency ?? 'BRL'
         ))) ?: 'BRL';
-        $amount = (float) ($subject->amount ?? $priceSource?->price ?? 0);
+
+        $paidAmount = (float) ($subject->amount ?? $priceSource?->price ?? 0);
+        if ($subject instanceof Order) {
+            $itemsTotal = $subject->lineItemsTotalAmount();
+            $amount = $itemsTotal > 0 ? $itemsTotal : $paidAmount;
+        } else {
+            $amount = $paidAmount;
+        }
+
         $product = $subject->product ?? null;
+        $installments = max(1, (int) ($metadata['card_installments'] ?? $metadata['installments'] ?? $metadata['installment_count'] ?? 1));
+
+        $paymentMethod = method_exists($subject, 'checkoutPaymentMethod') ? (string) $subject->checkoutPaymentMethod() : '';
+        $paymentMethodLabel = self::paymentMethodLabel($paymentMethod);
+        if ($paymentMethod === 'card' && $installments > 1) {
+            $paymentMethodLabel .= " ({$installments}x)";
+        }
 
         return [
             'tenant_id' => $tenantId,
@@ -154,11 +170,15 @@ final class OrderReader
                 'amount_formatted' => self::money($amount, $currency),
                 'total_amount' => $amount,
                 'total_amount_formatted' => self::money($amount, $currency),
+                'paid_amount' => $paidAmount,
+                'paid_amount_formatted' => self::money($paidAmount, $currency),
+                'installments' => $installments,
+                'installments_text' => "{$installments}x",
                 'currency' => $currency,
                 'gateway' => (string) ($subject->gateway ?? ''),
                 // pix/pix_auto/card/boleto/... — método real do checkout, não o slug do gateway.
-                'payment_method' => $paymentMethod = method_exists($subject, 'checkoutPaymentMethod') ? (string) $subject->checkoutPaymentMethod() : '',
-                'payment_method_label' => self::paymentMethodLabel($paymentMethod),
+                'payment_method' => $paymentMethod,
+                'payment_method_label' => $paymentMethodLabel,
                 'metadata' => $metadata,
                 'product' => [
                     'id' => $product?->id,

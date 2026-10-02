@@ -500,4 +500,42 @@ class WebhookPayloadBuilderTest extends TestCase
                 && $body['event'] === 'pedido_pago';
         });
     }
+
+    public function test_webhook_payload_uses_product_amount_and_includes_installments_when_interest_applied(): void
+    {
+        $product = $this->createTestProduct(['price' => 397.00]);
+
+        $order = Order::create([
+            'tenant_id' => $product->tenant_id,
+            'product_id' => $product->id,
+            'status' => 'completed',
+            'amount' => 491.12,
+            'currency' => 'BRL',
+            'email' => 'buyer@test.com',
+            'gateway' => 'pagarme',
+            'metadata' => [
+                'checkout_payment_method' => 'card',
+                'card_installments' => 12,
+            ],
+        ]);
+
+        \App\Models\OrderItem::create([
+            'order_id' => $order->id,
+            'product_id' => $product->id,
+            'amount' => 397.00,
+            'position' => 0,
+        ]);
+
+        $payload = WebhookPayloadBuilder::forOrderEvent($order->fresh(['orderItems']));
+
+        $this->assertSame(397.0, $payload['amount']);
+        $this->assertSame(397.0, $payload['order']['amount']);
+        $this->assertSame(491.12, $payload['paid_amount']);
+        $this->assertSame(491.12, $payload['order']['paid_amount']);
+        $this->assertSame(12, $payload['installments']);
+        $this->assertSame('12x', $payload['installments_text']);
+        $this->assertSame(12, $payload['payment']['installments']);
+        $this->assertSame('12x', $payload['payment']['installments_text']);
+        $this->assertSame('card', $payload['payment']['method']);
+    }
 }

@@ -226,10 +226,16 @@ class WebhookPayloadBuilder
      */
     private static function orderSnapshot(Order $order): array
     {
+        $saleAmount = $order->lineItemsTotalAmount();
+        $paidAmount = (float) $order->amount;
+        $amount = $saleAmount > 0 ? $saleAmount : $paidAmount;
+
         $snapshot = [
             'id' => $order->id,
             'status' => $order->status,
-            'amount' => (float) $order->amount,
+            'amount' => $amount,
+            'original_amount' => $amount,
+            'paid_amount' => $paidAmount,
             'currency' => $order->getCurrencyOrDefault(),
             'coupon_code' => $order->coupon_code,
             'is_renewal' => (bool) $order->is_renewal,
@@ -282,10 +288,15 @@ class WebhookPayloadBuilder
     ): array {
         $method = (string) ($payment['method'] ?? 'pix');
         $meta = is_array($order->metadata) ? $order->metadata : [];
+        $saleAmount = $order->lineItemsTotalAmount();
+        $paidAmount = (float) $order->amount;
+        $amount = $saleAmount > 0 ? $saleAmount : $paidAmount;
 
         $aliases = [
             'checkoutUrl' => $checkoutLink,
-            'amount' => (float) $order->amount,
+            'amount' => $amount,
+            'original_amount' => $amount,
+            'paid_amount' => $paidAmount,
             'status' => self::integrationOrderStatus((string) $order->status),
             'createdAt' => $order->created_at?->toIso8601String(),
             'paidAt' => $order->status === 'completed' ? $order->updated_at?->toIso8601String() : null,
@@ -294,8 +305,10 @@ class WebhookPayloadBuilder
             'couponCode' => $order->coupon_code,
         ];
 
-        if (isset($meta['installments'])) {
-            $aliases['installments'] = max(1, (int) $meta['installments']);
+        $installments = max(1, (int) ($meta['card_installments'] ?? $meta['installments'] ?? $meta['installment_count'] ?? 1));
+        if ($method === 'card' || isset($meta['card_installments']) || isset($meta['installments']) || isset($meta['installment_count'])) {
+            $aliases['installments'] = $installments;
+            $aliases['installments_text'] = "{$installments}x";
         }
 
         foreach (['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'fbc', 'fbp', 'sck'] as $key) {
@@ -589,15 +602,26 @@ class WebhookPayloadBuilder
     }
 
     /**
-     * @return array{method: string, gateway: ?string, gateway_transaction_id: ?string}
+     * @return array<string, mixed>
      */
     private static function paymentFromOrder(Order $order): array
     {
-        return [
-            'method' => $order->checkoutPaymentMethod(),
+        $meta = is_array($order->metadata) ? $order->metadata : [];
+        $method = $order->checkoutPaymentMethod();
+        $installments = max(1, (int) ($meta['card_installments'] ?? $meta['installments'] ?? $meta['installment_count'] ?? 1));
+
+        $payment = [
+            'method' => $method,
             'gateway' => $order->gateway,
             'gateway_transaction_id' => $order->gateway_id,
         ];
+
+        if ($method === 'card' || isset($meta['card_installments']) || isset($meta['installments']) || isset($meta['installment_count'])) {
+            $payment['installments'] = $installments;
+            $payment['installments_text'] = "{$installments}x";
+        }
+
+        return $payment;
     }
 
     /**

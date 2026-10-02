@@ -203,6 +203,7 @@ class PaymentService
 
                     $metadata = is_array($order->metadata) ? $order->metadata : [];
                     $metadata['card_installments'] = $installments;
+                    $metadata['installments'] = $installments;
                     $metadata['pagarme_fee_rate_percent'] = $rate;
                     $metadata['pagarme_fee_passed_to_customer'] = $passFeeToCustomer;
                     $metadata['pagarme_fee_assumption_percent'] = $producerFeeAssumptionPercent;
