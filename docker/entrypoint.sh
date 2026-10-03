@@ -65,9 +65,6 @@ fi
 
 # Injeta variáveis persistentes do volume .docker/custom.env (sobrevive a updates e rebuilds)
 if [ -f .docker/custom.env ]; then
-  set -a
-  . .docker/custom.env 2>/dev/null || true
-  set +a
   php -r '
 $sharedFile = ".docker/custom.env";
 $envFile = ".env";
@@ -251,8 +248,7 @@ $existing = is_file($sharedFile) ? (string) file_get_contents($sharedFile) : "";
 $existing = str_replace("\r\n", "\n", $existing);
 foreach (["UTM_TRACK_URL","UTM_TRACK_TOKEN"] as $k) {
   if (!preg_match("/^\\s*".$k."\\s*=\\s*(.+)\\s*$/mi", $env, $m)) { continue; }
-  $v = trim((string) ($m[1] ?? ""));
-  $v = trim($v, "\"'`");
+  $v = trim(trim((string) ($m[1] ?? "")), "\"'\");
   if ($v === "") { continue; }
   $line = $k . "=" . $v;
   $pattern = "/^\\s*" . preg_quote($k, "/") . "\\s*=.*$/m";
