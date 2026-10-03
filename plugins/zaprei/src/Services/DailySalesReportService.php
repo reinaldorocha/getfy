@@ -785,10 +785,13 @@ final class DailySalesReportService
                 $taxLine = "💸 *Imposto Meta Ads:* {$data['ad_spend_tax_formatted']}\n";
             }
 
+            $lucroReal = (float) ($data['lucro_real'] ?? 0.0);
+            $lucroLabel = $lucroReal >= 0 ? '🟢 *LUCRO LÍQUIDO REAL:*' : '🔴 *PREJUÍZO LÍQUIDO REAL:*';
+
             return "🎯 *Investimento Meta Ads:* {$data['ad_spend_formatted']}\n"
                 .$taxLine
                 ."───────────────────────\n"
-                ."🟢 *LUCRO LÍQUIDO REAL:* {$data['lucro_real_formatted']}\n"
+                ."{$lucroLabel} {$data['lucro_real_formatted']}\n"
                 ."📈 *ROAS Real:* {$data['roas']}x\n"
                 ."🎯 *CPA Médio:* {$data['cpa_formatted']} / venda\n"
                 ."───────────────────────\n";
