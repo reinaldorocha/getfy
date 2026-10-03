@@ -237,31 +237,4 @@ if ($out !== "") {
 }
 ';
 
-# Persiste UTM_TRACK em arquivo compartilhado no volume .docker para que sobreviva a updates do Docker.
-php -r '
-$envFile = ".env";
-$sharedFile = ".docker/custom.env";
-if (!is_file($envFile)) { exit(0); }
-$env = (string) file_get_contents($envFile);
-$env = str_replace("\r\n", "\n", $env);
-$existing = is_file($sharedFile) ? (string) file_get_contents($sharedFile) : "";
-$existing = str_replace("\r\n", "\n", $existing);
-foreach (["UTM_TRACK_URL","UTM_TRACK_TOKEN"] as $k) {
-  if (!preg_match("/^\\s*".$k."\\s*=\\s*(.+)\\s*$/mi", $env, $m)) { continue; }
-  $v = trim(trim((string) ($m[1] ?? "")), "\"'\");
-  if ($v === "") { continue; }
-  $line = $k . "=" . $v;
-  $pattern = "/^\\s*" . preg_quote($k, "/") . "\\s*=.*$/m";
-  if (preg_match($pattern, $existing)) {
-    $existing = (string) preg_replace($pattern, $line, $existing);
-  } else {
-    $existing = rtrim($existing, "\r\n") . "\n" . $line . "\n";
-  }
-}
-if ($existing !== "") {
-  @mkdir(dirname($sharedFile), 0777, true);
-  file_put_contents($sharedFile, $existing);
-}
-';
-
 exec "$@"
