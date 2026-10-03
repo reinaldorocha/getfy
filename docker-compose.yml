@@ -36,8 +36,6 @@ services:
       SESSION_DRIVER: ${GETFY_SESSION_DRIVER:-file}
       GETFY_DOCKER: "true"
       GETFY_RUN_SETUP: "true"
-      UTM_TRACK_URL: ${UTM_TRACK_URL:-https://utm.profjonathanrocha.com.br}
-      UTM_TRACK_TOKEN: ${UTM_TRACK_TOKEN:-}
     depends_on:
       mysql:
         condition: service_healthy

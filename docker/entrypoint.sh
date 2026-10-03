@@ -65,6 +65,9 @@ fi
 
 # Injeta variáveis persistentes do volume .docker/custom.env (sobrevive a updates e rebuilds)
 if [ -f .docker/custom.env ]; then
+  set -a
+  . .docker/custom.env 2>/dev/null || true
+  set +a
   php -r '
 $sharedFile = ".docker/custom.env";
 $envFile = ".env";
@@ -150,8 +153,6 @@ $vars = [
     "REDIS_HOST" => getenv("REDIS_HOST") ?: "redis",
     "REDIS_PORT" => getenv("REDIS_PORT") ?: "6379",
     "REDIS_PASSWORD" => getenv("REDIS_PASSWORD") ?: "null",
-    "UTM_TRACK_URL" => getenv("UTM_TRACK_URL") ?: null,
-    "UTM_TRACK_TOKEN" => getenv("UTM_TRACK_TOKEN") ?: null,
 ];
 foreach ($vars as $key => $value) {
     if ($value === null) {
@@ -251,11 +252,9 @@ $existing = str_replace("\r\n", "\n", $existing);
 foreach (["UTM_TRACK_URL","UTM_TRACK_TOKEN"] as $k) {
   if (!preg_match("/^\\s*".$k."\\s*=\\s*(.+)\\s*$/mi", $env, $m)) { continue; }
   $v = trim((string) ($m[1] ?? ""));
-  $v = trim($v, " \\t\\n\\r\\0\\x0B\\\"\\x27`");
+  $v = trim($v, "\"'`");
   if ($v === "") { continue; }
-  $needsQuotes = (bool) preg_match("/\\s|#|\"|\\x27|`/", $v);
-  $escaped = $needsQuotes ? ("\"" . str_replace("\"", "\\\"", $v) . "\"") : $v;
-  $line = $k . "=" . $escaped;
+  $line = $k . "=" . $v;
   $pattern = "/^\\s*" . preg_quote($k, "/") . "\\s*=.*$/m";
   if (preg_match($pattern, $existing)) {
     $existing = (string) preg_replace($pattern, $line, $existing);
