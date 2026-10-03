@@ -63,6 +63,36 @@ file_put_contents($envFile, $env);
 ';
 fi
 
+# Injeta variáveis persistentes do volume .docker/custom.env (sobrevive a updates e rebuilds)
+if [ -f .docker/custom.env ]; then
+  php -r '
+$sharedFile = ".docker/custom.env";
+$envFile = ".env";
+if (!is_file($sharedFile) || !is_file($envFile)) { exit(0); }
+$shared = (string) file_get_contents($sharedFile);
+$env = (string) file_get_contents($envFile);
+$env = str_replace("\r\n", "\n", $env);
+$shared = str_replace("\r\n", "\n", $shared);
+$lines = explode("\n", $shared);
+foreach ($lines as $line) {
+  $line = trim($line);
+  if ($line === "" || str_starts_with($line, "#") || !str_contains($line, "=")) { continue; }
+  [$k, $v] = explode("=", $line, 2);
+  $k = trim($k);
+  $v = trim($v);
+  if ($k === "") { continue; }
+  $pattern = "/^\\s*" . preg_quote($k, "/") . "\\s*=.*$/m";
+  $formattedLine = $k . "=" . $v;
+  if (preg_match($pattern, $env)) {
+    $env = (string) preg_replace($pattern, $formattedLine, $env);
+  } else {
+    $env = rtrim($env, "\r\n") . "\n" . $formattedLine . "\n";
+  }
+}
+file_put_contents($envFile, $env);
+';
+fi
+
 # Se houver cache de config, pode "prender" env antigo. Limpa de forma segura (sem falhar o boot).
 rm -f bootstrap/cache/config.php 2>/dev/null || true
 
@@ -120,6 +150,8 @@ $vars = [
     "REDIS_HOST" => getenv("REDIS_HOST") ?: "redis",
     "REDIS_PORT" => getenv("REDIS_PORT") ?: "6379",
     "REDIS_PASSWORD" => getenv("REDIS_PASSWORD") ?: "null",
+    "UTM_TRACK_URL" => getenv("UTM_TRACK_URL") ?: null,
+    "UTM_TRACK_TOKEN" => getenv("UTM_TRACK_TOKEN") ?: null,
 ];
 foreach ($vars as $key => $value) {
     if ($value === null) {
@@ -204,6 +236,36 @@ foreach (["PWA_VAPID_PUBLIC","PWA_VAPID_PRIVATE"] as $k) {
 if ($out !== "") {
   @mkdir(dirname($sharedFile), 0777, true);
   file_put_contents($sharedFile, $out);
+}
+';
+
+# Persiste UTM_TRACK em arquivo compartilhado no volume .docker para que sobreviva a updates do Docker.
+php -r '
+$envFile = ".env";
+$sharedFile = ".docker/custom.env";
+if (!is_file($envFile)) { exit(0); }
+$env = (string) file_get_contents($envFile);
+$env = str_replace("\r\n", "\n", $env);
+$existing = is_file($sharedFile) ? (string) file_get_contents($sharedFile) : "";
+$existing = str_replace("\r\n", "\n", $existing);
+foreach (["UTM_TRACK_URL","UTM_TRACK_TOKEN"] as $k) {
+  if (!preg_match("/^\\s*".$k."\\s*=\\s*(.+)\\s*$/mi", $env, $m)) { continue; }
+  $v = trim((string) ($m[1] ?? ""));
+  $v = trim($v, " \\t\\n\\r\\0\\x0B\\\"\\x27`");
+  if ($v === "") { continue; }
+  $needsQuotes = (bool) preg_match("/\\s|#|\"|\\x27|`/", $v);
+  $escaped = $needsQuotes ? ("\"" . str_replace("\"", "\\\"", $v) . "\"") : $v;
+  $line = $k . "=" . $escaped;
+  $pattern = "/^\\s*" . preg_quote($k, "/") . "\\s*=.*$/m";
+  if (preg_match($pattern, $existing)) {
+    $existing = (string) preg_replace($pattern, $line, $existing);
+  } else {
+    $existing = rtrim($existing, "\r\n") . "\n" . $line . "\n";
+  }
+}
+if ($existing !== "") {
+  @mkdir(dirname($sharedFile), 0777, true);
+  file_put_contents($sharedFile, $existing);
 }
 ';
 
