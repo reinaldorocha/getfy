@@ -159,6 +159,7 @@ const TEMPLATE_TAGS = [
     { tag: '{{total_formatted}}', label: 'Faturamento bruto total' },
     { tag: '{{net_total_formatted}}', label: 'Valor líquido total' },
     { tag: '{{ad_spend_formatted}}', label: 'Investimento Meta Ads' },
+    { tag: '{{ad_spend_tax_formatted}}', label: 'Imposto Meta Ads' },
     { tag: '{{lucro_real_formatted}}', label: 'Lucro Líquido Real' },
     { tag: '{{roas}}', label: 'ROAS Real' },
     { tag: '{{cpa_formatted}}', label: 'CPA Médio' },

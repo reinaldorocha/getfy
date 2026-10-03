@@ -505,6 +505,7 @@ final class DailySalesReportService
         $refundedCount = $refundedOrders->count();
 
         $adSpend = 0.0;
+        $adSpendTax = 0.0;
         try {
             $utmUrl = rtrim((string) (config('services.utm_track.url') ?: env('UTM_TRACK_URL', '')), '/');
             $utmToken = (string) (config('services.utm_track.token') ?: env('UTM_TRACK_TOKEN', ''));
@@ -520,13 +521,14 @@ final class DailySalesReportService
                     ]);
                 if ($response->successful()) {
                     $adSpend = (float) ($response->json('ad_spend') ?? 0.0);
+                    $adSpendTax = (float) ($response->json('taxes.ad_spend_tax') ?? 0.0);
                 }
             }
         } catch (Throwable $e) {
             Log::warning('[ZapRei] Falha ao consultar ad_spend no utm-track: '.$e->getMessage());
         }
 
-        $lucroReal = $totalNetCompleted - $adSpend;
+        $lucroReal = $totalNetCompleted - ($adSpend + $adSpendTax);
         $roas = $adSpend > 0 ? round($totalCompleted / $adSpend, 2) : 0.0;
         $cpa = $completedCount > 0 && $adSpend > 0 ? round($adSpend / $completedCount, 2) : 0.0;
 
@@ -636,6 +638,8 @@ final class DailySalesReportService
             'lucro_liquido' => self::money($totalNetCompleted),
             'ad_spend' => $adSpend,
             'ad_spend_formatted' => self::money($adSpend),
+            'ad_spend_tax' => $adSpendTax,
+            'ad_spend_tax_formatted' => self::money($adSpendTax),
             'lucro_real' => $lucroReal,
             'lucro_real_formatted' => self::money($lucroReal),
             'roas' => $roas,
@@ -776,7 +780,13 @@ final class DailySalesReportService
     private function formatAdSection(array $data): string
     {
         if (! empty($data['ad_spend']) && (float) $data['ad_spend'] > 0) {
+            $taxLine = '';
+            if (isset($data['ad_spend_tax']) && (float) $data['ad_spend_tax'] > 0) {
+                $taxLine = "💸 *Imposto Meta Ads:* {$data['ad_spend_tax_formatted']}\n";
+            }
+
             return "🎯 *Investimento Meta Ads:* {$data['ad_spend_formatted']}\n"
+                .$taxLine
                 ."───────────────────────\n"
                 ."🟢 *LUCRO LÍQUIDO REAL:* {$data['lucro_real_formatted']}\n"
                 ."📈 *ROAS Real:* {$data['roas']}x\n"
