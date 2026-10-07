@@ -55,6 +55,8 @@ Route::delete('/subtopics/{subtopic}', [ContentController::class, 'destroySubtop
 /* Banco de questões */
 Route::post('/questions', [QuestionController::class, 'store'])->name('mentoria.questions.store');
 Route::post('/questions/import', [QuestionController::class, 'import'])->name('mentoria.questions.import');
+Route::post('/questions/bulk-delete', [QuestionController::class, 'bulkDestroy'])->name('mentoria.questions.bulk-destroy');
+Route::delete('/questions/bulk-delete', [QuestionController::class, 'bulkDestroy'])->name('mentoria.questions.bulk-destroy.delete');
 Route::patch('/questions/{question}', [QuestionController::class, 'update'])->name('mentoria.questions.update');
 Route::delete('/questions/{question}', [QuestionController::class, 'destroy'])->name('mentoria.questions.destroy');
 

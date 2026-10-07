@@ -1,6 +1,6 @@
 import { h, ref, computed, onMounted, watch } from 'vue';
-import { api, alertBox, badge, btn, card, choiceCard, cn, empty, jsonBody, sectionTitle } from './shared.js?v=db9a37b0201d';
-import { displayAlternative } from './question-alternatives.js?v=db9a37b0201d';
+import { api, alertBox, badge, btn, card, choiceCard, cn, empty, jsonBody, sectionTitle } from './shared.js?v=0a442d56c082';
+import { displayAlternative } from './question-alternatives.js?v=0a442d56c082';
 
 function flattenLessons(produto) {
     const rows = [];

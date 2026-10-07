@@ -198,6 +198,30 @@ export const ICONS = {
         p('M15 13v2'),
         p('M9 13v2'),
     ],
+    target: () => [
+        c(12, 12, 10),
+        c(12, 12, 6),
+        c(12, 12, 2),
+    ],
+    zap: () => [
+        pg('13 2 3 14 12 14 11 22 21 10 12 10 13 2'),
+    ],
+    maximize: () => [
+        p('M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3'),
+    ],
+    minimize: () => [
+        p('M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3'),
+    ],
+    alertTriangle: () => [
+        p('m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z'),
+        l(12, 9, 12, 13),
+        l(12, 17, 12.01, 17),
+    ],
+    radar: () => [
+        c(12, 12, 10),
+        c(12, 12, 5),
+        p('M12 2a10 10 0 0 1 10 10'),
+    ],
 };
 
 export function svgIcon(name, extraClass = '', size = 18) {
@@ -355,16 +379,33 @@ export const sectionTitle = (title, subtitle = '', action = null) => h('div', {
     action,
 ]);
 
-export const stat = (label, value, hint = '', tone = '', icon = null) => h('div', {
-    class: cn('mentoria-stat', tone),
-}, [
-    h('div', { class: 'mentoria-stat__header' }, [
-        h('span', { class: 'mentoria-stat__label' }, label),
-        icon ? h('span', { class: 'mentoria-stat__icon' }, [renderIcon(icon, '', 15)]) : null,
-    ]),
-    h('div', { class: 'mentoria-stat__value' }, String(value ?? 0)),
-    hint ? h('div', { class: 'mentoria-stat__hint' }, hint) : null,
-]);
+export const stat = (label, value, hint = '', tone = '', icon = null, options = null) => {
+    let toneClass = '';
+    if (tone) {
+        if (tone.startsWith('mentoria-')) {
+            toneClass = tone;
+        } else {
+            toneClass = 'mentoria-stat--' + tone;
+        }
+    }
+    const meterVal = options && typeof options === 'object' && options.meter !== undefined && options.meter !== null
+        ? Math.max(0, Math.min(100, Number(options.meter) || 0))
+        : null;
+
+    return h('div', {
+        class: cn('mentoria-stat', toneClass),
+    }, [
+        h('div', { class: 'mentoria-stat__header' }, [
+            h('span', { class: 'mentoria-stat__label' }, label),
+            icon ? h('span', { class: 'mentoria-stat__icon-box' }, [renderIcon(icon, '', 14)]) : null,
+        ]),
+        h('div', { class: 'mentoria-stat__value' }, String(value ?? 0)),
+        meterVal !== null ? h('div', { class: 'mentoria-stat__meter', 'aria-hidden': 'true' }, [
+            h('div', { class: 'mentoria-stat__meter-fill', style: { width: meterVal + '%' } }),
+        ]) : null,
+        hint ? h('div', { class: 'mentoria-stat__hint' }, hint) : null,
+    ]);
+};
 
 export const empty = (text) => h('div', {
     class: 'mentoria-empty-state',
@@ -466,6 +507,106 @@ export const choiceCard = ({ letter, text, selected, correct, wrong, disabled, o
         h('span', { class: 'mentoria-choice-card__text' }, text),
         correct ? h('span', { class: 'mentoria-choice-card__status' }, '✓') : null,
         wrong ? h('span', { class: 'mentoria-choice-card__status' }, '✕') : null,
+    ]);
+};
+
+export const renderRadarChart = (data = [], { size = 300, max = 100 } = {}) => {
+    if (!Array.isArray(data) || data.length < 3) {
+        return h('div', { class: 'mentoria-radar-empty' }, [
+            h('span', { class: 'text-xs text-zinc-400' }, 'Necessário ao menos 3 disciplinas para gerar o radar comparativo.'),
+        ]);
+    }
+    const n = data.length;
+    const center = size / 2;
+    const radius = (size / 2) - 44;
+    const levels = [0.25, 0.5, 0.75, 1.0];
+    const angleOf = (i) => (2 * Math.PI * i / n) - (Math.PI / 2);
+
+    const levelPolygons = levels.map((lvl) => {
+        const pts = [];
+        for (let i = 0; i < n; i++) {
+            const a = angleOf(i);
+            const r = radius * lvl;
+            pts.push(`${(center + r * Math.cos(a)).toFixed(1)},${(center + r * Math.sin(a)).toFixed(1)}`);
+        }
+        return h('polygon', {
+            points: pts.join(' '),
+            class: 'mentoria-radar-grid',
+            fill: 'none',
+        });
+    });
+
+    const axisLines = [];
+    const labels = [];
+    for (let i = 0; i < n; i++) {
+        const a = angleOf(i);
+        const x2 = center + radius * Math.cos(a);
+        const y2 = center + radius * Math.sin(a);
+        axisLines.push(h('line', {
+            x1: center,
+            y1: center,
+            x2,
+            y2,
+            class: 'mentoria-radar-axis',
+        }));
+
+        const labelDist = radius + 22;
+        const lx = center + labelDist * Math.cos(a);
+        const ly = center + labelDist * Math.sin(a);
+        const item = data[i];
+        const valText = item.value !== null && item.value !== undefined ? `${Math.round(item.value)}%` : '—';
+        const shortName = String(item.label || '').length > 14
+            ? String(item.label || '').slice(0, 12) + '…'
+            : String(item.label || '');
+
+        labels.push(h('text', {
+            x: lx,
+            y: ly,
+            class: 'mentoria-radar-label',
+            'text-anchor': 'middle',
+            'dominant-baseline': 'central',
+        }, [
+            h('tspan', { class: 'mentoria-radar-label-name', x: lx, dy: '-0.3em' }, shortName),
+            h('tspan', { class: 'mentoria-radar-label-val', x: lx, dy: '1.2em' }, valText),
+        ]));
+    }
+
+    const dataCoords = [];
+    const dataPoints = [];
+    for (let i = 0; i < n; i++) {
+        const a = angleOf(i);
+        const val = Math.max(0, Math.min(max, Number(data[i].value) || 0));
+        const r = radius * (val / max);
+        const dx = center + r * Math.cos(a);
+        const dy = center + r * Math.sin(a);
+        dataCoords.push(`${dx.toFixed(1)},${dy.toFixed(1)}`);
+        dataPoints.push(h('circle', {
+            cx: dx,
+            cy: dy,
+            r: 4,
+            class: 'mentoria-radar-point',
+        }));
+    }
+
+    const dataPolygon = h('polygon', {
+        points: dataCoords.join(' '),
+        class: 'mentoria-radar-polygon',
+    });
+
+    return h('div', { class: 'mentoria-radar' }, [
+        h('svg', {
+            viewBox: `0 0 ${size} ${size}`,
+            width: '100%',
+            height: '100%',
+            style: { maxWidth: `${size}px`, maxHeight: `${size}px` },
+            class: 'mentoria-radar-svg',
+        }, [
+            ...levelPolygons,
+            ...axisLines,
+            dataPolygon,
+            ...dataPoints,
+            ...labels,
+        ]),
     ]);
 };
 

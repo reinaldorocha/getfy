@@ -2,8 +2,9 @@ import { h, ref, computed } from 'vue';
 import { EDITAL_PROMPT, QUESTIONS_PROMPT, FLASHCARDS_PROMPT } from './prompts.js';
 import { radarAlerts } from './radar.js';
 import {
-    api, alertBox, badge, btn, card, checkbox, empty, field, fmtDate, fmtDateTime, fmtHours, fmtMoney,
+    api, alertBox, badge, btn, card, checkbox, cn, empty, field, fmtDate, fmtDateTime, fmtHours, fmtMoney,
     input, jsonBody, modal, optionize, progressBar, riskBadge, sectionTitle, select, stat, textarea, mentoriaShell, useMentoriaShell,
+    renderIcon,
 } from './shared.js';
 
 const TAB_ITEMS = [
@@ -32,6 +33,7 @@ export const MentoriaIndex = {
         const message = ref('');
         const success = ref('');
         const query = ref('');
+        const selectedQuestions = ref([]);
         const studentRiskFilter = ref('todos');
         const studentAlertFilter = ref('todos');
         const expandedDeck = ref('');
@@ -384,9 +386,55 @@ export const MentoriaIndex = {
             closeModal();
         }
 
+        function isQuestionSelected(id) {
+            return selectedQuestions.value.includes(id);
+        }
+
+        function toggleQuestionSelection(id) {
+            const list = selectedQuestions.value;
+            const index = list.indexOf(id);
+            if (index >= 0) {
+                selectedQuestions.value = list.filter(x => x !== id);
+            } else {
+                selectedQuestions.value = [...list, id];
+            }
+        }
+
+        function toggleSelectAllQuestions(items) {
+            const ids = items.map(x => x.id);
+            const allSelected = ids.length > 0 && ids.every(id => selectedQuestions.value.includes(id));
+            if (allSelected) {
+                selectedQuestions.value = selectedQuestions.value.filter(id => !ids.includes(id));
+            } else {
+                selectedQuestions.value = Array.from(new Set([...selectedQuestions.value, ...ids]));
+            }
+        }
+
+        function clearQuestionSelection() {
+            selectedQuestions.value = [];
+        }
+
         async function deleteQuestion(item) {
             if (!confirm('Desativar esta questão?')) return;
             await run(() => api('/mentoria/questions/' + item.id, { method: 'DELETE' }), 'Questão desativada.');
+            selectedQuestions.value = selectedQuestions.value.filter(id => id !== item.id);
+        }
+
+        async function deleteBulkQuestions() {
+            const ids = selectedQuestions.value;
+            if (!ids.length) return;
+            const count = ids.length;
+            if (!confirm(`Tem certeza que deseja excluir ${count} ${count === 1 ? 'questão selecionada' : 'questões selecionadas'} em massa?`)) {
+                return;
+            }
+            await run(async () => {
+                const res = await api('/mentoria/questions/bulk-delete', {
+                    method: 'POST',
+                    body: jsonBody({ ids }),
+                });
+                selectedQuestions.value = [];
+                return res;
+            }, `${count} ${count === 1 ? 'questão desativada' : 'questões desativadas'} em massa.`);
         }
 
         function openDeck(item = null) {
@@ -541,14 +589,25 @@ export const MentoriaIndex = {
             const contest=(student.contest_names||[])[0]||'seu concurso';
             const alerts=radarAlerts(metrics);
             let body='Olá '+student.name+', tudo bem? ';
-            if(alerts.length){
-                body+='Notei no Mentoria que sua preparação precisa de atenção';
-                body+=': '+alerts.map(alert=>alert.label.toLowerCase()).join(', ');
-                body+='. Como posso te ajudar a retomar o ritmo para '+contest+'?';
-            }else if(metrics.risk_level==='amarelo'){
-                body+='Vi alguns pontos de atenção na sua preparação para '+contest+'. Vamos ajustar o ritmo e as revisões desta semana?';
-            }else{
-                body+='Seu ritmo no Mentoria está em dia para '+contest+'. Continue mantendo a constância!';
+            const lowFreq = alerts.find(a => a.type === 'low_frequency');
+            const drop = alerts.find(a => a.type === 'accuracy_drop');
+            const pendingRev = alerts.find(a => a.type === 'pending_reviews');
+            const behind = alerts.find(a => a.type === 'edict_behind');
+
+            if (lowFreq) {
+                body += 'Aqui é da Mentoria. Notei na plataforma que você não registrou estudos nos últimos 7 dias para ' + contest + '. Sei que imprevistos acontecem, mas a constância é fundamental. Como posso te ajudar a destravar a sua rotina essa semana?';
+            } else if (drop) {
+                body += 'Aqui é da Mentoria. Analisando seu radar de desempenho para ' + contest + ', vi uma oscilação no aproveitamento das questões na última semana (' + drop.detail + '). Quer marcar um alinhamento rápido para revisarmos esses pontos de dúvida?';
+            } else if (pendingRev) {
+                body += 'Aqui é da Mentoria. Vi que você acumulou ' + pendingRev.detail + ' para ' + contest + '. A repetição espaçada é o segredo para a memorização de longo prazo. Vamos fazer uma sessão focada em blocos curtos para zerar essa fila hoje?';
+            } else if (behind) {
+                body += 'Aqui é da Mentoria. Notei no seu cronograma que o ritmo do edital para ' + contest + ' ficou um pouco abaixo da meta semanal. Vamos ajustar a carga horária para acelerar os tópicos mais estratégicos?';
+            } else if (alerts.length) {
+                body += 'Notei no Mentoria que sua preparação precisa de atenção: ' + alerts.map(alert => alert.label.toLowerCase()).join(', ') + '. Como posso te ajudar a retomar o ritmo para ' + contest + '?';
+            } else if (metrics.risk_level === 'amarelo') {
+                body += 'Vi alguns pontos de atenção na sua preparação para ' + contest + '. Vamos ajustar o ritmo e as revisões desta semana?';
+            } else {
+                body += 'Seu ritmo no Mentoria está em dia para ' + contest + '. Parabéns pela disciplina, continue mantendo a constância!';
             }
             return body;
         }
@@ -693,37 +752,122 @@ export const MentoriaIndex = {
         }
 
         function renderStudents() {
+            const isRescue = (s) => {
+                const alerts = radarAlerts(s.metrics);
+                return s.metrics?.risk_level === 'vermelho' || alerts.some(a => a.tone === 'red' || a.type === 'low_frequency' || a.type === 'accuracy_drop');
+            };
             const q = query.value.toLowerCase();
             const filtered = students.value.filter(s => {
-                const riskOk=studentRiskFilter.value==='todos'||s.metrics?.risk_level===studentRiskFilter.value;
-                const alertOk=studentAlertFilter.value==='todos'||radarAlerts(s.metrics).some(alert=>alert.type===studentAlertFilter.value);
-                const text=[s.name,s.email,...(s.contest_names||[])].join(' ').toLowerCase();
-                return riskOk&&alertOk&&(!q||text.includes(q));
+                const riskOk = studentRiskFilter.value === 'todos'
+                    ? true
+                    : studentRiskFilter.value === 'resgate'
+                        ? isRescue(s)
+                        : s.metrics?.risk_level === studentRiskFilter.value;
+                const alertOk = studentAlertFilter.value === 'todos' || radarAlerts(s.metrics).some(alert => alert.type === studentAlertFilter.value);
+                const text = [s.name, s.email, ...(s.contest_names || [])].join(' ').toLowerCase();
+                return riskOk && alertOk && (!q || text.includes(q));
             });
-            const counts={
-                todos:students.value.length,
-                vermelho:students.value.filter(s=>s.metrics?.risk_level==='vermelho').length,
-                amarelo:students.value.filter(s=>s.metrics?.risk_level==='amarelo').length,
-                verde:students.value.filter(s=>s.metrics?.risk_level==='verde').length,
+            const counts = {
+                todos: students.value.length,
+                resgate: students.value.filter(isRescue).length,
+                vermelho: students.value.filter(s => s.metrics?.risk_level === 'vermelho').length,
+                amarelo: students.value.filter(s => s.metrics?.risk_level === 'amarelo').length,
+                verde: students.value.filter(s => s.metrics?.risk_level === 'verde').length,
             };
-            const alertFilters=[
-                ['todos','Todos os alertas'],
-                ['low_frequency','Baixa frequência'],
-                ['accuracy_drop','Queda de acerto'],
-                ['edict_behind','Edital atrasado'],
-                ['pending_reviews','Revisão pendente'],
+            const alertFilters = [
+                ['todos', 'Todos os alertas'],
+                ['low_frequency', 'Baixa frequência'],
+                ['accuracy_drop', 'Queda de acerto'],
+                ['edict_behind', 'Edital atrasado'],
+                ['pending_reviews', 'Revisão pendente'],
             ];
-            const alertCount=(type)=>type==='todos'
-                ?students.value.filter(student=>radarAlerts(student.metrics).length>0).length
-                :students.value.filter(student=>radarAlerts(student.metrics).some(alert=>alert.type===type)).length;
+            const alertCount = (type) => type === 'todos'
+                ? students.value.filter(student => radarAlerts(student.metrics).length > 0).length
+                : students.value.filter(student => radarAlerts(student.metrics).some(alert => alert.type === type)).length;
+
             return card([
                 sectionTitle('Radar de alunos', 'Alertas acionáveis para priorizar contato e acompanhamento.'),
-                h('div',{class:'mentoria-radar-filters'},alertFilters.map(([type,label])=>btn(label+' ('+alertCount(type)+')',()=>studentAlertFilter.value=type,studentAlertFilter.value===type?'primary':'ghost'))),
-                h('div',{class:'mb-4 flex flex-wrap gap-2'},[
-                    btn('Todos ('+counts.todos+')',()=>studentRiskFilter.value='todos',studentRiskFilter.value==='todos'?'primary':'ghost'),
-                    btn('🔴 Risco ('+counts.vermelho+')',()=>studentRiskFilter.value='vermelho',studentRiskFilter.value==='vermelho'?'danger':'ghost'),
-                    btn('🟡 Atenção ('+counts.amarelo+')',()=>studentRiskFilter.value='amarelo',studentRiskFilter.value==='amarelo'?'warning':'ghost'),
-                    btn('🟢 Em dia ('+counts.verde+')',()=>studentRiskFilter.value='verde',studentRiskFilter.value==='verde'?'success':'ghost'),
+                h('div', { class: 'mentoria-rescue-panel' }, [
+                    h('div', { class: 'flex flex-wrap items-center justify-between gap-3' }, [
+                        h('div', [
+                            h('div', { class: 'flex items-center gap-2 font-bold text-base text-red-500 dark:text-red-400' }, [
+                                renderIcon('radar', '', 18),
+                                h('span', 'Radar Ativo de Resgate & Reengajamento'),
+                            ]),
+                            h('p', { class: 'mt-0.5 text-xs text-zinc-600 dark:text-zinc-400' },
+                                'Identifique alunos com risco de evasão ou gargalos de estudo. Filtre rapidamente e acione mensagens estratégicas no WhatsApp com 1 clique.'
+                            ),
+                        ]),
+                        (studentRiskFilter.value === 'resgate' || studentAlertFilter.value !== 'todos')
+                            ? btn('Limpar filtros de resgate', () => { studentRiskFilter.value = 'todos'; studentAlertFilter.value = 'todos'; }, 'ghost')
+                            : null,
+                    ]),
+                    h('div', { class: 'mentoria-rescue-stat-grid' }, [
+                        h('div', {
+                            class: 'mentoria-rescue-stat-item ' + (studentRiskFilter.value === 'resgate' ? 'mentoria-rescue-stat-item--active' : ''),
+                            onClick: () => {
+                                studentRiskFilter.value = studentRiskFilter.value === 'resgate' ? 'todos' : 'resgate';
+                                studentAlertFilter.value = 'todos';
+                            },
+                        }, [
+                            h('div', { class: 'flex items-center justify-between text-xs font-semibold text-red-500' }, [
+                                h('span', '🚨 Resgate Urgente'),
+                                h('span', { class: 'rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] text-red-700 dark:bg-red-950/60 dark:text-red-300' }, counts.resgate),
+                            ]),
+                            h('div', { class: 'mt-1 text-lg font-bold' }, counts.resgate),
+                            h('div', { class: 'text-[11px] text-zinc-500' }, 'Crítico ou inatividade'),
+                        ]),
+                        h('div', {
+                            class: 'mentoria-rescue-stat-item ' + (studentAlertFilter.value === 'low_frequency' ? 'mentoria-rescue-stat-item--active' : ''),
+                            onClick: () => {
+                                studentAlertFilter.value = studentAlertFilter.value === 'low_frequency' ? 'todos' : 'low_frequency';
+                                studentRiskFilter.value = 'todos';
+                            },
+                        }, [
+                            h('div', { class: 'flex items-center justify-between text-xs font-semibold text-amber-500' }, [
+                                h('span', '💤 Inativos há 7d+'),
+                                h('span', { class: 'rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] text-amber-700 dark:bg-amber-950/60 dark:text-amber-300' }, alertCount('low_frequency')),
+                            ]),
+                            h('div', { class: 'mt-1 text-lg font-bold' }, alertCount('low_frequency')),
+                            h('div', { class: 'text-[11px] text-zinc-500' }, 'Sem estudo recente'),
+                        ]),
+                        h('div', {
+                            class: 'mentoria-rescue-stat-item ' + (studentAlertFilter.value === 'accuracy_drop' ? 'mentoria-rescue-stat-item--active' : ''),
+                            onClick: () => {
+                                studentAlertFilter.value = studentAlertFilter.value === 'accuracy_drop' ? 'todos' : 'accuracy_drop';
+                                studentRiskFilter.value = 'todos';
+                            },
+                        }, [
+                            h('div', { class: 'flex items-center justify-between text-xs font-semibold text-rose-500' }, [
+                                h('span', '📉 Queda de Acerto'),
+                                h('span', { class: 'rounded-full bg-rose-100 px-1.5 py-0.5 text-[10px] text-rose-700 dark:bg-rose-950/60 dark:text-rose-300' }, alertCount('accuracy_drop')),
+                            ]),
+                            h('div', { class: 'mt-1 text-lg font-bold' }, alertCount('accuracy_drop')),
+                            h('div', { class: 'text-[11px] text-zinc-500' }, 'Abaixo da média pessoal'),
+                        ]),
+                        h('div', {
+                            class: 'mentoria-rescue-stat-item ' + (studentAlertFilter.value === 'pending_reviews' ? 'mentoria-rescue-stat-item--active' : ''),
+                            onClick: () => {
+                                studentAlertFilter.value = studentAlertFilter.value === 'pending_reviews' ? 'todos' : 'pending_reviews';
+                                studentRiskFilter.value = 'todos';
+                            },
+                        }, [
+                            h('div', { class: 'flex items-center justify-between text-xs font-semibold text-purple-500' }, [
+                                h('span', '📚 Revisões Travadas'),
+                                h('span', { class: 'rounded-full bg-purple-100 px-1.5 py-0.5 text-[10px] text-purple-700 dark:bg-purple-950/60 dark:text-purple-300' }, alertCount('pending_reviews')),
+                            ]),
+                            h('div', { class: 'mt-1 text-lg font-bold' }, alertCount('pending_reviews')),
+                            h('div', { class: 'text-[11px] text-zinc-500' }, 'Fila acumulada'),
+                        ]),
+                    ]),
+                ]),
+                h('div', { class: 'mentoria-radar-filters' }, alertFilters.map(([type, label]) => btn(label + ' (' + alertCount(type) + ')', () => studentAlertFilter.value = type, studentAlertFilter.value === type ? 'primary' : 'ghost'))),
+                h('div', { class: 'mb-4 flex flex-wrap gap-2' }, [
+                    btn('Todos (' + counts.todos + ')', () => { studentRiskFilter.value = 'todos'; studentAlertFilter.value = 'todos'; }, studentRiskFilter.value === 'todos' && studentAlertFilter.value === 'todos' ? 'primary' : 'ghost'),
+                    btn('🚨 Resgate (' + counts.resgate + ')', () => { studentRiskFilter.value = studentRiskFilter.value === 'resgate' ? 'todos' : 'resgate'; }, studentRiskFilter.value === 'resgate' ? 'danger' : 'ghost'),
+                    btn('🔴 Risco (' + counts.vermelho + ')', () => studentRiskFilter.value = 'vermelho', studentRiskFilter.value === 'vermelho' ? 'danger' : 'ghost'),
+                    btn('🟡 Atenção (' + counts.amarelo + ')', () => studentRiskFilter.value = 'amarelo', studentRiskFilter.value === 'amarelo' ? 'warning' : 'ghost'),
+                    btn('🟢 Em dia (' + counts.verde + ')', () => studentRiskFilter.value = 'verde', studentRiskFilter.value === 'verde' ? 'success' : 'ghost'),
                 ]),
                 h('div', { class: 'mb-4 max-w-md' }, [
                     h('input', {
@@ -740,20 +884,30 @@ export const MentoriaIndex = {
                             h('th', { class: 'p-2' }, '7 dias'), h('th', { class: 'p-2' }, 'Acerto'),
                             h('th', { class: 'p-2' }, 'Edital'), h('th', { class: 'p-2' }, 'Alertas'), h('th', { class: 'p-2' }, ''),
                         ])]),
-                        h('tbody', filtered.map(student => h('tr', { class: 'border-t border-zinc-200 dark:border-zinc-800' }, [
-                            h('td', { class: 'p-2' }, [h('div', { class: 'font-medium' }, student.name), h('div', { class: 'text-xs text-zinc-500' }, student.email),student.contest_names?.length?h('div',{class:'mt-1 text-[11px] text-zinc-500'},student.contest_names.join(' · ')):null]),
-                            h('td', { class: 'p-2' }, riskBadge(student.metrics?.risk_level)),
-                            h('td', { class: 'p-2' }, (student.metrics?.study_hours_7d || 0) + 'h'),
-                            h('td', { class: 'p-2' }, (student.metrics?.accuracy || 0) + '%'),
-                            h('td', { class: 'min-w-32 p-2' }, progressBar(student.metrics?.edict_percentage || 0)),
-                            h('td', { class: 'p-2' }, h('div',{class:'mentoria-radar-alerts'},radarAlerts(student.metrics).map(alert=>h('button',{type:'button',class:'mentoria-radar-alert mentoria-radar-alert--'+alert.tone,title:alert.detail,onClick:()=>openStudentDetail(student)},alert.label)))),
-                            h('td', { class: 'p-2 text-right' }, h('div',{class:'flex justify-end gap-1'},[
-                                h('a',{href:studentPreviewUrl(student),target:'_blank',rel:'noopener',class:'mentoria-preview-link'},'Abrir área do aluno'),
-                                btn('📱 WhatsApp',()=>openRadarWhatsApp(student),'success'),
-                                btn('Copiar texto',()=>copyRadarMessage(student),'ghost'),
-                                btn('Acompanhar', () => openStudentDetail(student), 'ghost'),
-                            ])),
-                        ]))),
+                        h('tbody', filtered.map(student => {
+                            const rescue = isRescue(student);
+                            return h('tr', { class: 'border-t border-zinc-200 dark:border-zinc-800' + (rescue ? ' bg-red-500/5' : '') }, [
+                                h('td', { class: 'p-2' }, [
+                                    h('div', { class: 'flex items-center gap-2' }, [
+                                        h('span', { class: 'font-medium' }, student.name),
+                                        rescue ? badge('Resgate', 'rose') : null,
+                                    ]),
+                                    h('div', { class: 'text-xs text-zinc-500' }, student.email),
+                                    student.contest_names?.length ? h('div', { class: 'mt-1 text-[11px] text-zinc-500' }, student.contest_names.join(' · ')) : null,
+                                ]),
+                                h('td', { class: 'p-2' }, riskBadge(student.metrics?.risk_level)),
+                                h('td', { class: 'p-2' }, (student.metrics?.study_hours_7d || 0) + 'h'),
+                                h('td', { class: 'p-2' }, (student.metrics?.accuracy || 0) + '%'),
+                                h('td', { class: 'min-w-32 p-2' }, progressBar(student.metrics?.edict_percentage || 0)),
+                                h('td', { class: 'p-2' }, h('div', { class: 'mentoria-radar-alerts' }, radarAlerts(student.metrics).map(alert => h('button', { type: 'button', class: 'mentoria-radar-alert mentoria-radar-alert--' + alert.tone, title: alert.detail, onClick: () => openStudentDetail(student) }, alert.label)))),
+                                h('td', { class: 'p-2 text-right' }, h('div', { class: 'flex justify-end gap-1' }, [
+                                    h('a', { href: studentPreviewUrl(student), target: '_blank', rel: 'noopener', class: 'mentoria-preview-link' }, 'Abrir área do aluno'),
+                                    btn('📱 WhatsApp', () => openRadarWhatsApp(student), 'success'),
+                                    btn('Copiar texto', () => copyRadarMessage(student), 'ghost'),
+                                    btn('Acompanhar', () => openStudentDetail(student), 'ghost'),
+                                ])),
+                            ]);
+                        })),
                     ]),
                 ]) : empty('Nenhum aluno encontrado.'),
             ]);
@@ -859,31 +1013,81 @@ export const MentoriaIndex = {
         function renderQuestions() {
             const q = query.value.toLowerCase();
             const filtered = questions.value.filter(x => !q || x.subject.toLowerCase().includes(q) || x.prompt.toLowerCase().includes(q) || String(x.topic || '').toLowerCase().includes(q));
+            const displayed = filtered.slice(0, 300);
+            const selectedCount = selectedQuestions.value.length;
+            const allDisplayedSelected = displayed.length > 0 && displayed.every(x => selectedQuestions.value.includes(x.id));
+
             return card([
-                sectionTitle('Banco de questões', 'CRUD, importação e disponibilização por público.', h('div', { class: 'flex gap-2' }, [
+                sectionTitle('Banco de questões', 'CRUD, importação e disponibilização por público.', h('div', { class: 'flex flex-wrap gap-2' }, [
                     btn('Importar por IA / JSON', () => modalState.value = { type:'json', title:'Importar questões', mode:'questions', form:{json:'',targets:[DEFAULT_TARGET()]} }, 'ghost'),
                     btn('Nova questão', () => openQuestion()),
                 ])),
-                h('input', {
-                    value: query.value, placeholder: 'Buscar por disciplina, assunto ou enunciado...',
-                    class: 'mb-4 w-full max-w-xl rounded-lg border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-950',
-                    onInput: e => query.value = e.target.value,
-                }),
-                filtered.length ? h('div', { class: 'space-y-2' }, filtered.slice(0, 300).map(item => h('div', {
-                    class: 'rounded-xl border border-zinc-200 p-4 dark:border-zinc-700',
+                h('div', { class: 'mb-4 flex flex-wrap items-center justify-between gap-3' }, [
+                    h('input', {
+                        value: query.value, placeholder: 'Buscar por disciplina, assunto ou enunciado...',
+                        class: 'w-full max-w-xl rounded-lg border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-950',
+                        onInput: e => query.value = e.target.value,
+                    }),
+                    displayed.length ? h('div', { class: 'flex items-center gap-2' }, [
+                        h('label', { class: 'flex items-center gap-2 text-xs font-semibold text-zinc-600 dark:text-zinc-300 cursor-pointer select-none' }, [
+                            h('input', {
+                                type: 'checkbox',
+                                checked: allDisplayedSelected,
+                                class: 'h-4 w-4 rounded border-zinc-300 text-sky-600 focus:ring-sky-500 dark:border-zinc-700 dark:bg-zinc-900',
+                                onChange: () => toggleSelectAllQuestions(displayed),
+                            }),
+                            h('span', allDisplayedSelected ? 'Deselecionar visíveis' : 'Selecionar visíveis (' + displayed.length + ')'),
+                        ]),
+                    ]) : null,
+                ]),
+                selectedCount > 0 ? h('div', {
+                    class: 'mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-sky-300 bg-sky-50/80 p-3 text-sm dark:border-sky-800 dark:bg-sky-950/40 shadow-sm',
                 }, [
-                    h('div', { class: 'flex flex-wrap items-start justify-between gap-3' }, [
-                        h('div', { class: 'min-w-0 flex-1' }, [
-                            h('div', { class: 'flex flex-wrap gap-1' }, [badge(item.subject, 'sky'), item.topic ? badge(item.topic) : null, badge(item.type)]),
-                            h('p', { class: 'mt-2 text-sm' }, item.prompt),
-                            h('div', { class: 'mt-2 flex flex-wrap gap-1' }, (item.targets || []).map(t => badge((t.type || t.target_type) + (t.id || t.target_id ? ': '+(t.id || t.target_id) : ''), 'violet'))),
-                        ]),
-                        h('div', { class: 'flex gap-2' }, [
-                            btn('Editar', () => openQuestion(item), 'ghost'),
-                            btn('Excluir', () => deleteQuestion(item), 'danger'),
-                        ]),
+                    h('div', { class: 'flex items-center gap-2 font-semibold text-sky-900 dark:text-sky-200' }, [
+                        h('span', { class: 'text-base' }, '✓'),
+                        h('span', selectedCount + (selectedCount === 1 ? ' questão selecionada' : ' questões selecionadas')),
                     ]),
-                ]))) : empty('Nenhuma questão encontrada.'),
+                    h('div', { class: 'flex items-center gap-2' }, [
+                        btn('Limpar seleção', clearQuestionSelection, 'ghost'),
+                        btn('🗑️ Excluir selecionadas (' + selectedCount + ')', deleteBulkQuestions, 'danger'),
+                    ]),
+                ]) : null,
+                displayed.length ? h('div', { class: 'space-y-2' }, displayed.map(item => {
+                    const isSelected = isQuestionSelected(item.id);
+                    return h('div', {
+                        class: cn(
+                            'rounded-xl border p-4 transition',
+                            isSelected
+                                ? 'border-sky-500 bg-sky-500/5 dark:border-sky-500 dark:bg-sky-500/10 shadow-sm'
+                                : 'border-zinc-200 dark:border-zinc-700 hover:border-zinc-300 dark:hover:border-zinc-600',
+                        ),
+                    }, [
+                        h('div', { class: 'flex flex-wrap items-start justify-between gap-3' }, [
+                            h('div', { class: 'flex items-start gap-3 min-w-0 flex-1' }, [
+                                h('label', {
+                                    class: 'mt-1 flex items-center cursor-pointer select-none',
+                                    onClick: e => e.stopPropagation(),
+                                }, [
+                                    h('input', {
+                                        type: 'checkbox',
+                                        checked: isSelected,
+                                        class: 'h-4 w-4 rounded border-zinc-300 text-sky-600 focus:ring-sky-500 dark:border-zinc-700 dark:bg-zinc-900',
+                                        onChange: () => toggleQuestionSelection(item.id),
+                                    }),
+                                ]),
+                                h('div', { class: 'min-w-0 flex-1' }, [
+                                    h('div', { class: 'flex flex-wrap gap-1' }, [badge(item.subject, 'sky'), item.topic ? badge(item.topic) : null, badge(item.type)]),
+                                    h('p', { class: 'mt-2 text-sm' }, item.prompt),
+                                    h('div', { class: 'mt-2 flex flex-wrap gap-1' }, (item.targets || []).map(t => badge((t.type || t.target_type) + (t.id || t.target_id ? ': '+(t.id || t.target_id) : ''), 'violet'))),
+                                ]),
+                            ]),
+                            h('div', { class: 'flex gap-2' }, [
+                                btn('Editar', () => openQuestion(item), 'ghost'),
+                                btn('Excluir', () => deleteQuestion(item), 'danger'),
+                            ]),
+                        ]),
+                    ]);
+                })) : empty('Nenhuma questão encontrada.'),
             ]);
         }
 

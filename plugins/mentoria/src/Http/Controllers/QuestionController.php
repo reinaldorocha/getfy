@@ -160,6 +160,53 @@ class QuestionController extends Controller
         return response()->json(['ok' => true]);
     }
 
+    public function bulkDestroy(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'ids' => ['required', 'array', 'min:1'],
+            'ids.*' => ['required', 'string'],
+        ]);
+
+        $actor = $request->user();
+        $tenantId = $this->access->tenantId($actor);
+        $ids = array_values(array_unique(array_filter($data['ids'], 'is_string')));
+
+        if ($ids === []) {
+            return response()->json(['message' => 'Nenhuma questão válida informada.'], 422);
+        }
+
+        $validIds = DB::table('mentoria_question_bank')
+            ->where('tenant_id', $tenantId)
+            ->whereIn('id', $ids)
+            ->where('is_active', true)
+            ->pluck('id')
+            ->all();
+
+        if ($validIds !== []) {
+            DB::table('mentoria_question_bank')
+                ->where('tenant_id', $tenantId)
+                ->whereIn('id', $validIds)
+                ->update(['is_active' => false, 'updated_at' => now()]);
+
+            DB::table('mentoria_content_targets')
+                ->where('tenant_id', $tenantId)
+                ->where('content_type', 'question')
+                ->whereIn('content_id', $validIds)
+                ->delete();
+
+            $this->audit->record($tenantId, $actor, 'questions.bulk_disabled', 'question', null, null, [
+                'count' => count($validIds),
+                'ids' => $validIds,
+            ]);
+        }
+
+        return response()->json([
+            'ok' => true,
+            'deleted' => count($validIds),
+            'ids' => $validIds,
+        ]);
+    }
+
     public function answerStudentQuestion(Request $request, int $tenant, string $question): JsonResponse
     {
         $student = $request->user();

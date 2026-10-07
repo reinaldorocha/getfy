@@ -1,10 +1,10 @@
 import { h, ref, computed, onUnmounted } from 'vue';
 import {
-    api, alertBox, badge, btn, card, checkbox, choiceCard, countdown, empty, field, fmtDate, fmtDateTime,
+    api, alertBox, badge, btn, card, checkbox, choiceCard, cn, countdown, empty, field, fmtDate, fmtDateTime,
     fmtHours, input, jsonBody, modal, optionize, progressBar, safeJson, sectionTitle, select,
-    stat, textarea, mentoriaShell, useMentoriaShell, svgIcon, renderIcon,
-} from './shared.js?v=db9a37b0201d';
-import { displayAlternative } from './question-alternatives.js?v=db9a37b0201d';
+    stat, textarea, mentoriaShell, useMentoriaShell, svgIcon, renderIcon, renderRadarChart,
+} from './shared.js?v=0a442d56c082';
+import { displayAlternative } from './question-alternatives.js?v=0a442d56c082';
 
 const MODULES = [
     ['dashboard', 'Dashboard', 'dashboard', 'dashboard'],
@@ -65,6 +65,7 @@ export const MentoriaStudent = {
         const materialPage = ref(1);
         const notebookQuery = ref('');
         const notebookFolder = ref('');
+        const notebookFilterType = ref('todos');
         const scheduleView = ref('calendar');
         const scheduleStatus = ref('todos');
         const scheduleMonthOffset = ref(0);
@@ -77,6 +78,7 @@ export const MentoriaStudent = {
             timeline: state.value.metrics_timeline || [],
             subjects: state.value.metrics_subjects || [],
         });
+        const zenMode = ref(false);
 
         const tenant = computed(() => Number(state.value.tenant_id || 0));
         const base = computed(() => state.value.workspace_base || '/mentoria-estudos/' + tenant.value);
@@ -346,6 +348,25 @@ export const MentoriaStudent = {
             return {seconds,solved,accuracy:solved?Math.round(correct/solved*100):null};
         }
 
+        function subjectStats(subjectId) {
+            const topics = (state.value.topics || []).filter(t => t.subject_id === subjectId);
+            const topicIds = new Set(topics.map(t => String(t.id)));
+            const sessions = (state.value.recent_sessions || []).filter(x => topicIds.has(String(x.topic_id || '')) || String(x.subject_id || '') === String(subjectId));
+            const logs = (state.value.question_logs || []).filter(x => topicIds.has(String(x.topic_id || '')) || String(x.subject_id || '') === String(subjectId));
+            const seconds = sessions.reduce((n, x) => n + Number(x.seconds || 0), 0);
+            const solved = logs.reduce((n, x) => n + Number(x.solved || 0), 0);
+            const correct = logs.reduce((n, x) => n + Number(x.correct || 0), 0);
+            return { seconds, solved, accuracy: solved ? Math.round(correct / solved * 100) : null };
+        }
+
+        function openTopicQuestions(subjectName, topicName = '') {
+            questionSubject.value = subjectName || '';
+            questionTopic.value = topicName || '';
+            questionSituation.value = '';
+            questionIndex.value = 0;
+            activeTab.value = 'questions';
+        }
+
         function youtubeEmbed(url){
             try{
                 const u=new URL(url);
@@ -384,6 +405,152 @@ export const MentoriaStudent = {
         function insertNotebookFormatting(form,prefix){
             const current=String(form.content||'');
             form.content=current+(current&&!current.endsWith('\n')?'\n':'')+prefix;
+        }
+
+        function formatNotebookContent(text) {
+            if (!text) return '<span class="text-zinc-400 italic">Sem conteúdo anotado.</span>';
+            let html = String(text)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;');
+
+            // Law Highlights (Grifos de Lei)
+            html = html.replace(/&lt;mark class="mentoria-grifo--amarelo"&gt;([\s\S]*?)&lt;\/mark&gt;/gi, '<mark class="mentoria-grifo mentoria-grifo--amarelo">$1</mark>');
+            html = html.replace(/&lt;mark class="mentoria-grifo--verde"&gt;([\s\S]*?)&lt;\/mark&gt;/gi, '<mark class="mentoria-grifo mentoria-grifo--verde">$1</mark>');
+            html = html.replace(/&lt;mark class="mentoria-grifo--vermelho"&gt;([\s\S]*?)&lt;\/mark&gt;/gi, '<mark class="mentoria-grifo mentoria-grifo--vermelho">$1</mark>');
+            html = html.replace(/==y:([\s\S]*?)==/g, '<mark class="mentoria-grifo mentoria-grifo--amarelo">$1</mark>');
+            html = html.replace(/==g:([\s\S]*?)==/g, '<mark class="mentoria-grifo mentoria-grifo--verde">$1</mark>');
+            html = html.replace(/==v:([\s\S]*?)==/g, '<mark class="mentoria-grifo mentoria-grifo--verde">$1</mark>');
+            html = html.replace(/==r:([\s\S]*?)==/g, '<mark class="mentoria-grifo mentoria-grifo--vermelho">$1</mark>');
+            html = html.replace(/==([\s\S]*?)==/g, '<mark class="mentoria-grifo mentoria-grifo--amarelo">$1</mark>');
+
+            // Law badges (Art., Súmula, §)
+            html = html.replace(/\b(Art\.\s*\d+[º\w\.\-]*)/g, '<span class="mentoria-doc-law-badge">⚖️ $1</span>');
+            html = html.replace(/\b(Súmula Vinculante\s*n?º?\s*\d+)/gi, '<span class="mentoria-doc-law-badge">📜 $1</span>');
+
+            // Headings
+            html = html.replace(/^### (.*$)/gim, '<h3 class="mentoria-doc-h3">$1</h3>');
+            html = html.replace(/^## (.*$)/gim, '<h2 class="mentoria-doc-h2">$1</h2>');
+            html = html.replace(/^# (.*$)/gim, '<h1 class="mentoria-doc-h1">$1</h1>');
+
+            // Quotes
+            html = html.replace(/^>\s*(.*$)/gim, '<blockquote class="mentoria-doc-quote">$1</blockquote>');
+
+            // Lists
+            html = html.replace(/^[•\-\*]\s+(.*$)/gim, '<li class="mentoria-doc-li">$1</li>');
+
+            // Bold, italic, underline, strike
+            html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+            html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
+            html = html.replace(/__(.+?)__/g, '<span class="underline">$1</span>');
+            html = html.replace(/~~(.+?)~~/g, '<span class="line-through">$1</span>');
+
+            // Mind map placeholder badge in text reader
+            html = html.replace(/\[mapa\][\s\S]*?\[\/mapa\]/gi, '<div class="my-2 rounded-lg bg-sky-500/10 border border-sky-500/20 p-2 text-xs text-sky-400 font-semibold flex items-center gap-1.5">🧠 Diagrama de Mapa Mental disponível na aba acima</div>');
+
+            // Newlines
+            html = html.replace(/\n/g, '<br>');
+
+            return html;
+        }
+
+        function parseMindMap(content, defaultTitle = 'Mapa Mental') {
+            if (!content) return null;
+            let str = String(content).trim();
+            const matchBlock = str.match(/\[mapa\]([\s\S]*?)\[\/mapa\]/i);
+            if (matchBlock) {
+                str = matchBlock[1].trim();
+            }
+
+            const lines = str.split('\n').map(l => l.trimEnd()).filter(l => l.trim().length > 0);
+            if (!lines.length) return null;
+
+            let root = defaultTitle;
+            const branches = [];
+            let currentBranch = null;
+            const branchColors = ['cyan', 'emerald', 'purple', 'amber', 'rose'];
+            let colorIdx = 0;
+
+            for (let i = 0; i < lines.length; i++) {
+                const rawLine = lines[i];
+                const trimmed = rawLine.trim();
+
+                // Check if root line (first line without dash/bullet/heading)
+                if (i === 0 && !trimmed.startsWith('-') && !trimmed.startsWith('•') && !trimmed.startsWith('*')) {
+                    root = trimmed.replace(/^#+\s*/, '');
+                    continue;
+                }
+
+                const isChild = rawLine.match(/^(\s{2,}|\t|\-\-)/) || trimmed.startsWith('--');
+                const isBranch = (!isChild && (trimmed.startsWith('-') || trimmed.startsWith('•') || trimmed.startsWith('*') || trimmed.startsWith('##'))) || trimmed.startsWith('#');
+
+                if (isChild && currentBranch) {
+                    const cleanText = trimmed.replace(/^(\-\-|\-|\*|•)\s*/, '');
+                    if (cleanText) currentBranch.children.push(cleanText);
+                } else if (isBranch) {
+                    const cleanText = trimmed.replace(/^(##?|\-|\*|•)\s*/, '');
+                    if (cleanText) {
+                        currentBranch = {
+                            title: cleanText,
+                            color: branchColors[colorIdx % branchColors.length],
+                            children: [],
+                        };
+                        colorIdx++;
+                        branches.push(currentBranch);
+                    }
+                } else if (!currentBranch) {
+                    root = trimmed;
+                } else if (trimmed) {
+                    currentBranch.children.push(trimmed);
+                }
+            }
+
+            if (!branches.length && lines.length > 1) {
+                branches.push({
+                    title: 'Tópicos Principais',
+                    color: 'cyan',
+                    children: lines.slice(1).map(l => l.trim().replace(/^[\-\•\*#]+\s*/, '')),
+                });
+            }
+
+            return branches.length ? { root, branches } : null;
+        }
+
+        function renderMindMapTree(mapData) {
+            if (!mapData || !mapData.branches?.length) {
+                return h('div', { class: 'mentoria-mindmap-canvas flex items-center justify-center text-center p-8 text-zinc-500' }, [
+                    h('div', [
+                        h('div', { class: 'text-3xl mb-2' }, '🧠'),
+                        h('strong', { class: 'block text-sm' }, 'Nenhum mapa mental estruturado ainda'),
+                        h('p', { class: 'text-xs text-zinc-400 mt-1 max-w-sm' },
+                            'Adicione tópicos no editor usando "- Ramo Principal" e "-- Sub-item", ou insira um bloco [mapa] para visualizar a árvore interativa do INSANUS Planner.'
+                        ),
+                    ]),
+                ]);
+            }
+
+            return h('div', { class: 'mentoria-mindmap-canvas' }, [
+                h('div', { class: 'mentoria-mindmap-tree' }, [
+                    h('div', { class: 'mentoria-mindmap-root' }, [
+                        h('span', { class: 'mr-2' }, '🧠'),
+                        h('span', mapData.root),
+                    ]),
+                    h('div', { class: 'mentoria-mindmap-branches' }, mapData.branches.map(branch => {
+                        return h('div', { class: 'mentoria-mindmap-branch mentoria-mindmap-branch--' + branch.color }, [
+                            h('div', { class: 'mentoria-mindmap-branch-header' }, [
+                                h('span', branch.title),
+                                h('span', { class: 'text-[11px] opacity-75' }, branch.children.length + ' item(s)'),
+                            ]),
+                            branch.children.length ? h('div', { class: 'mentoria-mindmap-children' }, branch.children.map(child => {
+                                return h('div', { class: 'mentoria-mindmap-leaf' }, [
+                                    h('span', { class: 'text-sky-500 shrink-0' }, '•'),
+                                    h('span', child),
+                                ]);
+                            })) : null,
+                        ]);
+                    })),
+                ]),
+            ]);
         }
 
         function periodRange(period){
@@ -526,6 +693,68 @@ export const MentoriaStudent = {
                 }),
             }),'Cronograma gerado.');
             closeModal();
+        }
+
+        function openOnboarding(step = 1) {
+            const selected = {}; const affinity = {}; const priorities = {}; const levels = {};
+            activeSubjects.value.forEach(s => {
+                selected[s.id] = true;
+                affinity[s.id] = 60;
+                priorities[s.id] = 'media';
+                levels[s.id] = 'intermediario';
+            });
+            modalState.value = {
+                type: 'onboarding',
+                step: step || 1,
+                form: {
+                    contest_id: activeContestId.value || (contests.value[0]?.id || ''),
+                    mode: capabilities.value.includes('cronograma_inteligente') ? 'ciclo_inteligente' : 'agendado',
+                    preset: 'moderado',
+                    minutes: 60,
+                    max_topics: 0,
+                    repetitions: 1,
+                    goal: 80,
+                    alert_goal: true,
+                    hours: { seg: 2, ter: 2, qua: 2, qui: 2, sex: 2, sab: 2, dom: 0 },
+                    selected,
+                    affinity,
+                    priorities,
+                    levels,
+                },
+            };
+        }
+
+        async function finishOnboarding(m) {
+            const f = m.form;
+            const cid = f.contest_id || activeContestId.value;
+            if (!cid) { message.value = 'Selecione um concurso.'; return; }
+            if (cid !== activeContestId.value) {
+                await setContest(cid);
+            }
+            await run(() => api(base.value + '/schedules/generate', {
+                method: 'POST',
+                body: jsonBody({
+                    contest_id: cid,
+                    mode: f.mode,
+                    configuration: {
+                        tipo: f.mode,
+                        horas: f.hours,
+                        minutosTopico: Number(f.minutes || 60),
+                        maxTopicosDia: Number(f.max_topics || 0),
+                        repeticoesEdital: Number(f.repetitions || 1),
+                        metaAcertos: Number(f.goal || 80),
+                        alertaMetaHabilitado: !!f.alert_goal,
+                        materiasSelecionadas: f.selected,
+                        materiaAfinidade: f.affinity,
+                        materiaPrioridades: f.priorities,
+                    },
+                }),
+            }), 'Plano de estudos gerado com sucesso!');
+            try {
+                localStorage.setItem('mentoria_onboarded_' + cid, '1');
+            } catch (e) {}
+            closeModal();
+            activeTab.value = 'schedule';
         }
 
         async function reprogramSchedule() {
@@ -795,11 +1024,49 @@ export const MentoriaStudent = {
             await run(()=>api(base.value+'/mock-exams/'+item.id,{method:'DELETE'}));
         }
 
-        function openNotebook(item=null) {
-            modalState.value={type:'notebook',item,form:{
-                title:item?.title||'',folder:item?.folder||'Geral',content:item?.content||'',
-                color:item?.color||'#4f8ef7',edict_id:item?.edict_id||'',subject_id:item?.subject_id||'',topic_id:item?.topic_id||'',
-            }};
+        function openNotebook(item = null, mode = 'editor') {
+            modalState.value = {
+                type: 'notebook',
+                item,
+                mode: mode || 'editor',
+                form: {
+                    title: item?.title || '',
+                    folder: item?.folder || 'Geral',
+                    content: item?.content || '',
+                    color: item?.color || '#4f8ef7',
+                    edict_id: item?.edict_id || '',
+                    subject_id: item?.subject_id || '',
+                    topic_id: item?.topic_id || '',
+                },
+            };
+        }
+
+        function openNewMindmap() {
+            modalState.value = {
+                type: 'notebook',
+                item: null,
+                mode: 'mindmap',
+                form: {
+                    title: 'Novo Mapa Mental',
+                    folder: 'Mapas Mentais',
+                    color: '#8b5cf6',
+                    edict_id: '',
+                    subject_id: '',
+                    topic_id: '',
+                    content: [
+                        '# Tema Central',
+                        '- 1. Conceito e Regra Geral',
+                        '  -- Definição legal',
+                        '  -- ==y:Regra geral aplicável==',
+                        '- 2. Requisitos e Prazos',
+                        '  -- Requisito formal',
+                        '  -- ==g:Prazo legal: 15 dias==',
+                        '- 3. Exceções e Pegadinhas',
+                        '  -- ==r:CUIDADO: não se aplica a casos de urgência==',
+                        '  -- Súmula Vinculante aplicável',
+                    ].join('\n'),
+                },
+            };
         }
 
         async function saveNotebook(m) {
@@ -876,6 +1143,150 @@ export const MentoriaStudent = {
             ]);
         }
 
+        function renderStreakWidget() {
+            const streak = Number(state.value.metrics_summary?.current_streak || 0);
+            const todaySec = Number(state.value.metrics_summary?.seconds_today || 0);
+            const todayKey = new Date().toISOString().slice(0, 10);
+            const plannedToday = (state.value.schedule_items || state.value.all_schedule_items || [])
+                .filter(i => String(i.planned_date || '').slice(0, 10) === todayKey)
+                .reduce((acc, i) => acc + (Number(i.duration_minutes || 0) * 60), 0);
+            const targetSec = plannedToday > 0 ? plannedToday : 7200;
+            const pct = Math.min(100, Math.round((todaySec / targetSec) * 100));
+            const goalDone = todaySec >= targetSec;
+
+            return h('div', { class: 'mentoria-header-consistency' }, [
+                h('div', {
+                    class: cn('mentoria-streak-widget', streak > 0 ? 'mentoria-streak-widget--active' : ''),
+                    title: streak > 0 ? `${streak} dia(s) seguidos de estudo! Mantenha a chama acesa.` : 'Estude hoje para iniciar sua sequência!',
+                }, [
+                    h('span', { class: 'mentoria-streak-widget__icon', 'aria-hidden': 'true' }, '🔥'),
+                    h('span', { class: 'mentoria-streak-widget__count' }, streak > 0 ? `${streak} ${streak === 1 ? 'dia' : 'dias'}` : '0 dias'),
+                    h('span', { class: 'mentoria-streak-widget__label' }, streak > 0 ? 'seguidos' : 'sequência'),
+                ]),
+                h('div', {
+                    class: cn('mentoria-daily-goal-widget', goalDone && 'mentoria-daily-goal-widget--done'),
+                    title: `Meta de hoje: ${fmtHours(todaySec)} de ${fmtHours(targetSec)} planejados (${pct}%)`,
+                }, [
+                    h('div', { class: 'mentoria-daily-goal-widget__header' }, [
+                        h('span', { class: 'mentoria-daily-goal-widget__title' }, goalDone ? 'Meta batida! 🎉' : 'Meta de hoje:'),
+                        h('strong', { class: 'mentoria-daily-goal-widget__numbers' }, `${fmtHours(todaySec)} / ${fmtHours(targetSec)}`),
+                        h('span', { class: 'mentoria-daily-goal-widget__percent' }, `${pct}%`),
+                    ]),
+                    h('div', { class: 'mentoria-daily-goal-widget__track' }, [
+                        h('div', { class: 'mentoria-daily-goal-widget__fill', style: { width: pct + '%' } }),
+                    ]),
+                ]),
+            ]);
+        }
+
+        function renderMissionHero() {
+            const todayKey = new Date().toISOString().slice(0, 10);
+            const pendingSchedule = (state.value.schedule_items || []).filter(i => i.status === 'pendente');
+            const pendingReviews = (state.value.reviews || []).filter(r => !r.completed && r.next_date && r.next_date <= todayKey);
+
+            let mission = null;
+            if (pendingReviews.length > 0) {
+                const rev = pendingReviews[0];
+                const sName = (state.value.subjects || []).find(s => s.id === rev.subject_id)?.name || 'Disciplina';
+                const tName = (state.value.topics || []).find(t => t.id === rev.topic_id)?.name;
+                const subName = (state.value.subtopics || []).find(st => st.id === rev.subtopic_id)?.name;
+                mission = {
+                    type: 'review',
+                    badge: 'Revisão Prioritária',
+                    title: [sName, tName, subName].filter(Boolean).join(' › '),
+                    duration: 30,
+                    hint: rev.next_date < todayKey ? 'Atrasada desde ' + fmtDate(rev.next_date) : 'Agendada para hoje',
+                    actionLabel: 'Iniciar Revisão no Timer',
+                    startTimer: () => openTimer({
+                        subject_id: rev.subject_id || '',
+                        topic_id: rev.topic_id || '',
+                        subtopic_id: rev.subtopic_id || '',
+                        mode: 'revisao',
+                    }),
+                    complete: () => completeReview(rev),
+                };
+            } else if (pendingSchedule.length > 0) {
+                const item = pendingSchedule[0];
+                const sName = (state.value.subjects || []).find(s => s.id === item.subject_id)?.name || 'Disciplina';
+                const tName = (state.value.topics || []).find(t => t.id === item.topic_id)?.name;
+                const subName = (state.value.subtopics || []).find(st => st.id === item.subtopic_id)?.name;
+                const isRev = Boolean(item.scheduled_review_id);
+                mission = {
+                    type: 'schedule',
+                    badge: isRev ? '↻ Revisão do Ciclo' : '⚡ Próxima Atividade do Ciclo',
+                    title: [sName, tName, subName].filter(Boolean).join(' › '),
+                    duration: item.duration_minutes || 45,
+                    hint: item.planned_date ? 'Planejada para ' + fmtDate(item.planned_date) : 'Ciclo #' + (item.cycle_position || item.position),
+                    actionLabel: 'Iniciar Missão Agora',
+                    startTimer: () => openTimer({
+                        subject_id: item.subject_id || '',
+                        topic_id: item.topic_id || '',
+                        subtopic_id: item.subtopic_id || '',
+                        mode: isRev ? 'revisao' : 'estudo',
+                    }),
+                    complete: () => openScheduleCompletion(item),
+                };
+            }
+
+            if (!mission) {
+                const hasSchedule = (state.value.schedule_items || []).length > 0;
+                if (!hasSchedule) {
+                    return h('div', { class: 'mentoria-mission-hero' }, [
+                        h('div', { class: 'mentoria-mission-hero__header' }, [
+                            h('span', { class: 'mentoria-mission-hero__badge' }, [renderIcon('sparkles', '', 14), 'Diagnóstico Inicial']),
+                        ]),
+                        h('div', { class: 'mentoria-mission-hero__title' }, 'Vamos estruturar a sua rota de aprovação!'),
+                        h('div', { class: 'mentoria-mission-hero__meta' }, [
+                            h('span', {}, 'Você ainda não possui um cronograma ativo. Complete o diagnóstico guiado de 4 passos para calibrar seu ritmo, nível de cada matéria e metas semanais.'),
+                        ]),
+                        h('div', { class: 'mentoria-mission-hero__actions' }, [
+                            btn('✨ Iniciar Diagnóstico do Aluno', () => openOnboarding(), 'primary', { icon: 'zap' }),
+                            btn('Explorar Edital', () => activeTab.value = 'edict', 'ghost', { icon: 'target' }),
+                        ]),
+                    ]);
+                }
+
+                return h('div', { class: 'mentoria-mission-hero' }, [
+                    h('div', { class: 'mentoria-mission-hero__header' }, [
+                        h('span', { class: 'mentoria-mission-hero__badge' }, [renderIcon('sparkles', '', 14), 'Dia em Dia']),
+                    ]),
+                    h('div', { class: 'mentoria-mission-hero__title' }, 'Você está com todas as missões concluídas!'),
+                    h('div', { class: 'mentoria-mission-hero__meta' }, [
+                        h('span', {}, 'Nenhuma atividade ou revisão pendente no seu cronograma ativo.'),
+                    ]),
+                    h('div', { class: 'mentoria-mission-hero__actions' }, [
+                        btn('Abrir Timer Livre', () => openTimer(), 'primary', { icon: 'timer' }),
+                        btn('Revisar Questões', () => activeTab.value = 'questions', 'ghost', { icon: 'questions' }),
+                        capabilities.value.includes('cronograma') || capabilities.value.includes('cronograma_inteligente')
+                            ? btn('Ajustar Cronograma', () => activeTab.value = 'schedule', 'ghost', { icon: 'schedule' })
+                            : null,
+                    ]),
+                ]);
+            }
+
+            return h('div', { class: 'mentoria-mission-hero' }, [
+                h('div', { class: 'mentoria-mission-hero__header' }, [
+                    h('span', { class: 'mentoria-mission-hero__badge' }, [renderIcon('target', '', 14), mission.badge]),
+                    h('span', { class: 'text-xs text-sky-400 font-medium' }, mission.hint),
+                ]),
+                h('div', { class: 'mentoria-mission-hero__title' }, mission.title),
+                h('div', { class: 'mentoria-mission-hero__meta' }, [
+                    h('span', { class: 'flex items-center gap-1' }, [renderIcon('timer', '', 14), mission.duration + ' min sugeridos']),
+                    h('span', { class: 'text-zinc-500' }, '·'),
+                    h('span', {}, 'Foco recomendado: ' + (mission.type === 'review' ? 'Revisão ativa e fixação' : 'Estudo teórico e questões')),
+                ]),
+                h('div', { class: 'mentoria-mission-hero__actions' }, [
+                    h('button', {
+                        type: 'button',
+                        class: 'mentoria-mission-hero__btn-main',
+                        onClick: mission.startTimer,
+                    }, [renderIcon('play', '', 16), mission.actionLabel]),
+                    mission.complete ? btn('Registrar conclusão', mission.complete, 'ghost', { icon: 'check' }) : null,
+                    btn('Ver cronograma', () => activeTab.value = 'schedule', 'ghost', { icon: 'schedule' }),
+                ]),
+            ]);
+        }
+
         function renderDashboard() {
             const m=state.value.metrics_summary||{};
             const contest=activeContest.value;
@@ -884,20 +1295,25 @@ export const MentoriaStudent = {
             const todayKey=now.toISOString().slice(0,10);
             const week=Array.from({length:7},(_,i)=>{const d=new Date(monday);d.setDate(monday.getDate()+i);const key=d.toISOString().slice(0,10);const sec=(state.value.recent_sessions||[]).filter(s=>String(s.studied_at||'').slice(0,10)===key).reduce((n,s)=>n+Number(s.seconds||0),0);return {key,label:['Seg','Ter','Qua','Qui','Sex','Sáb','Dom'][i],seconds:sec};});
             const subjectRows=(state.value.metrics_subjects||[]).slice(0,10);
+            const radarSubjects=(state.value.metrics_subjects||[]).filter(s=>Number(s.questions||0)>0||s.accuracy!==null).slice(0,7).map(s=>({
+                label:s.name,
+                value:s.accuracy??0,
+            }));
             return h('div',{class:'space-y-5'},[
                 contest?card([h('div',{class:'flex flex-wrap items-center justify-between gap-4'},[
                     h('div',[h('div',{class:'text-xs font-semibold uppercase tracking-wide text-sky-500'},contest.group||'foco'),h('h2',{class:'mt-1 text-xl font-bold'},contest.name),h('p',{class:'text-xs text-zinc-400'},[contest.board,contest.position].filter(Boolean).join(' · '))]),
-                    cd?h('div',{class:'grid grid-cols-3 gap-2 text-center'},[stat('Dias',cd.days),stat('Horas',cd.hours),stat('Min',cd.minutes)]):contest.pre_notice?badge('Pré-edital','amber'):null,
+                    cd?h('div',{class:'grid grid-cols-3 gap-2 text-center'},[stat('Dias',cd.days,'','blue'),stat('Horas',cd.hours,'','indigo'),stat('Min',cd.minutes,'','cyan')]):contest.pre_notice?badge('Pré-edital','amber'):null,
                 ])]):null,
+                renderMissionHero(),
                 h('div',{class:'grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8'},[
-                    stat('Hoje',fmtHours(m.seconds_today||0), '', '', 'history'),
-                    stat('Questões hoje',m.questions_today||0, '', '', 'questions'),
-                    stat('30 dias',fmtHours(m.seconds_studied||0), '', '', 'schedule'),
-                    stat('Acerto',(m.accuracy??0)+'%', '', (m.accuracy>=75?'mentoria-badge--green':''), 'check'),
-                    stat('Sequência',(m.current_streak||0)+' dias', '', '', 'flame'),
-                    stat('Edital',(m.edict_percentage||0)+'%', '', '', 'edicts'),
-                    stat('Simulados',m.mocks_completed||0, '', '', 'mocks'),
-                    stat('Média',m.mock_average===null?'—':m.mock_average+'%', '', '', 'metrics'),
+                    stat('Hoje',fmtHours(m.seconds_today||0), '', 'blue', 'history'),
+                    stat('Questões hoje',m.questions_today||0, '', 'cyan', 'questions'),
+                    stat('30 dias',fmtHours(m.seconds_studied||0), '', 'indigo', 'schedule'),
+                    stat('Acerto',(m.accuracy??0)+'%', '', (m.accuracy>=75?'emerald':m.accuracy>=50?'amber':'rose'), 'check', { meter: m.accuracy ?? 0 }),
+                    stat('Sequência',(m.current_streak||0)+' dias', '', 'flame', 'flame'),
+                    stat('Edital',(m.edict_percentage||0)+'%', '', 'purple', 'edicts', { meter: m.edict_percentage ?? 0 }),
+                    stat('Simulados',m.mocks_completed||0, '', 'blue', 'mocks'),
+                    stat('Média',m.mock_average===null?'—':m.mock_average+'%', '', 'teal', 'metrics', { meter: m.mock_average }),
                 ]),
                 card([sectionTitle('Ações rápidas','Registre estudo ou abra os módulos principais.'),h('div',{class:'flex flex-wrap gap-2'},[
                     btn('Abrir timer',()=>openTimer(),'primary',{icon:'timer'}),
@@ -906,7 +1322,20 @@ export const MentoriaStudent = {
                     capabilities.value.includes('questoes')?btn('Questões',()=>activeTab.value='questions','ghost',{icon:'questions'}):null,
                     capabilities.value.includes('flashcards')?btn('Flashcards',()=>activeTab.value='flashcards','ghost',{icon:'flashcards'}):null,
                 ])]),
-                card([sectionTitle('Estudo semanal','Tempo registrado de segunda a domingo.'),h('div',{class:'grid grid-cols-7 gap-2'},week.map(d=>{
+                radarSubjects.length>=3?h('div',{class:'grid gap-4 lg:grid-cols-2'},[
+                    card([sectionTitle('Estudo semanal','Tempo registrado de segunda a domingo.'),h('div',{class:'grid grid-cols-7 gap-2'},week.map(d=>{
+                        const pct=Math.min(100,d.seconds/7200*100);
+                        const isToday = d.key === todayKey;
+                        return h('div',{class:'mentoria-week-col'+(isToday?' border-sky-500/50 bg-sky-500/5': '')},[
+                            h('div',{class:'font-semibold text-xs'},d.label),
+                            h('div',{class:'mentoria-week-bar-container'},[
+                                h('div',{class:'mentoria-week-bar-fill',style:{height:Math.max(d.seconds > 0 ? 6 : 0, pct)+'%'}}),
+                            ]),
+                            h('div',{class:'text-[11px] text-zinc-400'},fmtHours(d.seconds)),
+                        ]);
+                    }))]),
+                    card([sectionTitle('Radar de disciplinas','Equilíbrio e rendimento nas matérias com questões.'),renderRadarChart(radarSubjects,{size:280})]),
+                ]):card([sectionTitle('Estudo semanal','Tempo registrado de segunda a domingo.'),h('div',{class:'grid grid-cols-7 gap-2'},week.map(d=>{
                     const pct=Math.min(100,d.seconds/7200*100);
                     const isToday = d.key === todayKey;
                     return h('div',{class:'mentoria-week-col'+(isToday?' border-sky-500/50 bg-sky-500/5': '')},[
@@ -946,9 +1375,9 @@ export const MentoriaStudent = {
                 card([
                     sectionTitle('Edital verticalizado','Acompanhe cada matéria, tópico e subtópico em uma única trilha.'),
                     h('div',{class:'mb-4 grid gap-3 sm:grid-cols-3'},[
-                        stat('Progresso do edital',edictProgress+'%'),
-                        stat('Conteúdos concluídos',completedUnits+' de '+allUnits.length),
-                        stat('Disciplinas ativas',activeSubjects.value.length),
+                        stat('Progresso do edital',edictProgress+'%','','purple','edicts',{meter:edictProgress}),
+                        stat('Conteúdos concluídos',completedUnits+' de '+allUnits.length,'','emerald','check'),
+                        stat('Disciplinas ativas',activeSubjects.value.length,'','blue','products'),
                     ]),
                     progressBar(edictProgress,'Edital concluído'),
                     h('input',{value:edictQuery.value,placeholder:'🔍 Buscar tópico ou subtópico…',class:'mt-4 w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-950',onInput:e=>edictQuery.value=e.target.value}),
@@ -965,28 +1394,99 @@ export const MentoriaStudent = {
                         if(query&&!ownTopics.length&&!String(subject.name).toLowerCase().includes(query))return null;
                         const units=allSubjectTopics.flatMap(t=>{const subs=activeSubtopics.value.filter(st=>st.topic_id===t.id);return subs.length?subs.map(st=>!!progressMap.value.get('subtopico:'+st.id)?.studied):[!!progressMap.value.get('topico:'+t.id)?.studied];});
                         const pct=units.length?units.filter(Boolean).length/units.length*100:0;
-                        return h('section',{class:'rounded-xl border border-zinc-200 border-l-4 border-l-sky-500 bg-white p-4 shadow-sm dark:border-zinc-700 dark:bg-zinc-900'},[
-                            h('div',{class:'flex items-start justify-between gap-3'},[h('div',[h('div',{class:'text-[11px] font-bold uppercase tracking-wide text-sky-600'},'Disciplina'),h('strong',{class:'text-base'},subject.name),renderInlineMaterials(subject.materials)]),h('div',{class:'w-36'},[h('div',{class:'mb-1 text-right text-xs font-semibold text-zinc-500'},Math.round(pct)+'%'),progressBar(pct)])]),
-                            h('div',{class:'mt-4 space-y-3'},ownTopics.map(topic=>{
+                        const subStats=subjectStats(subject.id);
+                        const completedCount=units.filter(Boolean).length;
+                        const totalCount=units.length;
+                        const masteryTier=pct>=100
+                            ?{label:'🏆 Dominado',tone:'green'}
+                            :pct>=70
+                                ?{label:'⭐ Avançado',tone:'sky'}
+                                :pct>=40
+                                    ?{label:'📈 Em progresso',tone:'amber'}
+                                    :{label:'🌱 Iniciando',tone:'zinc'};
+
+                        return h('section',{class:'mentoria-mastery-card'},[
+                            h('div',{class:'mentoria-mastery-card__header'},[
+                                h('div',{class:'mentoria-mastery-card__info'},[
+                                    h('div',{class:'flex flex-wrap items-center gap-2'},[
+                                        h('span',{class:'mentoria-mastery-card__subject-badge'},[
+                                            h('span',{},'📘'),
+                                            h('span',{},'Disciplina'),
+                                        ]),
+                                        badge(masteryTier.label,masteryTier.tone),
+                                    ]),
+                                    h('h3',{class:'mentoria-mastery-card__title'},subject.name),
+                                    renderInlineMaterials(subject.materials),
+                                    h('div',{class:'mentoria-mastery-card__stats-bar'},[
+                                        h('span',{class:'mentoria-mastery-pill mentoria-mastery-pill--highlight'},'✓ '+completedCount+' de '+totalCount+' concluídos'),
+                                        h('span',{class:'mentoria-mastery-pill'},'⏱ '+fmtHours(subStats.seconds)+' estudados'),
+                                        h('span',{class:'mentoria-mastery-pill'},'📝 '+subStats.solved+' questões'+(subStats.accuracy!==null?' ('+subStats.accuracy+'% acerto)':'')),
+                                    ]),
+                                ]),
+                                h('div',{class:'mentoria-mastery-card__gauge'},[
+                                    h('span',{class:'mentoria-mastery-card__gauge-number text-sky-600 dark:text-sky-400'},Math.round(pct)+'%'),
+                                    h('div',{class:'w-36'},[progressBar(pct)]),
+                                ]),
+                            ]),
+                            h('div',{class:'mentoria-mastery-card__body'},ownTopics.map(topic=>{
                                 const allSubs=activeSubtopics.value.filter(st=>st.topic_id===topic.id);
                                 const subs=allSubs.filter(st=>!query||String(topic.name).toLowerCase().includes(query)||String(st.name).toLowerCase().includes(query));
-                                const p=progressMap.value.get('topico:'+topic.id);const stats=itemStats(topic.id);
-                                return h('div',{class:'rounded-xl border border-zinc-200 bg-zinc-50 p-3 dark:border-zinc-700 dark:bg-zinc-800'},[
-                                    h('div',{class:'flex flex-wrap items-start gap-3'},[
-                                        !allSubs.length?h('button',{type:'button',title:p?.studied?'Reabrir tópico':'Concluir tópico',class:'mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md border-2 '+(p?.studied?'border-emerald-500 bg-emerald-500 text-white':'border-zinc-300 bg-white text-transparent dark:border-zinc-600 dark:bg-zinc-900'),onClick:()=>toggleProgress('topico',topic,!p?.studied)},p?.studied?'✓':'•'):null,
-                                        h('div',{class:'min-w-0 flex-1'},[
-                                            h('div',{class:'font-semibold '+(p?.studied?'text-zinc-500 line-through':'')},topic.name),renderInlineMaterials(topic.materials),
-                                            h('div',{class:'mt-1 flex flex-wrap gap-3 text-[11px] text-zinc-500'},[h('span','⏱ '+fmtHours(stats.seconds)),h('span','📝 '+stats.solved+' questões'+(stats.accuracy!==null?' · '+stats.accuracy+'%':''))]),
+                                const p=progressMap.value.get('topico:'+topic.id);
+                                const isCompleted=!!p?.studied;
+                                const stats=itemStats(topic.id);
+                                return h('div',{class:'mentoria-topic-card'},[
+                                    h('div',{class:'mentoria-topic-row'},[
+                                        !allSubs.length?h('button',{
+                                            type:'button',
+                                            title:isCompleted?'Reabrir tópico':'Concluir tópico',
+                                            class:cn('mentoria-topic-check',isCompleted&&'mentoria-topic-check--completed'),
+                                            onClick:()=>toggleProgress('topico',topic,!isCompleted),
+                                        },[
+                                            isCompleted?h('span',{class:'mentoria-topic-check__icon'},'✓'):null,
+                                        ]):null,
+                                        h('div',{class:'mentoria-topic-content'},[
+                                            h('div',{class:cn('mentoria-topic-title',isCompleted&&'mentoria-topic-title--completed')},topic.name),
+                                            renderInlineMaterials(topic.materials),
+                                            h('div',{class:'mentoria-topic-meta'},[
+                                                h('span',{class:'mentoria-topic-meta-pill'},'⏱ '+fmtHours(stats.seconds)),
+                                                h('span',{class:'mentoria-topic-meta-pill'},'📝 '+stats.solved+' questões'+(stats.accuracy!==null?' · '+stats.accuracy+'% acerto':'')),
+                                                isCompleted?badge('✓ Concluído','green'):null,
+                                            ]),
                                             topic.notes?h('p',{class:'mt-1 text-xs text-zinc-500'},topic.notes):null,
                                         ]),
-                                        h('div',{class:'flex gap-1'},[btn('+ Lançar estudo',()=>openQuickStudy(subject.id,topic.id,''),'ghost'),btn('⏱ Timer',()=>openTimer({subject_id:subject.id,topic_id:topic.id,subtopic_id:'',mode:'estudo'}),'soft')]),
+                                        h('div',{class:'mentoria-topic-actions'},[
+                                            btn('⏱️ Timer',()=>openTimer({subject_id:subject.id,topic_id:topic.id,subtopic_id:'',mode:'estudo'}),'soft'),
+                                            btn('📝 Questões',()=>openTopicQuestions(subject.name,topic.name),'ghost'),
+                                            btn('+ Estudo',()=>openQuickStudy(subject.id,topic.id,''),'ghost'),
+                                        ]),
                                     ]),
-                                    subs.length?h('div',{class:'mt-3 space-y-2 border-t border-zinc-200 pt-3 dark:border-zinc-700'},subs.map(sub=>{
-                                        const sp=progressMap.value.get('subtopico:'+sub.id);const ss=itemStats(topic.id,sub.id);
-                                        return h('div',{class:'flex flex-wrap items-center gap-2 rounded-lg border border-zinc-100 bg-white p-2 text-sm dark:border-zinc-700 dark:bg-zinc-900'},[
-                                            h('button',{type:'button',title:sp?.studied?'Reabrir subtópico':'Concluir subtópico',class:'flex h-5 w-5 shrink-0 items-center justify-center rounded border-2 '+(sp?.studied?'border-emerald-500 bg-emerald-500 text-white':'border-zinc-300 text-transparent dark:border-zinc-600'),onClick:()=>toggleProgress('subtopico',sub,!sp?.studied)},sp?.studied?'✓':'•'),
-                                            h('div',{class:'min-w-0 flex-1'},[h('div',{class:sp?.studied?'text-zinc-500 line-through':''},sub.name),h('div',{class:'text-[11px] text-zinc-500'},'⏱ '+fmtHours(ss.seconds)+' · 📝 '+ss.solved+(ss.accuracy!==null?' · '+ss.accuracy+'%':'')),renderInlineMaterials(sub.materials)]),
-                                            btn('+ Estudo',()=>openQuickStudy(subject.id,topic.id,sub.id),'ghost'),btn('⏱',()=>openTimer({subject_id:subject.id,topic_id:topic.id,subtopic_id:sub.id,mode:'estudo'}),'soft'),
+                                    subs.length?h('div',{class:'mentoria-subtopics-tree'},subs.map(sub=>{
+                                        const sp=progressMap.value.get('subtopico:'+sub.id);
+                                        const subCompleted=!!sp?.studied;
+                                        const ss=itemStats(topic.id,sub.id);
+                                        return h('div',{class:'mentoria-subtopic-row'},[
+                                            h('button',{
+                                                type:'button',
+                                                title:subCompleted?'Reabrir subtópico':'Concluir subtópico',
+                                                class:cn('mentoria-topic-check',subCompleted&&'mentoria-topic-check--completed'),
+                                                onClick:()=>toggleProgress('subtopico',sub,!subCompleted),
+                                            },[
+                                                subCompleted?h('span',{class:'mentoria-topic-check__icon'},'✓'):null,
+                                            ]),
+                                            h('div',{class:'mentoria-topic-content'},[
+                                                h('div',{class:cn('mentoria-topic-title',subCompleted&&'mentoria-topic-title--completed')},sub.name),
+                                                h('div',{class:'mentoria-topic-meta'},[
+                                                    h('span',{class:'mentoria-topic-meta-pill'},'⏱ '+fmtHours(ss.seconds)),
+                                                    h('span',{class:'mentoria-topic-meta-pill'},'📝 '+ss.solved+(ss.accuracy!==null?' · '+ss.accuracy+'%':'')),
+                                                    subCompleted?badge('✓','green'):null,
+                                                ]),
+                                                renderInlineMaterials(sub.materials),
+                                            ]),
+                                            h('div',{class:'mentoria-topic-actions'},[
+                                                btn('⏱️',()=>openTimer({subject_id:subject.id,topic_id:topic.id,subtopic_id:sub.id,mode:'estudo'}),'soft'),
+                                                btn('📝',()=>openTopicQuestions(subject.name,sub.name),'ghost'),
+                                                btn('+ Estudo',()=>openQuickStudy(subject.id,topic.id,sub.id),'ghost'),
+                                            ]),
                                         ]);
                                     })):null,
                                 ]);
@@ -1065,7 +1565,8 @@ export const MentoriaStudent = {
                 card([
                     sectionTitle('Cronograma',schedule?'Versão '+schedule.version+' · '+schedule.type:'Nenhum cronograma ativo',h('div',{class:'flex flex-wrap gap-2'},[
                         schedule?btn('Reprogramar pendências',reprogramSchedule,'ghost'):null,
-                        btn(schedule?'Gerar novo':'Gerar cronograma',openScheduleGenerator),
+                        btn('✨ Assistente de Diagnóstico', () => openOnboarding(), 'primary'),
+                        btn(schedule?'Gerador avançado':'Gerar cronograma',openScheduleGenerator,'ghost'),
                     ])),
                     schedule?h('div',{class:'flex flex-wrap items-center gap-2'},[
                         badge(schedule.state,'sky'),badge(schedule.type,'violet'),
@@ -1244,9 +1745,45 @@ export const MentoriaStudent = {
             const currentQuestion=filtered[questionIndex.value]||null;
             const pageItems=currentQuestion?[currentQuestion]:[];
             const resetPage=()=>{questionPage.value=1;resetQuestionSession();};
+            const totalCount=list.length;
+            const wrongCount=list.filter(q=>q.answered&&!q.last_correct).length;
+            const unansCount=list.filter(q=>!q.answered).length;
+            const correctCount=list.filter(q=>q.answered&&q.last_correct).length;
             return h('div',{class:'space-y-4'},[
                 card([
                     sectionTitle('Banco de questões','Filtre, responda, refaça e consulte cada tentativa.',btn('Atualizar estatísticas',loadQuestionStats,'ghost')),
+                    h('div',{class:'mentoria-question-tabs mb-4'},[
+                        h('button',{
+                            type:'button',
+                            class:cn('mentoria-question-tab-btn',!questionSituation.value&&'mentoria-question-tab-btn--active'),
+                            onClick:()=>{questionSituation.value='';resetPage();},
+                        },['Todas as questões (',h('strong',totalCount),')']),
+                        h('button',{
+                            type:'button',
+                            class:cn('mentoria-question-tab-btn mentoria-question-tab-btn--erros',questionSituation.value==='errei'&&'mentoria-question-tab-btn--active'),
+                            onClick:()=>{questionSituation.value='errei';resetPage();},
+                        },[
+                            renderIcon('alertTriangle','',14),
+                            'Caderno de Erros (',h('strong',wrongCount),')',
+                        ]),
+                        h('button',{
+                            type:'button',
+                            class:cn('mentoria-question-tab-btn',questionSituation.value==='nao_respondidas'&&'mentoria-question-tab-btn--active'),
+                            onClick:()=>{questionSituation.value='nao_respondidas';resetPage();},
+                        },['Não respondidas (',h('strong',unansCount),')']),
+                        h('button',{
+                            type:'button',
+                            class:cn('mentoria-question-tab-btn',questionSituation.value==='acertei'&&'mentoria-question-tab-btn--active'),
+                            onClick:()=>{questionSituation.value='acertei';resetPage();},
+                        },['Acertos (',h('strong',correctCount),')']),
+                    ]),
+                    questionSituation.value==='errei'?h('div',{class:'mentoria-caderno-banner mb-4'},[
+                        h('div',{class:'flex items-center gap-2'},[
+                            renderIcon('alertTriangle','text-red-500',16),
+                            h('span',{class:'mentoria-caderno-banner__text'},'Caderno de Erros ativo: Focado nas questões que você errou na última tentativa para fixar o conteúdo.'),
+                        ]),
+                        btn('Ver todas as questões',()=>{questionSituation.value='';resetPage();},'ghost'),
+                    ]):null,
                     h('div',{class:'grid gap-3 md:grid-cols-2 xl:grid-cols-5'},[
                         field('Disciplina',h('select',{value:questionSubject.value,class:'w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-950',onChange:e=>{questionSubject.value=e.target.value;questionTopic.value='';resetPage();}},[h('option',{value:''},'Todas'),...subjects.map(s=>h('option',{value:s},s))])),
                         field('Assunto',h('select',{value:questionTopic.value,class:'w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-950',onChange:e=>{questionTopic.value=e.target.value;resetPage();}},[h('option',{value:''},'Todos'),...topics.map(t=>h('option',{value:t},t))])),
@@ -1306,7 +1843,7 @@ export const MentoriaStudent = {
                             h('span',(a.is_correct?'✓ Acerto':'✕ Erro')+' · '+a.answer),h('span',{class:'text-zinc-500'},fmtDateTime(a.answered_at)),
                         ])):h('span',{class:'text-zinc-500'},'Nenhuma tentativa registrada.')):null,
                     ]);
-                })):filtered.length?h('div',{class:'space-y-3'},[empty('Sessão concluída. Você respondeu todas as questões deste filtro.'),btn('Reiniciar sessão',resetQuestionSession,'primary')]):empty('Nenhuma questão encontrada com os filtros.'),
+                })):filtered.length?h('div',{class:'space-y-3'},[empty('Sessão concluída. Você respondeu todas as questões deste filtro.'),btn('Reiniciar sessão',resetQuestionSession,'primary')]):empty(questionSituation.value==='errei'?'Você não possui nenhuma questão com histórico de erro neste filtro. Excelente!':'Nenhuma questão encontrada com os filtros.'),
                 totalPages>1?card([h('div',{class:'flex items-center justify-center gap-2'},[
                     btn('← Anterior',()=>questionPage.value=Math.max(1,questionPage.value-1),'ghost',{disabled:questionPage.value<=1}),
                     h('span',{class:'text-xs'},'Página '+questionPage.value+' de '+totalPages),
@@ -1334,16 +1871,87 @@ export const MentoriaStudent = {
         }
 
         function renderNotebooks() {
-            const list=state.value.notebooks||[];const folders=[...new Set(list.map(n=>n.folder||'Geral'))].sort();const query=notebookQuery.value.toLowerCase();const filtered=list.filter(n=>(!notebookFolder.value||(n.folder||'Geral')===notebookFolder.value)&&(!query||String(n.title).toLowerCase().includes(query)||String(n.content||'').toLowerCase().includes(query)));
-            return h('div',{class:'space-y-4'},[
-                card([sectionTitle('Cadernos & Resumos','Anotações privadas organizadas em pastas.',btn('Novo caderno',()=>openNotebook())),h('div',{class:'grid gap-3 md:grid-cols-2'},[
-                    h('input',{value:notebookQuery.value,placeholder:'🔍 Buscar anotação ou resumo…',class:'w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-950',onInput:e=>notebookQuery.value=e.target.value}),
-                    h('select',{value:notebookFolder.value,class:'w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-950',onChange:e=>notebookFolder.value=e.target.value},[h('option',{value:''},'Todas as pastas'),...folders.map(f=>h('option',{value:f},'📁 '+f))]),
-                ])]),
-                filtered.length?h('div',{class:'grid gap-3 md:grid-cols-2 xl:grid-cols-3'},filtered.map(n=>h('article',{class:'rounded-xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-700 dark:bg-zinc-900',style:{borderTopColor:n.color||'#4f8ef7',borderTopWidth:'4px'}},[
-                    h('div',{class:'flex items-start justify-between gap-2'},[h('div',[h('strong',n.title),h('div',{class:'text-xs text-zinc-500'},'📁 '+(n.folder||'Geral'))]),h('div',{class:'flex gap-1'},[btn('Copiar',async()=>{await navigator.clipboard.writeText(n.content||'');success.value='Resumo copiado.';},'ghost'),btn('Editar',()=>openNotebook(n),'ghost'),btn('×',()=>deleteNotebook(n),'danger')])]),
-                    h('div',{class:'mt-3 max-h-52 overflow-auto whitespace-pre-wrap text-sm text-zinc-600 dark:text-zinc-300'},n.content||'Sem conteúdo.'),h('div',{class:'mt-2 text-[11px] text-zinc-500'},'Atualizado '+fmtDateTime(n.updated_at)),
-                ]))):empty('Nenhum caderno encontrado.'),
+            const list = state.value.notebooks || [];
+            const folders = [...new Set(list.map(n => n.folder || 'Geral'))].sort();
+            const query = notebookQuery.value.toLowerCase();
+            const filtered = list.filter(n => {
+                const matchFolder = !notebookFolder.value || (n.folder || 'Geral') === notebookFolder.value;
+                const matchQuery = !query || String(n.title).toLowerCase().includes(query) || String(n.content || '').toLowerCase().includes(query);
+                if (notebookFilterType.value === 'grifos') {
+                    return matchFolder && matchQuery && (n.content?.includes('==') || n.content?.includes('<mark'));
+                }
+                if (notebookFilterType.value === 'mapas') {
+                    return matchFolder && matchQuery && (n.content?.includes('[mapa]') || n.folder === 'Mapas Mentais' || n.content?.includes('--'));
+                }
+                return matchFolder && matchQuery;
+            });
+
+            return h('div', { class: 'space-y-4' }, [
+                card([
+                    sectionTitle('Cadernos, Resumos & Mapas Mentais', 'Anotações estruturadas com grifos de lei (amarelo, verde e vermelho) e diagramas de mapa mental.', h('div', { class: 'flex flex-wrap gap-2' }, [
+                        btn('🧠 Novo Mapa Mental', openNewMindmap, 'soft'),
+                        btn('Novo Caderno / Resumo', () => openNotebook(), 'primary'),
+                    ])),
+                    h('div', { class: 'grid gap-3 md:grid-cols-3' }, [
+                        h('input', {
+                            value: notebookQuery.value,
+                            placeholder: '🔍 Buscar resumo, artigo ou conceito…',
+                            class: 'w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-950',
+                            onInput: e => notebookQuery.value = e.target.value,
+                        }),
+                        h('select', {
+                            value: notebookFolder.value,
+                            class: 'w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-950',
+                            onChange: e => notebookFolder.value = e.target.value,
+                        }, [
+                            h('option', { value: '' }, 'Todas as pastas'),
+                            ...folders.map(f => h('option', { value: f }, '📁 ' + f)),
+                        ]),
+                        h('div', { class: 'flex items-center gap-1' }, [
+                            btn('Todos (' + list.length + ')', () => notebookFilterType.value = 'todos', notebookFilterType.value === 'todos' ? 'primary' : 'ghost'),
+                            btn('🟡 Grifados', () => notebookFilterType.value = 'grifos', notebookFilterType.value === 'grifos' ? 'primary' : 'ghost'),
+                            btn('🧠 Mapas', () => notebookFilterType.value = 'mapas', notebookFilterType.value === 'mapas' ? 'primary' : 'ghost'),
+                        ]),
+                    ]),
+                ]),
+                filtered.length ? h('div', { class: 'grid gap-4 md:grid-cols-2 xl:grid-cols-3' }, filtered.map(n => {
+                    const hasGrifos = n.content?.includes('==') || n.content?.includes('<mark');
+                    const hasMindmap = n.content?.includes('[mapa]') || n.folder === 'Mapas Mentais' || n.content?.includes('--');
+                    const subName = (state.value.subjects || []).find(s => s.id === n.subject_id)?.name;
+
+                    return h('article', {
+                        class: 'rounded-xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-700 dark:bg-zinc-900 flex flex-col justify-between transition hover:shadow-md',
+                        style: { borderTopColor: n.color || '#4f8ef7', borderTopWidth: '4px' },
+                    }, [
+                        h('div', [
+                            h('div', { class: 'flex items-start justify-between gap-2' }, [
+                                h('div', [
+                                    h('strong', { class: 'text-base font-semibold block' }, n.title),
+                                    h('div', { class: 'mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-zinc-500' }, [
+                                        h('span', '📁 ' + (n.folder || 'Geral')),
+                                        subName ? badge(subName, 'sky') : null,
+                                        hasGrifos ? badge('🟡 Grifado', 'amber') : null,
+                                        hasMindmap ? badge('🧠 Mapa Mental', 'violet') : null,
+                                    ]),
+                                ]),
+                            ]),
+                            h('div', {
+                                class: 'mt-3 max-h-48 overflow-hidden rounded-lg bg-zinc-50/50 p-2.5 text-xs text-zinc-600 dark:bg-zinc-800/40 dark:text-zinc-300 relative',
+                            }, [
+                                h('div', { innerHTML: formatNotebookContent(n.content ? n.content.slice(0, 320) + (n.content.length > 320 ? '…' : '') : 'Sem conteúdo.') }),
+                            ]),
+                        ]),
+                        h('div', { class: 'mt-4 pt-3 border-t border-zinc-100 dark:border-zinc-800 flex items-center justify-between gap-2' }, [
+                            h('div', { class: 'text-[11px] text-zinc-400' }, fmtDate(n.updated_at)),
+                            h('div', { class: 'flex items-center gap-1' }, [
+                                btn('👁️ Ler', () => openNotebook(n, 'preview'), 'soft'),
+                                hasMindmap ? btn('🧠 Mapa', () => openNotebook(n, 'mindmap'), 'ghost') : null,
+                                btn('Editar', () => openNotebook(n, 'editor'), 'ghost'),
+                                btn('×', () => deleteNotebook(n), 'danger'),
+                            ]),
+                        ]),
+                    ]);
+                })) : empty('Nenhum caderno ou mapa mental encontrado.'),
             ]);
         }
 
@@ -1357,17 +1965,30 @@ export const MentoriaStudent = {
             const range=m.period||periodRange(metricsPeriod.value);const planned=(state.value.all_schedule_items||[]).filter(i=>i.planned_date&&String(i.planned_date)>=range.start&&String(i.planned_date)<=range.end).reduce((n,i)=>n+Number(i.duration_minutes||0)*60,0);const studied=Number(m.seconds_studied||0);
             const maxDay=Math.max(1,...activeTimeline.map(x=>Number(x.seconds||0)));
             return h('div',{class:'space-y-4'},[
-                card([sectionTitle('Métricas',m.period?'Período '+fmtDate(m.period.start)+' → '+fmtDate(m.period.end):'',h('div',{class:'flex flex-wrap gap-2'},[btn('📄 Relatório',()=>modalState.value={type:'report',form:{note:''}},'ghost'),btn('📷 Copiar imagem',copyMetricsImage,'ghost')])),h('div',{class:'mb-4 flex flex-wrap gap-2'},[...['7d','14d','30d','all'].map(p=>btn(p==='all'?'Desde o início':p.replace('d',' dias'),()=>loadMetricsPeriod(p),metricsPeriod.value===p?'primary':'ghost'))]),h('div',{class:'grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8'},[stat('Tempo',fmtHours(m.seconds_studied||0)),stat('Questões',m.questions_solved||0),stat('Acerto',(m.accuracy??0)+'%'),stat('Dias ativos',m.active_days||0),stat('Sequência',(m.current_streak||0)+'d'),stat('Edital',(m.edict_percentage||0)+'%'),stat('Média simulado',m.mock_average===null?'—':m.mock_average+'%'),stat('Hoje',fmtHours(m.seconds_today||0))])]),
+                card([sectionTitle('Métricas',m.period?'Período '+fmtDate(m.period.start)+' → '+fmtDate(m.period.end):'',h('div',{class:'flex flex-wrap gap-2'},[btn('📄 Relatório',()=>modalState.value={type:'report',form:{note:''}},'ghost'),btn('📷 Copiar imagem',copyMetricsImage,'ghost')])),h('div',{class:'mb-4 flex flex-wrap gap-2'},[...['7d','14d','30d','all'].map(p=>btn(p==='all'?'Desde o início':p.replace('d',' dias'),()=>loadMetricsPeriod(p),metricsPeriod.value===p?'primary':'ghost'))]),h('div',{class:'grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8'},[
+                    stat('Tempo',fmtHours(m.seconds_studied||0), '', 'indigo', 'schedule'),
+                    stat('Questões',m.questions_solved||0, '', 'cyan', 'questions'),
+                    stat('Acerto',(m.accuracy??0)+'%', '', (m.accuracy>=75?'emerald':m.accuracy>=50?'amber':'rose'), 'check', { meter: m.accuracy ?? 0 }),
+                    stat('Dias ativos',m.active_days||0, '', 'blue', 'target'),
+                    stat('Sequência',(m.current_streak||0)+'d', '', 'flame', 'flame'),
+                    stat('Edital',(m.edict_percentage||0)+'%', '', 'purple', 'edicts', { meter: m.edict_percentage ?? 0 }),
+                    stat('Média simulado',m.mock_average===null?'—':m.mock_average+'%', '', 'teal', 'metrics', { meter: m.mock_average }),
+                    stat('Hoje',fmtHours(m.seconds_today||0), '', 'blue', 'history'),
+                ])]),
                 card([sectionTitle('Atividade por dia','Tempo e questões no período selecionado.'),activeTimeline.length?h('div',{class:'space-y-2'},activeTimeline.slice(-60).map(d=>h('div',{class:'grid grid-cols-[90px_1fr_110px] items-center gap-2 text-xs'},[h('span',fmtDate(d.date)),h('div',{class:'h-5 overflow-hidden rounded bg-zinc-100 dark:bg-zinc-800'},[h('div',{class:'h-full bg-sky-500',style:{width:Math.min(100,Number(d.seconds||0)/maxDay*100)+'%'}})]),h('span',{class:'text-right'},fmtHours(d.seconds||0)+' · '+(d.questions||0)+'q')]))):empty('Sem atividade no período.')]),
                 h('div',{class:'grid gap-4 lg:grid-cols-2'},[
                     card([sectionTitle('Desempenho por matéria'),subjects.length?h('div',{class:'space-y-2'},subjects.map(s=>h('div',[h('div',{class:'flex justify-between text-xs'},[h('strong',s.name),h('span',(s.accuracy??'—')+'% · '+fmtHours(s.seconds||0))]),h('div',{class:'mt-1 h-2 rounded bg-zinc-200 dark:bg-zinc-800'},[h('div',{class:'h-2 rounded bg-sky-500',style:{width:Math.max(2,Math.min(100,Number(s.accuracy||0)))+'%'}})])]))):empty('Sem dados por matéria.')]),
                     card([sectionTitle('Distribuição do tempo'),subjects.length?h('div',{class:'space-y-2'},subjects.slice().sort((a,b)=>Number(b.seconds||0)-Number(a.seconds||0)).map(s=>h('div',{class:'grid grid-cols-[1fr_120px] items-center gap-2 text-xs'},[h('div',[h('div',{class:'mb-1 truncate'},s.name),h('div',{class:'h-2 rounded bg-zinc-200 dark:bg-zinc-800'},[h('div',{class:'h-2 rounded bg-violet-500',style:{width:Number(s.seconds||0)/maxSec*100+'%'}})])]),h('span',{class:'text-right'},fmtHours(s.seconds||0))]))):empty('Sem tempo registrado.')]),
                 ]),
+                subjects.filter(s=>Number(s.questions||0)>0||s.accuracy!==null).length>=3?card([
+                    sectionTitle('Radar de Aproveitamento por Disciplina','Mapeamento poligonal do nível de acerto em cada matéria.'),
+                    renderRadarChart(subjects.filter(s=>Number(s.questions||0)>0||s.accuracy!==null).slice(0,8).map(s=>({label:s.name,value:s.accuracy??0})),{size:320}),
+                ]):null,
                 h('div',{class:'grid gap-4 lg:grid-cols-2'},[
                     card([sectionTitle('✅ Maior facilidade'),easiest.length?h('div',{class:'space-y-2'},easiest.map((s,i)=>h('div',{class:'flex justify-between rounded-lg bg-zinc-50 p-2 text-sm dark:bg-zinc-800'},[h('span',(i+1)+'. '+s.name),h('strong',s.accuracy+'%')]))):empty('Resolva questões para gerar o ranking.')]),
                     card([sectionTitle('⚠ Maior dificuldade'),hardest.length?h('div',{class:'space-y-2'},hardest.map((s,i)=>h('div',{class:'flex justify-between rounded-lg bg-zinc-50 p-2 text-sm dark:bg-zinc-800'},[h('span',(i+1)+'. '+s.name),h('strong',s.accuracy+'%')]))):empty('Resolva questões para gerar o ranking.')]),
                 ]),
-                card([sectionTitle('Meta do ciclo x realizado','Compara o tempo planejado no cronograma com o tempo estudado no período.'),h('div',{class:'grid gap-3 sm:grid-cols-3'},[stat('Planejado',fmtHours(planned)),stat('Estudado',fmtHours(studied)),stat('Saldo',(studied>=planned?'+':'-')+fmtHours(Math.abs(studied-planned)))])]),
+                card([sectionTitle('Meta do ciclo x realizado','Compara o tempo planejado no cronograma com o tempo estudado no período.'),h('div',{class:'grid gap-3 sm:grid-cols-3'},[stat('Planejado',fmtHours(planned),'','indigo','schedule'),stat('Estudado',fmtHours(studied),'','blue','history'),stat('Saldo',(studied>=planned?'+':'-')+fmtHours(Math.abs(studied-planned)),'',studied>=planned?'emerald':'rose',studied>=planned?'check':'alertTriangle')])]),
                 card([sectionTitle('Mapa de atividade','Últimos 90 dias.'),h('div',{class:'grid grid-cols-[repeat(15,minmax(0,1fr))] gap-1'},heatDays.map(d=>h('button',{type:'button',title:fmtDate(d.key)+' · '+fmtHours(d.seconds)+' · '+d.questions+' questões',class:'aspect-square rounded-sm bg-emerald-500',style:{opacity:d.seconds?Math.max(.2,d.seconds/heatMax):.06},onClick:()=>openMetricsDetail(d.key,d.key,'Detalhes · '+fmtDate(d.key))})))]),
                 card([sectionTitle('Retrospectiva anual','Resumo mensal dos registros disponíveis.',h('select',{value:metricsYear.value,class:'rounded-lg border border-zinc-300 px-2 py-1 text-xs dark:border-zinc-700 dark:bg-zinc-950',onChange:e=>metricsYear.value=Number(e.target.value)},[...new Set([new Date().getFullYear(),...sessions.map(s=>Number(String(s.studied_at||'').slice(0,4))).filter(Boolean),...logs.map(s=>Number(String(s.recorded_at||'').slice(0,4))).filter(Boolean)])].sort((a,b)=>b-a).map(y=>h('option',{value:y},String(y))))),h('div',{class:'grid gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6'},months.map(month=>h('button',{type:'button',class:'rounded-lg bg-zinc-50 p-3 text-left text-xs hover:ring-1 hover:ring-sky-400 dark:bg-zinc-800',onClick:()=>{const monthIndex=months.indexOf(month);const start=metricsYear.value+'-'+String(monthIndex+1).padStart(2,'0')+'-01';const end=new Date(metricsYear.value,monthIndex+1,0).toISOString().slice(0,10);openMetricsDetail(start,end,'Detalhes · '+month.name+' '+metricsYear.value);}},[h('strong',{class:'capitalize'},month.name),h('div',{class:'mt-1'},fmtHours(month.seconds)),h('div',{class:'text-zinc-500'},month.questions+' questões · '+month.days+' dias')])))]),
             ]);
@@ -1531,37 +2152,80 @@ export const MentoriaStudent = {
                 if(m.type==='timer'){
                     const f=timer.value.form;
                     const topicOptions=activeTopics.value.filter(t=>!f.subject_id||t.subject_id===f.subject_id);
-                const subOptions=activeSubtopics.value.filter(st=>!f.topic_id||st.topic_id===f.topic_id);
-                return modal('Timer de estudo',h('div',{class:'space-y-5'},[
-                    h('div',{class:'text-center'},[
-                        h('div',{class:'text-xs font-semibold uppercase tracking-wide text-zinc-500'},timer.value.pomodoro?'Pomodoro · restante':'Cronômetro'),
-                        h('div',{class:'mt-1 font-mono text-5xl font-bold'},formatTimer(timer.value.pomodoro?Math.max(0,Number(timer.value.pomodoro_minutes||25)*60-timer.value.elapsed):timer.value.elapsed)),
-                        timer.value.pomodoro&&timer.value.pomodoro_cycles?h('div',{class:'mt-2 text-xs text-zinc-500'},timer.value.pomodoro_cycles+' pomodoro(s) concluído(s) nesta sessão'):null,
-                        h('div',{class:'mt-3 flex justify-center gap-2'},[
-                            timer.value.running?btn('Pausar',pauseTimer,'warning'):btn(timer.value.elapsed?'Continuar':'Iniciar',startTimer,'success'),
-                            btn('Zerar',resetTimer,'ghost'),
+                    const subOptions=activeSubtopics.value.filter(st=>!f.topic_id||st.topic_id===f.topic_id);
+                    const curSubject=(state.value.subjects||[]).find(s=>s.id===f.subject_id)?.name||'Estudo livre';
+                    const curTopic=(state.value.topics||[]).find(t=>t.id===f.topic_id)?.name;
+                    const curSub=(state.value.subtopics||[]).find(st=>st.id===f.subtopic_id)?.name;
+                    const fullTopicLabel=[curSubject,curTopic,curSub].filter(Boolean).join(' › ');
+                    const displaySec=timer.value.pomodoro?Math.max(0,Number(timer.value.pomodoro_minutes||25)*60-timer.value.elapsed):timer.value.elapsed;
+
+                    if (zenMode.value) {
+                        return modal('Player de Estudo · Modo Zen', h('div', { class: 'mentoria-zen-container' }, [
+                            h('div', { class: 'mentoria-zen-header' }, [
+                                h('div', { class: 'mentoria-zen-subject-tag' }, f.mode ? f.mode.toUpperCase() : 'FOCO'),
+                                h('h3', { class: 'mentoria-zen-topic-title' }, fullTopicLabel),
+                            ]),
+                            h('div', { class: 'mentoria-zen-clock-card' }, [
+                                h('div', { class: 'text-xs uppercase tracking-wider text-sky-400 font-semibold mb-2' }, timer.value.pomodoro ? 'Bloco Pomodoro em Andamento' : 'Cronômetro Contínuo'),
+                                h('div', { class: 'mentoria-zen-time-display' }, formatTimer(displaySec)),
+                                timer.value.pomodoro && timer.value.pomodoro_cycles
+                                    ? h('div', { class: 'mt-3 text-xs text-zinc-400 font-medium' }, '🔥 ' + timer.value.pomodoro_cycles + ' ciclo(s) concluído(s)')
+                                    : null,
+                                h('div', { class: 'mentoria-zen-controls' }, [
+                                    timer.value.running
+                                        ? btn('Pausar', pauseTimer, 'warning', { icon: 'pause' })
+                                        : btn(timer.value.elapsed ? 'Continuar' : 'Iniciar', startTimer, 'success', { icon: 'play' }),
+                                    btn('Zerar', resetTimer, 'ghost'),
+                                    timer.value.pomodoro ? btn('+5 min', () => { timer.value.pomodoro_minutes = Number(timer.value.pomodoro_minutes || 25) + 5; }, 'soft') : null,
+                                ]),
+                            ]),
+                            h('div', { class: 'mentoria-zen-notes-box' }, [
+                                h('div', { class: 'grid gap-3 sm:grid-cols-2 mb-3' }, [
+                                    field('Questões resolvidas', input(f, 'solved', { type: 'number', number: true, min: 0, placeholder: '0' })),
+                                    field('Acertos', input(f, 'correct', { type: 'number', number: true, min: 0, placeholder: '0' })),
+                                ]),
+                                field('Anotações rápidas durante o estudo', textarea(f, 'notes', { rows: 2, placeholder: 'Dúvidas, bizus ou observações da sessão…' })),
+                            ]),
+                        ]), closeModal, [
+                            btn('⛶ Formulário completo', () => zenMode.value = false, 'ghost', { icon: 'minimize' }),
+                            btn('Registrar e finalizar', finishTimer, 'primary', { disabled: timer.value.elapsed < 1 }),
+                        ], 'mentoria-zen-dialog');
+                    }
+
+                    return modal('Timer de estudo', h('div', { class: 'space-y-5' }, [
+                        h('div', { class: 'flex items-center justify-between pb-2 border-b border-zinc-200 dark:border-zinc-800' }, [
+                            h('div', { class: 'text-xs text-zinc-500 truncate max-w-md' }, 'Sessão em andamento: ' + fullTopicLabel),
+                            btn('⛶ Modo Zen Foco', () => zenMode.value = true, 'soft', { icon: 'maximize' }),
                         ]),
-                    ]),
-                    formGrid([
-                        checkbox(timer.value,'pomodoro','Usar Pomodoro'),
-                        timer.value.pomodoro?h('div',{class:'md:col-span-2'},[
-                            h('div',{class:'mb-1 text-xs font-semibold'},'Bloco de foco'),
-                            h('div',{class:'flex flex-wrap gap-1'},[15,25,45,60].map(value=>btn(value+' min',()=>{
-                                if(timer.value.running)return;
-                                timer.value.pomodoro_minutes=value;timer.value.elapsed=0;timer.value.startedAt=null;
-                            },Number(timer.value.pomodoro_minutes)===value?'primary':'ghost',{disabled:timer.value.running}))),
-                        ]):null,
-                        timer.value.pomodoro?field('Minutos personalizados',input(timer.value,'pomodoro_minutes',{type:'number',number:true,min:1,max:180})):null,
-                        field('Matéria',select(f,'subject_id',optionize(activeSubjects.value),{placeholder:'—',onChange:()=>{f.topic_id='';f.subtopic_id='';}})),
-                        field('Tópico',select(f,'topic_id',optionize(topicOptions),{placeholder:'—',onChange:()=>f.subtopic_id=''})),
-                        field('Subtópico',select(f,'subtopic_id',optionize(subOptions),{placeholder:'—'})),
-                        field('Modo',select(f,'mode',[{value:'estudo',label:'Estudo'},{value:'revisao',label:'Revisão'},{value:'questoes',label:'Questões'},{value:'lei_seca',label:'Lei seca'}])),
-                        field('Questões resolvidas',input(f,'solved',{type:'number',number:true,min:0})),
-                        field('Acertos',input(f,'correct',{type:'number',number:true,min:0})),
-                    ]),
-                    field('Observações',textarea(f,'notes',{rows:3})),
-                    (f.topic_id||f.subtopic_id)?checkbox(f,'mark_studied','Marcar este conteúdo como estudado ao finalizar'):null,
-                    ]),closeModal,[btn('Registrar e finalizar',finishTimer,'primary',{disabled:timer.value.elapsed<1})]);
+                        h('div', { class: 'text-center' }, [
+                            h('div', { class: 'text-xs font-semibold uppercase tracking-wide text-zinc-500' }, timer.value.pomodoro ? 'Pomodoro · restante' : 'Cronômetro'),
+                            h('div', { class: 'mt-1 font-mono text-5xl font-bold' }, formatTimer(displaySec)),
+                            timer.value.pomodoro && timer.value.pomodoro_cycles ? h('div', { class: 'mt-2 text-xs text-zinc-500' }, timer.value.pomodoro_cycles + ' pomodoro(s) concluído(s) nesta sessão') : null,
+                            h('div', { class: 'mt-3 flex justify-center gap-2' }, [
+                                timer.value.running ? btn('Pausar', pauseTimer, 'warning') : btn(timer.value.elapsed ? 'Continuar' : 'Iniciar', startTimer, 'success'),
+                                btn('Zerar', resetTimer, 'ghost'),
+                            ]),
+                        ]),
+                        formGrid([
+                            checkbox(timer.value, 'pomodoro', 'Usar Pomodoro'),
+                            timer.value.pomodoro ? h('div', { class: 'md:col-span-2' }, [
+                                h('div', { class: 'mb-1 text-xs font-semibold' }, 'Bloco de foco'),
+                                h('div', { class: 'flex flex-wrap gap-1' }, [15, 25, 45, 60].map(value => btn(value + ' min', () => {
+                                    if (timer.value.running) return;
+                                    timer.value.pomodoro_minutes = value; timer.value.elapsed = 0; timer.value.startedAt = null;
+                                }, Number(timer.value.pomodoro_minutes) === value ? 'primary' : 'ghost', { disabled: timer.value.running }))),
+                            ]) : null,
+                            timer.value.pomodoro ? field('Minutos personalizados', input(timer.value, 'pomodoro_minutes', { type: 'number', number: true, min: 1, max: 180 })) : null,
+                            field('Matéria', select(f, 'subject_id', optionize(activeSubjects.value), { placeholder: '—', onChange: () => { f.topic_id = ''; f.subtopic_id = ''; } })),
+                            field('Tópico', select(f, 'topic_id', optionize(topicOptions), { placeholder: '—', onChange: () => f.subtopic_id = '' })),
+                            field('Subtópico', select(f, 'subtopic_id', optionize(subOptions), { placeholder: '—' })),
+                            field('Modo', select(f, 'mode', [{ value: 'estudo', label: 'Estudo' }, { value: 'revisao', label: 'Revisão' }, { value: 'questoes', label: 'Questões' }, { value: 'lei_seca', label: 'Lei seca' }])),
+                            field('Questões resolvidas', input(f, 'solved', { type: 'number', number: true, min: 0 })),
+                            field('Acertos', input(f, 'correct', { type: 'number', number: true, min: 0 })),
+                        ]),
+                        field('Observações', textarea(f, 'notes', { rows: 3 })),
+                        (f.topic_id || f.subtopic_id) ? checkbox(f, 'mark_studied', 'Marcar este conteúdo como estudado ao finalizar') : null,
+                    ]), closeModal, [btn('Registrar e finalizar', finishTimer, 'primary', { disabled: timer.value.elapsed < 1 })]);
                 }
 
                 if(m.type==='scheduleCompletion'){
@@ -1588,6 +2252,269 @@ export const MentoriaStudent = {
                         btn('Estudo parcial',()=>saveScheduleCompletion(m,false),'warning',{disabled:busy.value}),
                         btn('Concluir assunto',()=>saveScheduleCompletion(m,true),'primary',{disabled:busy.value}),
                     ]);
+                }
+
+                if (m.type === 'onboarding') {
+                    const f = m.form;
+                    const step = m.step || 1;
+                    const weeklyTotal = Object.values(f.hours || {}).reduce((acc, v) => acc + Number(v || 0), 0);
+
+                    const stepTitles = [
+                        '1. Concurso e Método',
+                        '2. Nível por Matéria',
+                        '3. Carga Horária',
+                        '4. Revisão e Ativação',
+                    ];
+
+                    const stepIndicators = h('div', { class: 'mentoria-onboarding-steps' }, [1, 2, 3, 4].map(sNum => {
+                        const isDone = sNum < step;
+                        const isActive = sNum === step;
+                        return h('div', {
+                            class: 'mentoria-onboarding-step-indicator ' + (isActive ? 'mentoria-onboarding-step-indicator--active' : isDone ? 'mentoria-onboarding-step-indicator--done' : ''),
+                            title: stepTitles[sNum - 1],
+                        }, isDone ? '✓' : String(sNum));
+                    }));
+
+                    let bodyContent = null;
+
+                    if (step === 1) {
+                        bodyContent = h('div', { class: 'space-y-5' }, [
+                            h('div', [
+                                h('h3', { class: 'text-base font-bold' }, 'Qual concurso é o seu foco principal?'),
+                                h('p', { class: 'text-xs text-zinc-500' }, 'O cronograma será estruturado em cima das disciplinas e edital deste concurso.'),
+                            ]),
+                            contests.value.length ? h('div', { class: 'grid gap-3 sm:grid-cols-2' }, contests.value.map(c => {
+                                const isSelected = f.contest_id === c.id;
+                                return h('div', {
+                                    class: 'mentoria-onboarding-card ' + (isSelected ? 'mentoria-onboarding-card--selected' : ''),
+                                    onClick: () => {
+                                        f.contest_id = c.id;
+                                        if (c.id !== activeContestId.value) {
+                                            setContest(c.id);
+                                        }
+                                    },
+                                }, [
+                                    h('div', { class: 'flex items-center justify-between' }, [
+                                        h('strong', { class: 'text-sm font-semibold' }, c.name),
+                                        isSelected ? h('span', { class: 'text-xs font-bold text-sky-500' }, '● Ativo') : null,
+                                    ]),
+                                    h('div', { class: 'mt-1 text-xs text-zinc-500' }, [c.board, c.position].filter(Boolean).join(' · ') || 'Concurso cadastrado'),
+                                    c.exam_date ? h('div', { class: 'mt-2 text-[11px] text-zinc-400' }, '📅 Prova: ' + fmtDate(c.exam_date)) : null,
+                                ]);
+                            })) : h('div', { class: 'text-xs text-zinc-500' }, 'Nenhum concurso vinculado ainda.'),
+
+                            h('div', { class: 'pt-2' }, [
+                                h('h3', { class: 'text-base font-bold' }, 'Como você prefere organizar seus estudos?'),
+                                h('p', { class: 'text-xs text-zinc-500 mb-3' }, 'Escolha o formato que melhor se adapta à sua rotina:'),
+                                h('div', { class: 'grid gap-3 sm:grid-cols-2' }, [
+                                    h('div', {
+                                        class: 'mentoria-onboarding-card ' + (f.mode === 'ciclo_inteligente' ? 'mentoria-onboarding-card--selected' : ''),
+                                        onClick: () => f.mode = 'ciclo_inteligente',
+                                    }, [
+                                        h('div', { class: 'flex items-center gap-2 font-bold text-sm text-sky-600 dark:text-sky-400' }, [
+                                            renderIcon('zap', '', 16),
+                                            h('span', 'Ciclo Inteligente (Recomendado)'),
+                                        ]),
+                                        h('p', { class: 'mt-1.5 text-xs text-zinc-600 dark:text-zinc-400' },
+                                            'Alterna disciplinas continuamente baseado na dificuldade e peso. Se imprevistos acontecerem, você não perde o calendário — apenas continua de onde parou.'
+                                        ),
+                                    ]),
+                                    h('div', {
+                                        class: 'mentoria-onboarding-card ' + (f.mode === 'agendado' ? 'mentoria-onboarding-card--selected' : ''),
+                                        onClick: () => f.mode = 'agendado',
+                                    }, [
+                                        h('div', { class: 'flex items-center gap-2 font-bold text-sm text-purple-600 dark:text-purple-400' }, [
+                                            renderIcon('schedule', '', 16),
+                                            h('span', 'Cronograma Fixo Semanal'),
+                                        ]),
+                                        h('p', { class: 'mt-1.5 text-xs text-zinc-600 dark:text-zinc-400' },
+                                            'Grade semanal com matérias agendadas em dias específicos (ex: Segundas = Constitucional). Indicado para quem tem horários 100% rígidos.'
+                                        ),
+                                    ]),
+                                ]),
+                            ]),
+                        ]);
+                    } else if (step === 2) {
+                        const subs = activeSubjects.value;
+                        const setAll = (level) => {
+                            subs.forEach(s => {
+                                f.levels[s.id] = level;
+                                if (level === 'iniciante') { f.affinity[s.id] = 30; f.priorities[s.id] = 'alta'; }
+                                else if (level === 'intermediario') { f.affinity[s.id] = 60; f.priorities[s.id] = 'media'; }
+                                else if (level === 'avancado') { f.affinity[s.id] = 90; f.priorities[s.id] = 'baixa'; }
+                            });
+                        };
+
+                        bodyContent = h('div', { class: 'space-y-4' }, [
+                            h('div', { class: 'flex flex-wrap items-center justify-between gap-2' }, [
+                                h('div', [
+                                    h('h3', { class: 'text-base font-bold' }, 'Diagnóstico de Domínio por Disciplina'),
+                                    h('p', { class: 'text-xs text-zinc-500' }, 'Classifique seu nível. O algoritmo dedicará mais tempo para matérias onde você tem mais dificuldade.'),
+                                ]),
+                                h('div', { class: 'flex items-center gap-1.5 text-xs' }, [
+                                    h('span', { class: 'text-zinc-500' }, 'Definir todas:'),
+                                    btn('Iniciante', () => setAll('iniciante'), 'ghost'),
+                                    btn('Intermediário', () => setAll('intermediario'), 'ghost'),
+                                    btn('Avançado', () => setAll('avancado'), 'ghost'),
+                                ]),
+                            ]),
+                            subs.length ? h('div', { class: 'max-h-96 space-y-2.5 overflow-y-auto pr-1' }, subs.map(s => {
+                                const curLevel = f.levels[s.id] || 'intermediario';
+                                const isSelected = f.selected[s.id] !== false;
+                                return h('div', { class: 'rounded-xl border border-zinc-200 bg-zinc-50/50 p-3 dark:border-zinc-800 dark:bg-zinc-900/50' }, [
+                                    h('div', { class: 'flex flex-wrap items-center justify-between gap-2' }, [
+                                        h('label', { class: 'flex items-center gap-2 cursor-pointer' }, [
+                                            h('input', {
+                                                type: 'checkbox',
+                                                checked: isSelected,
+                                                class: 'rounded text-sky-600',
+                                                onChange: e => f.selected[s.id] = e.target.checked,
+                                            }),
+                                            h('span', { class: 'text-sm font-semibold' + (!isSelected ? ' line-through text-zinc-400' : '') }, s.name),
+                                        ]),
+                                        isSelected ? h('div', { class: 'flex flex-wrap gap-1' }, [
+                                            h('button', {
+                                                type: 'button',
+                                                class: 'mentoria-level-pill ' + (curLevel === 'iniciante' ? 'mentoria-level-pill--active-iniciante' : ''),
+                                                onClick: () => { f.levels[s.id] = 'iniciante'; f.affinity[s.id] = 30; f.priorities[s.id] = 'alta'; },
+                                            }, '🔴 Iniciante (Alta Prioridade)'),
+                                            h('button', {
+                                                type: 'button',
+                                                class: 'mentoria-level-pill ' + (curLevel === 'intermediario' ? 'mentoria-level-pill--active-intermediario' : ''),
+                                                onClick: () => { f.levels[s.id] = 'intermediario'; f.affinity[s.id] = 60; f.priorities[s.id] = 'media'; },
+                                            }, '🟡 Intermediário (Média)'),
+                                            h('button', {
+                                                type: 'button',
+                                                class: 'mentoria-level-pill ' + (curLevel === 'avancado' ? 'mentoria-level-pill--active-avancado' : ''),
+                                                onClick: () => { f.levels[s.id] = 'avancado'; f.affinity[s.id] = 90; f.priorities[s.id] = 'baixa'; },
+                                            }, '🟢 Avançado (Manutenção)'),
+                                        ]) : h('span', { class: 'text-xs text-zinc-400 italic' }, 'Disciplina ignorada'),
+                                    ]),
+                                ]);
+                            })) : h('div', { class: 'text-xs text-zinc-500' }, 'Nenhuma disciplina encontrada no edital verticalizado.'),
+                        ]);
+                    } else if (step === 3) {
+                        bodyContent = h('div', { class: 'space-y-5' }, [
+                            h('div', [
+                                h('h3', { class: 'text-base font-bold' }, 'Disponibilidade Real de Horas'),
+                                h('p', { class: 'text-xs text-zinc-500' }, 'Selecione um ritmo predefinido ou ajuste os horários por dia da semana:'),
+                            ]),
+                            h('div', { class: 'grid gap-3 sm:grid-cols-3' }, [
+                                h('div', {
+                                    class: 'mentoria-onboarding-card ' + (f.preset === 'moderado' ? 'mentoria-onboarding-card--selected' : ''),
+                                    onClick: () => {
+                                        f.preset = 'moderado';
+                                        f.hours = { seg: 2, ter: 2, qua: 2, qui: 2, sex: 2, sab: 2, dom: 0 };
+                                    },
+                                }, [
+                                    h('strong', { class: 'text-sm font-semibold' }, '🌱 Moderado'),
+                                    h('div', { class: 'mt-1 text-xs text-zinc-500' }, '2h/dia útil + sáb (12h/sem)'),
+                                    h('div', { class: 'mt-2 text-[11px] text-zinc-400' }, 'Trabalho em período integral.'),
+                                ]),
+                                h('div', {
+                                    class: 'mentoria-onboarding-card ' + (f.preset === 'foco' ? 'mentoria-onboarding-card--selected' : ''),
+                                    onClick: () => {
+                                        f.preset = 'foco';
+                                        f.hours = { seg: 3.5, ter: 3.5, qua: 3.5, qui: 3.5, sex: 3.5, sab: 4, dom: 1 };
+                                    },
+                                }, [
+                                    h('strong', { class: 'text-sm font-semibold' }, '⚡ Foco Total'),
+                                    h('div', { class: 'mt-1 text-xs text-zinc-500' }, '3.5h/dia útil + fds (~22h/sem)'),
+                                    h('div', { class: 'mt-2 text-[11px] text-zinc-400' }, 'Alta intensidade e constância.'),
+                                ]),
+                                h('div', {
+                                    class: 'mentoria-onboarding-card ' + (f.preset === 'exclusivo' ? 'mentoria-onboarding-card--selected' : ''),
+                                    onClick: () => {
+                                        f.preset = 'exclusivo';
+                                        f.hours = { seg: 6, ter: 6, qua: 6, qui: 6, sex: 6, sab: 6, dom: 0 };
+                                    },
+                                }, [
+                                    h('strong', { class: 'text-sm font-semibold' }, '🚀 Exclusivo'),
+                                    h('div', { class: 'mt-1 text-xs text-zinc-500' }, '6h/dia seg a sáb (36h/sem)'),
+                                    h('div', { class: 'mt-2 text-[11px] text-zinc-400' }, 'Dedicação total aos estudos.'),
+                                ]),
+                            ]),
+                            h('div', [
+                                h('div', { class: 'mb-2 flex items-center justify-between' }, [
+                                    h('div', { class: 'text-xs font-semibold' }, 'Horas disponíveis por dia'),
+                                    h('div', { class: 'text-xs font-bold text-sky-600 dark:text-sky-400' }, 'Total: ' + weeklyTotal + 'h semanais'),
+                                ]),
+                                h('div', { class: 'grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7' }, [
+                                    ['seg', 'Segunda'], ['ter', 'Terça'], ['qua', 'Quarta'], ['qui', 'Quinta'],
+                                    ['sex', 'Sexta'], ['sab', 'Sábado'], ['dom', 'Domingo'],
+                                ].map(([k, label]) => field(label, input(f.hours, k, { type: 'number', number: true, min: 0, max: 24, step: '0.5' })))),
+                            ]),
+                            formGrid([
+                                field('Duração do bloco de estudo', select(f, 'minutes', [
+                                    { value: 45, label: '45 minutos (foco ágil)' },
+                                    { value: 50, label: '50 minutos (Pomodoro padrão)' },
+                                    { value: 60, label: '60 minutos (1 hora completa)' },
+                                    { value: 90, label: '90 minutos (aprofundamento)' },
+                                ])),
+                                field('Meta de acertos em questões', select(f, 'goal', [
+                                    { value: 70, label: '70% (construção de base)' },
+                                    { value: 80, label: '80% (padrão competitivo)' },
+                                    { value: 85, label: '85% (alto rendimento)' },
+                                    { value: 90, label: '90% (elite de concurso)' },
+                                ])),
+                            ]),
+                        ]);
+                    } else if (step === 4) {
+                        const targetContest = contests.value.find(c => c.id === f.contest_id) || contests.value[0];
+                        const activeSubsCount = activeSubjects.value.filter(s => f.selected[s.id] !== false).length;
+                        const iniciantes = activeSubjects.value.filter(s => f.selected[s.id] !== false && (f.levels[s.id] === 'iniciante')).length;
+                        const intermediarios = activeSubjects.value.filter(s => f.selected[s.id] !== false && (!f.levels[s.id] || f.levels[s.id] === 'intermediario')).length;
+                        const avancados = activeSubjects.value.filter(s => f.selected[s.id] !== false && (f.levels[s.id] === 'avancado')).length;
+
+                        bodyContent = h('div', { class: 'space-y-5' }, [
+                            h('div', [
+                                h('h3', { class: 'text-base font-bold' }, '🎉 Tudo pronto para gerar seu Plano de Estudos!'),
+                                h('p', { class: 'text-xs text-zinc-500' }, 'Revise o diagnóstico abaixo. Ao confirmar, o motor do Mentoria gerará seu ciclo personalizado.'),
+                            ]),
+                            h('div', { class: 'grid gap-3 sm:grid-cols-2' }, [
+                                h('div', { class: 'rounded-xl border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-900' }, [
+                                    h('div', { class: 'text-xs font-semibold text-zinc-500' }, 'CONCURSO ALVO'),
+                                    h('div', { class: 'mt-1 text-base font-bold' }, targetContest?.name || 'Não selecionado'),
+                                    h('div', { class: 'mt-1 text-xs text-zinc-400' }, [targetContest?.board, targetContest?.position].filter(Boolean).join(' · ')),
+                                ]),
+                                h('div', { class: 'rounded-xl border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-900' }, [
+                                    h('div', { class: 'text-xs font-semibold text-zinc-500' }, 'MODALIDADE & CARGA'),
+                                    h('div', { class: 'mt-1 text-base font-bold' }, f.mode === 'ciclo_inteligente' ? '⚡ Ciclo Inteligente' : '📅 Cronograma Semanal'),
+                                    h('div', { class: 'mt-1 text-xs text-zinc-400' }, weeklyTotal + ' horas semanais · ' + f.minutes + ' min / bloco'),
+                                ]),
+                                h('div', { class: 'rounded-xl border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-900' }, [
+                                    h('div', { class: 'text-xs font-semibold text-zinc-500' }, 'MATÉRIAS ATIVAS'),
+                                    h('div', { class: 'mt-1 text-base font-bold' }, activeSubsCount + ' disciplinas selecionadas'),
+                                    h('div', { class: 'mt-1 flex flex-wrap gap-1 text-xs' }, [
+                                        badge(iniciantes + ' Iniciantes', 'rose'),
+                                        badge(intermediarios + ' Intermediárias', 'amber'),
+                                        badge(avancados + ' Avançadas', 'green'),
+                                    ]),
+                                ]),
+                                h('div', { class: 'rounded-xl border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-900' }, [
+                                    h('div', { class: 'text-xs font-semibold text-zinc-500' }, 'METAS E REPETIÇÃO'),
+                                    h('div', { class: 'mt-1 text-base font-bold' }, f.goal + '% de acerto alvo'),
+                                    h('div', { class: 'mt-1 text-xs text-zinc-400' }, 'Repetições espaçadas automatizadas ativas'),
+                                ]),
+                            ]),
+                        ]);
+                    }
+
+                    const footerActions = [
+                        btn('Cancelar', closeModal, 'ghost'),
+                        step > 1 ? btn('← Voltar', () => m.step--, 'ghost') : null,
+                        step < 4
+                            ? btn('Avançar →', () => m.step++, 'primary')
+                            : btn('🚀 Gerar Meu Plano de Estudos', () => finishOnboarding(m), 'primary', { disabled: busy.value }),
+                    ].filter(Boolean);
+
+                    return modal(
+                        'Diagnóstico Inicial & Plano de Estudos',
+                        h('div', { class: 'space-y-4' }, [stepIndicators, bodyContent]),
+                        closeModal,
+                        footerActions,
+                        'mentoria-onboarding-dialog max-w-4xl'
+                    );
                 }
 
                 if(m.type==='schedule'){
@@ -1668,22 +2595,119 @@ export const MentoriaStudent = {
             }
 
             if(m.type==='notebook'){
-                const f=m.form;
-                return modal(m.item?'Editar caderno':'Novo caderno',h('div',{class:'space-y-4'},[
-                    formGrid([field('Título',input(f,'title',{required:true})),field('Pasta',input(f,'folder')),field('Cor',input(f,'color',{type:'color'}))]),
-                    h('div',{class:'flex flex-wrap gap-1'},[
-                        btn('B',()=>insertNotebookFormatting(f,'**texto**'),'ghost'),
-                        btn('I',()=>insertNotebookFormatting(f,'*texto*'),'ghost'),
-                        btn('H1',()=>insertNotebookFormatting(f,'# Título'),'ghost'),
-                        btn('H2',()=>insertNotebookFormatting(f,'## Subtítulo'),'ghost'),
-                        btn('• Lista',()=>insertNotebookFormatting(f,'• item'),'ghost'),
-                        btn('> Citação',()=>insertNotebookFormatting(f,'> citação'),'ghost'),
-                        btn('📌 Alerta',()=>insertNotebookFormatting(f,'📌 ATENÇÃO: '),'ghost'),
+                const f = m.form;
+                const mode = m.mode || 'editor';
+
+                const applyFormat = (tagBefore, tagAfter = '') => {
+                    const el = document.getElementById('mentoria_notebook_content');
+                    if (!el) {
+                        insertNotebookFormatting(f, tagBefore + (tagAfter || ''));
+                        return;
+                    }
+                    const start = el.selectionStart || 0;
+                    const end = el.selectionEnd || 0;
+                    const val = el.value || '';
+                    const selected = val.substring(start, end);
+                    const replacement = selected ? (tagBefore + selected + tagAfter) : (tagBefore + (tagAfter || ''));
+                    f.content = val.substring(0, start) + replacement + val.substring(end);
+                    setTimeout(() => {
+                        el.focus();
+                        const newPos = start + tagBefore.length + (selected ? selected.length : 0);
+                        el.setSelectionRange(newPos, newPos);
+                    }, 20);
+                };
+
+                const mapData = parseMindMap(f.content, f.title || 'Mapa Mental');
+
+                const modeTabs = h('div', { class: 'flex items-center gap-1 border-b border-zinc-200 pb-2 dark:border-zinc-800' }, [
+                    btn('✏️ Editor Formatado', () => m.mode = 'editor', mode === 'editor' ? 'primary' : 'ghost'),
+                    btn('👁️ Leitura com Grifos', () => m.mode = 'preview', mode === 'preview' ? 'primary' : 'ghost'),
+                    btn('🧠 Mapa Mental (' + (mapData?.branches?.length || 0) + ')', () => m.mode = 'mindmap', mode === 'mindmap' ? 'primary' : 'ghost'),
+                ]);
+
+                let mainArea = null;
+
+                if (mode === 'preview') {
+                    mainArea = h('div', { class: 'mentoria-editor-container' }, [
+                        h('div', { class: 'mentoria-doc-preview', innerHTML: formatNotebookContent(f.content) }),
+                    ]);
+                } else if (mode === 'mindmap') {
+                    mainArea = renderMindMapTree(mapData);
+                } else {
+                    mainArea = h('div', { class: 'mentoria-editor-container' }, [
+                        h('div', { class: 'mentoria-editor-toolbar' }, [
+                            h('div', { class: 'mentoria-editor-group' }, [
+                                h('button', {
+                                    type: 'button',
+                                    class: 'mentoria-grifo-btn mentoria-grifo-btn--amarelo',
+                                    title: 'Marca-texto Amarelo (Regra Geral / Conceito Chave)',
+                                    onClick: () => applyFormat('==y:', '=='),
+                                }, '🟡 Regra Geral'),
+                                h('button', {
+                                    type: 'button',
+                                    class: 'mentoria-grifo-btn mentoria-grifo-btn--verde',
+                                    title: 'Marca-texto Verde (Prazo / Jurisprudência / Permitido)',
+                                    onClick: () => applyFormat('==g:', '=='),
+                                }, '🟢 Prazo / Requisito'),
+                                h('button', {
+                                    type: 'button',
+                                    class: 'mentoria-grifo-btn mentoria-grifo-btn--vermelho',
+                                    title: 'Marca-texto Vermelho (Pegadinha / Exceção / Vedação)',
+                                    onClick: () => applyFormat('==r:', '=='),
+                                }, '🔴 Exceção / Pegadinha'),
+                            ]),
+                            h('div', { class: 'mentoria-editor-divider' }),
+                            h('div', { class: 'mentoria-editor-group' }, [
+                                btn('H1', () => applyFormat('\n# ', '\n'), 'ghost'),
+                                btn('H2', () => applyFormat('\n## ', '\n'), 'ghost'),
+                                btn('H3', () => applyFormat('\n### ', '\n'), 'ghost'),
+                            ]),
+                            h('div', { class: 'mentoria-editor-divider' }),
+                            h('div', { class: 'mentoria-editor-group' }, [
+                                btn('B', () => applyFormat('**', '**'), 'ghost'),
+                                btn('I', () => applyFormat('*', '*'), 'ghost'),
+                                btn('U', () => applyFormat('__', '__'), 'ghost'),
+                                btn('• Lista', () => applyFormat('\n• ', ''), 'ghost'),
+                                btn('> Citação', () => applyFormat('\n> ', ''), 'ghost'),
+                            ]),
+                            h('div', { class: 'mentoria-editor-divider' }),
+                            h('div', { class: 'mentoria-editor-group' }, [
+                                btn('⚖️ Artigo', () => applyFormat('Art. ', 'º, '), 'ghost'),
+                                btn('📜 Súmula', () => applyFormat('Súmula Vinculante nº ', ''), 'ghost'),
+                                btn('🧠 Bloco Mapa', () => applyFormat('\n[mapa]\nTema Central\n- Ramo 1 (Conceito)\n-- Item A\n-- Item B\n- Ramo 2 (Requisitos)\n-- Item C\n[/mapa]\n'), 'soft'),
+                            ]),
+                        ]),
+                        h('textarea', {
+                            id: 'mentoria_notebook_content',
+                            value: f.content,
+                            rows: 15,
+                            placeholder: 'Digite seu resumo, cole trechos de lei seca e use a barra de ferramentas para aplicar grifos amarelo, verde e vermelho…',
+                            class: 'w-full resize-y bg-transparent p-4 text-sm font-mono leading-relaxed outline-none focus:ring-0 dark:text-zinc-100',
+                            onInput: (e) => f.content = e.target.value,
+                        }),
+                    ]);
+                }
+
+                return modal(m.item ? 'Editar Caderno & Resumo' : 'Novo Caderno & Resumo', h('div', { class: 'space-y-4' }, [
+                    formGrid([
+                        field('Título do Resumo', input(f, 'title', { required: true, placeholder: 'Ex: Atos Administrativos - Resumo e Grifos' })),
+                        field('Pasta / Matéria', input(f, 'folder', { placeholder: 'Geral, Direito Constitucional…' })),
+                        field('Cor do Caderno', input(f, 'color', { type: 'color' })),
                     ]),
-                    field('Conteúdo',textarea(f,'content',{rows:16})),
-                    h('div',{class:'text-right text-[11px] text-zinc-500'},String(f.content||'').length+' caracteres · '+(String(f.content||'').trim()?String(f.content).trim().split(/\s+/).length:0)+' palavras'),
-                    formGrid([field('Edital',select(f,'edict_id',activeEdicts.value.map(e=>({value:e.id,label:e.name})),{placeholder:'—'})),field('Matéria',select(f,'subject_id',optionize(activeSubjects.value),{placeholder:'—'})),field('Tópico',select(f,'topic_id',optionize(activeTopics.value),{placeholder:'—'}))]),
-                ]),closeModal,[btn('Salvar',()=>saveNotebook(m),'primary')],'max-w-4xl');
+                    modeTabs,
+                    mainArea,
+                    h('div', { class: 'flex items-center justify-between text-[11px] text-zinc-500' }, [
+                        h('span', (String(f.content || '').length) + ' caracteres · ' + (String(f.content || '').trim() ? String(f.content).trim().split(/\s+/).length : 0) + ' palavras'),
+                        h('span', 'Dica: selecione qualquer trecho de texto e clique nos botões de grifo para marcar instantaneamente.'),
+                    ]),
+                    formGrid([
+                        field('Edital', select(f, 'edict_id', activeEdicts.value.map(e => ({ value: e.id, label: e.name })), { placeholder: '—' })),
+                        field('Matéria', select(f, 'subject_id', optionize(activeSubjects.value), { placeholder: '—' })),
+                        field('Tópico', select(f, 'topic_id', optionize(activeTopics.value), { placeholder: '—' })),
+                    ]),
+                ]), closeModal, [
+                    btn('Salvar Caderno', () => saveNotebook(m), 'primary', { disabled: busy.value }),
+                ], 'max-w-5xl');
             }
 
             if(m.type==='historySession'){
@@ -2006,6 +3030,7 @@ export const MentoriaStudent = {
             title: actingAsMentor.value ? (state.value.previewed_student_name || 'Área do aluno') : 'Minha preparação',
             subtitle: actingAsMentor.value ? 'Ações registradas em auditoria.' : 'Mentoria',
             actions: [
+                renderStreakWidget(),
                 h('a',{href:actingAsMentor.value?(state.value.preview_return_url||'/mentoria'):'/meus-produtos',class:'mentoria-return-link'},actingAsMentor.value?'Voltar ao painel do produtor':'Meus cursos'),
                 renderContestSelector(),
             ],
