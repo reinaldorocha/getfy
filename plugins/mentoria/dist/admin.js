@@ -1,11 +1,11 @@
 import { h, ref, computed } from 'vue';
-import { EDITAL_PROMPT, QUESTIONS_PROMPT, FLASHCARDS_PROMPT } from './prompts.js?v=0a442d56c082';
-import { radarAlerts } from './radar.js?v=0a442d56c082';
+import { EDITAL_PROMPT, QUESTIONS_PROMPT, FLASHCARDS_PROMPT } from './prompts.js?v=2315fc17bb77';
+import { radarAlerts } from './radar.js?v=2315fc17bb77';
 import {
     api, alertBox, badge, btn, card, checkbox, cn, empty, field, fmtDate, fmtDateTime, fmtHours, fmtMoney,
     input, jsonBody, modal, optionize, progressBar, riskBadge, sectionTitle, select, stat, textarea, mentoriaShell, useMentoriaShell,
     renderIcon,
-} from './shared.js?v=0a442d56c082';
+} from './shared.js?v=2315fc17bb77';
 
 const TAB_ITEMS = [
     ['dashboard', 'Dashboard', 'dashboard'],

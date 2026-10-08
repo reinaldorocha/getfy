@@ -3,8 +3,8 @@ import {
     api, alertBox, badge, btn, card, checkbox, choiceCard, cn, countdown, empty, field, fmtDate, fmtDateTime,
     fmtHours, input, jsonBody, modal, optionize, progressBar, safeJson, sectionTitle, select,
     stat, textarea, mentoriaShell, useMentoriaShell, svgIcon, renderIcon, renderRadarChart,
-} from './shared.js?v=0a442d56c082';
-import { displayAlternative } from './question-alternatives.js?v=0a442d56c082';
+} from './shared.js?v=2315fc17bb77';
+import { displayAlternative } from './question-alternatives.js?v=2315fc17bb77';
 
 const MODULES = [
     ['dashboard', 'Dashboard', 'dashboard', 'dashboard'],
