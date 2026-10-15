@@ -87,6 +87,7 @@ class StudyController extends Controller
 
     public function saveStudentSchedule(Request $request, int $tenant): JsonResponse
     {
+        abort_unless($request->attributes->get('mentoria.workspace_actor'), 403, 'O plano é gerenciado pelo mentor.');
         $student = $request->user();
         $this->access->assertCapability($student, $tenant, 'cronograma');
 
@@ -95,6 +96,7 @@ class StudyController extends Controller
 
     public function generateStudentSchedule(Request $request, int $tenant): JsonResponse
     {
+        abort_unless($request->attributes->get('mentoria.workspace_actor'), 403, 'O plano é gerenciado pelo mentor.');
         $student = $request->user();
         $this->access->assertStudentAccess($student, $tenant);
 
@@ -103,6 +105,7 @@ class StudyController extends Controller
 
     public function reprogramStudentSchedule(Request $request, int $tenant): JsonResponse
     {
+        abort_unless($request->attributes->get('mentoria.workspace_actor'), 403, 'O plano é gerenciado pelo mentor.');
         $student = $request->user();
         $this->access->assertCapability($student, $tenant, 'cronograma');
 
@@ -159,6 +162,7 @@ class StudyController extends Controller
 
     public function addStudentScheduleItem(Request $request, int $tenant, string $schedule): JsonResponse
     {
+        abort_unless($request->attributes->get('mentoria.workspace_actor'), 403, 'O plano é gerenciado pelo mentor.');
         $student = $request->user();
         $this->access->assertCapability($student, $tenant, 'cronograma');
         $this->requireSchedule($tenant, $student->id, $schedule);
@@ -168,6 +172,7 @@ class StudyController extends Controller
 
     public function updateStudentScheduleItem(Request $request, int $tenant, string $item): JsonResponse
     {
+        abort_unless($request->attributes->get('mentoria.workspace_actor'), 403, 'Use o registro de execução para concluir uma atividade.');
         $student = $request->user();
         $this->access->assertCapability($student, $tenant, 'cronograma');
         $row = $this->requireScheduleItem($tenant, $student->id, $item);
@@ -177,6 +182,7 @@ class StudyController extends Controller
 
     public function deleteStudentScheduleItem(Request $request, int $tenant, string $item): JsonResponse
     {
+        abort_unless($request->attributes->get('mentoria.workspace_actor'), 403, 'O plano é gerenciado pelo mentor.');
         $student = $request->user();
         $this->access->assertCapability($student, $tenant, 'cronograma');
         $row = $this->requireScheduleItem($tenant, $student->id, $item);
@@ -495,7 +501,7 @@ class StudyController extends Controller
         DB::transaction(function () use ($tenant, $student, $creator, $data, $items, $previous, $version, $scheduleId, $type): void {
             if ($previous) {
                 DB::table('mentoria_schedules')->where('id', $previous->id)
-                    ->update(['is_active' => false, 'state' => 'concluido', 'updated_at' => now()]);
+                    ->update(['is_active' => false, 'state' => 'substituido', 'updated_at' => now()]);
             }
 
             DB::table('mentoria_schedules')->insert([
@@ -607,39 +613,7 @@ class StudyController extends Controller
             $data['updated_at'] = now();
             DB::table('mentoria_schedule_items')->where('tenant_id', $tenant)->where('id', $row->id)->update($data);
 
-            if ($createSession && $oldStatus !== 'concluido' && $newStatus === 'concluido') {
-                $schedule = DB::table('mentoria_schedules')->where('id', $row->schedule_id)->first();
-                $duration = (int) ($data['duration_minutes'] ?? $row->duration_minutes ?? 0);
-                if ($duration > 0) {
-                    DB::table('mentoria_study_sessions')->insert([
-                        'id' => (string) Str::uuid(),
-                        'tenant_id' => $tenant,
-                        'student_id' => $studentId,
-                        'contest_id' => $schedule?->contest_id,
-                        'subject_id' => $row->subject_id,
-                        'topic_id' => $row->topic_id,
-                        'subtopic_id' => $row->subtopic_id,
-                        'schedule_item_id' => $row->id,
-                        'seconds' => $duration * 60,
-                        'mode' => 'cronograma',
-                        'notes' => null,
-                        'metrics' => json_encode(['schedule_item_id' => $row->id], JSON_UNESCAPED_UNICODE),
-                        'origin' => 'cronograma',
-                        'is_active' => true,
-                        'studied_at' => now(),
-                        'created_at' => now(),
-                        'updated_at' => now(),
-                    ]);
-                }
-            }
 
-            if ($oldStatus === 'concluido' && $newStatus !== 'concluido') {
-                DB::table('mentoria_study_sessions')
-                    ->where('tenant_id', $tenant)
-                    ->where('student_id', $studentId)
-                    ->where('schedule_item_id', $row->id)
-                    ->update(['is_active' => false, 'updated_at' => now()]);
-            }
         });
 
         return response()->json(['ok' => true]);
@@ -647,13 +621,8 @@ class StudyController extends Controller
 
     private function deleteItemAndLinkedSession(int $tenant, int $studentId, string $itemId): void
     {
-        DB::transaction(function () use ($tenant, $studentId, $itemId): void {
-            DB::table('mentoria_study_sessions')
-                ->where('tenant_id', $tenant)->where('student_id', $studentId)
-                ->where('schedule_item_id', $itemId)
-                ->update(['is_active' => false, 'updated_at' => now()]);
-            DB::table('mentoria_schedule_items')->where('tenant_id', $tenant)->where('id', $itemId)->delete();
-        });
+        DB::table('mentoria_schedule_items')->where('tenant_id', $tenant)->where('id', $itemId)
+            ->update(['status' => 'ignorado', 'updated_at' => now()]);
     }
 
     private function persistStudySession(Request $request, int $tenant, int $studentId): JsonResponse

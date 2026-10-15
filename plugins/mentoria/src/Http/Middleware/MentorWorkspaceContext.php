@@ -32,11 +32,15 @@ class MentorWorkspaceContext
         $request->attributes->set('mentoria.workspace_student', $student);
         $request->attributes->set('mentoria.workspace_base', url('/mentoria/students/'.$student->id.'/workspace/'.$tenantId));
         $request->setUserResolver(static fn () => $student);
+        // Controllers reused from the pupil area receive {tenant} first. The workspace-only
+        // {student} parameter must not shift positional controller arguments.
+        $request->route()->forgetParameter('student');
 
         try {
             $response = $next($request);
         } finally {
             $request->setUserResolver($originalResolver);
+            $request->route()->setParameter('student', $studentId);
         }
 
         if (! in_array($request->method(), ['GET', 'HEAD', 'OPTIONS'], true) && $response->getStatusCode() < 400) {

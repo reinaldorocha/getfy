@@ -200,7 +200,9 @@ class StudentController extends Controller
         if ($schedule) {
             try {
                 $this->reviewSchedule->syncForContest($tenant, (int) $student->id, (string) $context->contest_id);
-                $reprogrammed = $this->scheduleEngine->reprogram($tenant, $student->id, $schedule->id);
+                if ($request->attributes->get('mentoria.workspace_actor') && $schedule->type !== 'ciclo_inteligente') {
+                    $reprogrammed = $this->scheduleEngine->reprogram($tenant, $student->id, $schedule->id);
+                }
             } catch (\Throwable $e) {
                 $warning = $e->getMessage();
             }
@@ -230,7 +232,7 @@ class StudentController extends Controller
                 'sc.group', 'sc.position as order', 'sc.include_in_stats',
                 'sc.result', 'sc.ranking', 'sc.final_score', 'sc.appointed', 'sc.appointment_date',
             )
-            ->orderByRaw("FIELD(sc.group, 'foco', 'mira', 'realizado')")
+            ->orderByRaw("CASE `sc`.`group` WHEN 'foco' THEN 1 WHEN 'mira' THEN 2 WHEN 'realizado' THEN 3 ELSE 4 END")
             ->orderBy('sc.position')
             ->orderBy('c.name')
             ->get();
@@ -382,7 +384,7 @@ class StudentController extends Controller
                 ->limit(1000)
                 ->get();
 
-        $lastAnswers = DB::table('mentoria_question_answers')
+        $lastAnswers = DB::table('mentoria_question_answers')->where('is_student_evidence', true)
             ->where('tenant_id', $tenantId)
             ->where('student_id', $studentId)
             ->orderByDesc('answered_at')
@@ -476,6 +478,7 @@ class StudentController extends Controller
             'tenant_id' => $tenantId,
             'student' => ['id' => $studentId, 'name' => $student->name, 'email' => $student->email],
             'capabilities' => $capabilities,
+            'learning' => app(\Plugins\Mentoria\Services\LearningWorkspaceService::class)->payload($tenantId, $studentId, $activeContestId ? (string) $activeContestId : null),
             'active_contest_id' => $activeContestId,
             'contests' => $contests,
             'edicts' => $edicts,

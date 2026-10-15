@@ -1,6 +1,8 @@
-# Mentoria — Mentoria para Getfy
+# Mentoria 2.0 — Estudos guiados para concursos
 
-Plugin completo de mentoria e preparação para concursos, migrado do Mentoria original para a arquitetura nativa do Getfy.
+Plugin de preparação para concursos na arquitetura nativa do Getfy. O mentor publica o plano; o aluno executa, informa dificuldades e acompanha sua evolução.
+
+Atualização, regras e validação: [UPGRADE-2.0.md](UPGRADE-2.0.md).
 
 ## Fonte de verdade do acesso
 
@@ -33,7 +35,7 @@ O Getfy continua responsável por autenticação, usuários, senha, recuperaçã
 - Timer e histórico de sessões de estudo
 - Lançamentos manuais de questões
 - Banco de questões, importação, resposta, histórico e estatísticas
-- Flashcards exclusivamente de Certo/Errado, com explicação/fundamento
+- Flashcards de frente e verso, com avaliação de dificuldade e repetição espaçada
 - Baralhos do mentor e baralhos pessoais do aluno
 - Repetição espaçada SM-2
 - Revisões programadas
@@ -47,7 +49,7 @@ O Getfy continua responsável por autenticação, usuários, senha, recuperaçã
 
 Os importadores de concurso/edital, questões e flashcards incluem o botão **Copiar Prompt**, reaproveitando o fluxo do Mentoria original.
 
-Flashcards usam um prompt específico que gera somente afirmações de **Certo/Errado**. Questões de múltipla escolha permanecem no Banco de Questões.
+Flashcards usam frente e verso. Questões com alternativas e gabarito permanecem no Banco de Questões.
 
 ## Disponibilização de conteúdo
 

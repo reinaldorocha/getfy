@@ -628,6 +628,19 @@ export const tabs = (items, active, setActive) => h('div', {
 
 export const modal = (title, body, close, actions = null, width = 'max-w-3xl') => h('div', {
     class: 'mentoria-modal',
+    role: 'dialog',
+    'aria-modal': 'true',
+    'aria-label': title,
+    onVnodeMounted: vnode => vnode.el?.querySelector('button, input, select, textarea')?.focus(),
+    onKeydown: event => {
+        if (event.key === 'Escape') { event.preventDefault(); close(); }
+        if (event.key !== 'Tab') return;
+        const fields = [...event.currentTarget.querySelectorAll('button:not(:disabled), input:not(:disabled), textarea:not(:disabled), select:not(:disabled), a[href]')];
+        if (!fields.length) return;
+        const first = fields[0], last = fields[fields.length - 1];
+        if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+        else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    },
     onClick: close,
 }, [
     h('div', {

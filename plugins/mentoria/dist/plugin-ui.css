@@ -3078,3 +3078,24 @@ html:not(.dark) .mentoria-embedded,
 }
 
 
+
+/* Guided learning: scoped product surfaces, shared light/dark theme, no global resets. */
+.mentoria-app .mentoria-guided{--guide-surface:#fff;--guide-text:#20283e;--guide-muted:#647089;--guide-line:#e3e7f0;--guide-soft:#f1eeff;--guide-primary:#6050cc;color:var(--guide-text)}
+.mentoria-app--theme-dark .mentoria-guided{--guide-surface:#191d2a;--guide-text:#f1f2fa;--guide-muted:#b0b8ce;--guide-line:#323a50;--guide-soft:#2c2845;--guide-primary:#b8aaff}
+.mentoria-guided-heading{padding:8px 0 28px}.mentoria-guided-heading h2{font-size:30px;font-weight:750;letter-spacing:-.8px;line-height:1.25;margin:8px 0}.mentoria-guided-heading p{color:var(--guide-muted)}
+.mentoria-guided-kicker{font-size:11px;font-weight:700;letter-spacing:1.5px;color:var(--guide-primary)}
+.mentoria-guided-columns{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(260px,1fr);gap:22px}.mentoria-guided-stack{display:grid;gap:20px;align-content:start;min-width:0}
+.mentoria-guided .mentoria-card{background:var(--guide-surface);border:1px solid var(--guide-line);border-radius:18px;box-shadow:none;padding:24px}
+.mentoria-guided-hero{background:var(--guide-soft);border:1px solid var(--guide-line);border-radius:18px;padding:28px;min-width:0}.mentoria-guided-hero h2{font-size:25px;line-height:1.25;font-weight:700;letter-spacing:-.5px;margin:18px 0 12px;overflow-wrap:anywhere}.mentoria-guided-hero p{color:var(--guide-muted)}
+.mentoria-guided-actions{display:flex;flex-wrap:wrap;align-items:center;gap:10px}.mentoria-guided-hero .mentoria-guided-actions{margin-top:24px}
+.mentoria-guided-task{display:flex;align-items:center;gap:13px;padding:17px 0;border-top:1px solid var(--guide-line)}.mentoria-guided-task-content{flex:1;min-width:0;overflow-wrap:anywhere}.mentoria-guided-task-content p{font-size:12px;color:var(--guide-muted);margin-top:5px}.mentoria-guided-task-mark{display:grid;place-items:center;background:var(--guide-soft);border-radius:10px;width:38px;height:38px;flex-shrink:0;color:var(--guide-primary)}
+.mentoria-guided-quote{border-left:3px solid var(--guide-primary);padding:10px 14px;margin:16px 0;white-space:pre-wrap;overflow-wrap:anywhere}
+.mentoria-guided-days{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:5px;margin:18px 0}.mentoria-guided-day{display:grid;gap:6px;text-align:center;background:var(--guide-soft);padding:10px 2px;border-radius:9px;font-size:11px}.mentoria-guided-day strong{font-size:13px}.mentoria-guided-day.is-today{background:var(--guide-primary);color:var(--guide-surface)}.mentoria-guided-day.is-rest{background:transparent;color:var(--guide-muted)}
+.mentoria-guided-muted{font-size:12px;color:var(--guide-muted);margin:12px 0;white-space:pre-wrap}.mentoria-guided-level{display:flex;align-items:center;justify-content:space-between;margin:18px 0}.mentoria-guided-level strong{font-size:26px;font-weight:700}.mentoria-guided-achievement,.mentoria-guided-recommendation,.mentoria-guided-note{padding:16px 0;border-top:1px solid var(--guide-line);overflow-wrap:anywhere}.mentoria-guided-achievement p,.mentoria-guided-recommendation p{color:var(--guide-muted);font-size:13px;margin-top:5px}.mentoria-guided-note>p{margin:12px 0;white-space:pre-wrap}.mentoria-guided-rule{background:var(--guide-soft);padding:18px;border-radius:12px;margin-top:15px}.mentoria-guided-rule p{margin-top:10px;font-size:13px}
+.mentoria-guided-week{margin-top:18px}.mentoria-guided-week-row{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;padding:14px 0;border-top:1px solid var(--guide-line)}.mentoria-guided-week-row>span{font-size:12px}.mentoria-guided-hours{display:grid;grid-template-columns:repeat(auto-fit,minmax(75px,1fr));gap:10px}
+@media(max-width:1000px){.mentoria-guided-columns{grid-template-columns:1fr}.mentoria-guided-heading h2{font-size:26px}}
+@media(max-width:540px){.mentoria-guided .mentoria-card,.mentoria-guided-hero{padding:18px}.mentoria-guided-task{flex-wrap:wrap}.mentoria-guided-task .mentoria-button{margin-left:51px}.mentoria-guided-hero h2{font-size:22px}.mentoria-guided-days{gap:3px}.mentoria-guided-day{font-size:10px}.mentoria-guided-actions .mentoria-button{min-height:44px}}
+@media(prefers-reduced-motion:reduce){.mentoria-guided *{scroll-behavior:auto;transition:none!important}}
+
+.mentoria-guided-subject{display:grid;grid-template-columns:minmax(140px,1fr) minmax(100px,140px) minmax(100px,160px);align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--guide-line)}.mentoria-guided-subject>label{font-size:13px}.mentoria-guided-subject input[type=checkbox]{margin-right:8px}
+@media(max-width:600px){.mentoria-guided-subject{grid-template-columns:1fr}.mentoria-guided-subject input[type=checkbox]{width:18px;height:18px}}

@@ -27,7 +27,7 @@ class MetricsService
             ->where('studied_at', '>=', now()->subDays(7))
             ->sum('seconds');
 
-        $questions = DB::table('mentoria_question_logs')
+        $questions = DB::table('mentoria_question_logs')->where(fn ($query) => $query->whereNull('origin')->orWhere('origin', '!=', 'mentor_preview'))
             ->where('tenant_id', $tenantId)
             ->where('is_active', true)
             ->selectRaw('COALESCE(SUM(solved),0) solved, COALESCE(SUM(correct),0) correct')
@@ -85,12 +85,22 @@ class MetricsService
             ? Carbon::parse($lastStudy)->startOfDay()->diffInDays(today())
             : 999;
 
-        [$riskLevel, $riskReason] = $this->classifyRisk(
-            (int) $daysWithoutStudy,
-            (int) $summary['questions_solved_total'],
-            (float) ($summary['accuracy_total'] ?? 0),
-            (int) $pendingReviews,
-        );
+        $planned = DB::table('mentoria_schedule_items as i')->join('mentoria_schedules as s', 's.id', '=', 'i.schedule_id')
+            ->where('s.tenant_id', $tenantId)->where('s.student_id', $studentId)->where('s.is_active', true)
+            ->where('s.state', 'ativo')->whereNotNull('i.planned_date')->where('i.planned_date', '<', today()->toDateString())
+            ->where('i.status', 'pendente')->distinct()->count('i.planned_date');
+        if ($planned === 0 && (int) $summary['questions_solved_total'] < 10 && $pendingReviews < 5) {
+            $riskLevel = 'verde';
+            $riskReason = 'Sem pendências do plano; confirme o diagnóstico com o aluno';
+        } elseif ($planned > 0) {
+            $riskLevel = $planned >= 2 ? 'vermelho' : 'amarelo';
+            $riskReason = $planned.' dia(s) do plano com atividades pendentes';
+        } elseif ((int) $summary['questions_solved_total'] >= 10) {
+            [$riskLevel, $riskReason] = $this->classifyRisk(0, (int) $summary['questions_solved_total'], (float) ($summary['accuracy_total'] ?? 0), (int) $pendingReviews);
+        } else {
+            $riskLevel = 'amarelo';
+            $riskReason = $pendingReviews.' revisões pendentes';
+        }
 
         return [
             'study_hours_7d' => round($this->secondsInLastDays($tenantId, $studentId, 7) / 3600, 1),
@@ -132,7 +142,7 @@ class MetricsService
         $this->applyContest($sessionsPeriod, $contestId);
         $this->applyDatePeriod($sessionsPeriod, 'studied_at', $startDate, $endDate);
 
-        $logsPeriod = DB::table('mentoria_question_logs')
+        $logsPeriod = DB::table('mentoria_question_logs')->where(fn ($query) => $query->whereNull('origin')->orWhere('origin', '!=', 'mentor_preview'))
             ->where('tenant_id', $tenantId)->where('student_id', $studentId)->where('is_active', true);
         $this->applyContest($logsPeriod, $contestId);
         $this->applyDatePeriod($logsPeriod, 'recorded_at', $startDate, $endDate);
@@ -146,7 +156,7 @@ class MetricsService
             ->where('tenant_id', $tenantId)->where('student_id', $studentId)->where('is_active', true);
         $this->applyContest($sessionsTotal, $contestId);
 
-        $logsTotal = DB::table('mentoria_question_logs')
+        $logsTotal = DB::table('mentoria_question_logs')->where(fn ($query) => $query->whereNull('origin')->orWhere('origin', '!=', 'mentor_preview'))
             ->where('tenant_id', $tenantId)->where('student_id', $studentId)->where('is_active', true);
         $this->applyContest($logsTotal, $contestId);
 
@@ -184,7 +194,7 @@ class MetricsService
             ->whereDate('studied_at', today());
         $this->applyContest($todaySessions, $contestId);
 
-        $todayQuestions = DB::table('mentoria_question_logs')
+        $todayQuestions = DB::table('mentoria_question_logs')->where(fn ($query) => $query->whereNull('origin')->orWhere('origin', '!=', 'mentor_preview'))
             ->where('tenant_id', $tenantId)->where('student_id', $studentId)->where('is_active', true)
             ->whereDate('recorded_at', today());
         $this->applyContest($todayQuestions, $contestId);
@@ -259,7 +269,7 @@ class MetricsService
             $days[$key]['active'] = true;
         }
 
-        $questions = DB::table('mentoria_question_logs')
+        $questions = DB::table('mentoria_question_logs')->where(fn ($query) => $query->whereNull('origin')->orWhere('origin', '!=', 'mentor_preview'))
             ->where('tenant_id', $tenantId)->where('student_id', $studentId)->where('is_active', true);
         $this->applyContest($questions, $contestId);
         $this->applyDatePeriod($questions, 'recorded_at', $startDate, $endDate);
@@ -303,7 +313,7 @@ class MetricsService
                 ->where('contest_id', $contestId)->where('subject_id', $subject->id)->where('is_active', true);
             $this->applyDatePeriod($sessions, 'studied_at', $startDate, $endDate);
 
-            $questions = DB::table('mentoria_question_logs')
+            $questions = DB::table('mentoria_question_logs')->where(fn ($query) => $query->whereNull('origin')->orWhere('origin', '!=', 'mentor_preview'))
                 ->where('tenant_id', $tenantId)->where('student_id', $studentId)
                 ->where('contest_id', $contestId)->where('subject_id', $subject->id)->where('is_active', true);
             $this->applyDatePeriod($questions, 'recorded_at', $startDate, $endDate);
@@ -400,7 +410,7 @@ class MetricsService
 
     private function questionStats(int $tenantId, int $studentId, string $start, string $end): array
     {
-        $stats = DB::table('mentoria_question_logs')
+        $stats = DB::table('mentoria_question_logs')->where(fn ($query) => $query->whereNull('origin')->orWhere('origin', '!=', 'mentor_preview'))
             ->where('tenant_id', $tenantId)
             ->where('student_id', $studentId)
             ->where('is_active', true)

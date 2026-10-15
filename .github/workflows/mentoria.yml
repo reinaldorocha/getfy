@@ -1,0 +1,39 @@
+name: Mentoria guided learning
+on:
+  pull_request:
+    paths:
+      - 'plugins/mentoria/**'
+      - 'tests/Feature/MentoriaGuidedLearningTest.php'
+      - '.github/workflows/mentoria.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  contracts-and-integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, dom, xml, xmlwriter, pdo_sqlite, intl, bcmath
+          coverage: none
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            plugins/mentoria/frontend/package-lock.json
+      - run: composer install --no-interaction --prefer-dist
+      - run: cp .env.example .env && php artisan key:generate
+      - run: npm ci --no-audit --no-fund
+      - run: npm ci --prefix plugins/mentoria/frontend --no-audit --no-fund
+      - run: php artisan test --filter=MentoriaGuidedLearningTest
+      - run: php plugins/mentoria/tests/route_smoke.php
+      - run: php plugins/mentoria/tests/question_alternative_normalization.php
+      - run: npm run build --prefix plugins/mentoria/frontend
+      - run: npm test --prefix plugins/mentoria/frontend
+      - run: git diff --exit-code -- plugins/mentoria/dist
+      - run: npx --prefix plugins/mentoria/frontend playwright install --with-deps chromium
+      - run: npm run test:browser --prefix plugins/mentoria/frontend

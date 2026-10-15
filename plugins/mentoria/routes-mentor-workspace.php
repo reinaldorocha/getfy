@@ -1,6 +1,7 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
+use Plugins\Mentoria\Http\Controllers\LearningController;
 use Plugins\Mentoria\Http\Controllers\FlashcardController;
 use Plugins\Mentoria\Http\Controllers\MaterialController;
 use Plugins\Mentoria\Http\Controllers\MetricsController;
@@ -43,7 +44,7 @@ Route::prefix('/students/{student}/workspace/{tenant}')->whereNumber(['student',
     Route::get('/flashcards/pending', [FlashcardController::class, 'pendingStudentCards'])->name('mentoria.workspace.flashcards.pending');
     Route::get('/flashcards/history', [FlashcardController::class, 'studentHistory'])->name('mentoria.workspace.flashcards.history');
 
-    Route::post('/questions/{question}/answer', [QuestionController::class, 'answerStudentQuestion'])->name('mentoria.workspace.questions.answer');
+    Route::post('/questions/{question}/answer', [QuestionController::class, 'answerStudentQuestion'])->middleware('throttle:60,1')->name('mentoria.workspace.questions.answer');
     Route::get('/questions/{question}/history', [QuestionController::class, 'studentHistory'])->name('mentoria.workspace.questions.history');
     Route::get('/questions/statistics', [QuestionController::class, 'studentStatistics'])->name('mentoria.workspace.questions.statistics');
 
@@ -59,4 +60,14 @@ Route::prefix('/students/{student}/workspace/{tenant}')->whereNumber(['student',
     Route::get('/metrics/summary', [MetricsController::class, 'summary'])->name('mentoria.workspace.metrics.summary');
     Route::get('/metrics/timeline', [MetricsController::class, 'timeline'])->name('mentoria.workspace.metrics.timeline');
     Route::get('/metrics/subjects', [MetricsController::class, 'subjects'])->name('mentoria.workspace.metrics.subjects');
+
+/* Guided learning: mentor publication, persistent diagnosis and atomic execution. */
+Route::put('/learning/profile', [LearningController::class, 'profile'])->middleware('throttle:60,1')->name('mentoria.workspace.learning.profile');
+Route::post('/learning/notes', [LearningController::class, 'note'])->middleware('throttle:60,1')->name('mentoria.workspace.learning.note');
+Route::patch('/learning/notes/{note}', [LearningController::class, 'resolve'])->middleware('throttle:60,1')->name('mentoria.workspace.learning.resolve');
+Route::post('/learning/preview', [LearningController::class, 'preview'])->middleware('throttle:60,1')->name('mentoria.workspace.learning.preview');
+Route::post('/learning/publish', [LearningController::class, 'publish'])->middleware('throttle:60,1')->name('mentoria.workspace.learning.publish');
+Route::post('/learning/items/{item}/execute', [LearningController::class, 'execute'])->middleware('throttle:60,1')->name('mentoria.workspace.learning.execute');
+Route::get('/learning/calendar.ics', [LearningController::class, 'calendar'])->middleware('throttle:60,1')->name('mentoria.workspace.learning.calendar');
+Route::post('/learning/reprogram-preview', [LearningController::class, 'reprogramPreview'])->middleware('throttle:60,1')->name('mentoria.workspace.learning.reprogram-preview');
 });

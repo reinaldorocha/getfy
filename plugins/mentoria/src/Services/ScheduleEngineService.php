@@ -21,16 +21,23 @@ class ScheduleEngineService
         $this->assertContestAssigned($student->id, $tenantId, $contestId);
 
         [$subjects, $units] = $this->diagnostic($student->id, $tenantId, $contestId, $configuration);
+        if ($subjects === []) {
+            throw new RuntimeException('Nenhum conteúdo disponível nos editais atribuídos. Atribua edital e matérias antes de gerar o plano.');
+        }
         $mode = (string) ($configuration['tipo'] ?? $configuration['type'] ?? 'agendado');
 
         if ($mode === 'ciclo' || $mode === 'ciclo_inteligente') {
-            return $this->generateCycle($subjects);
+            return $this->generateCycle($subjects, $configuration);
         }
 
+        $configuration['_exam_date'] = DB::table('mentoria_contests')->where('tenant_id', $tenantId)->where('id', $contestId)->value('exam_date');
+        $configuration['_review_occupancy'] = DB::table('mentoria_scheduled_reviews')->where('tenant_id', $tenantId)
+            ->where('student_id', $student->id)->where('contest_id', $contestId)->where('is_active', true)->where('completed', false)
+            ->whereNotNull('next_date')->get()->groupBy('next_date')->map(fn ($rows) => $rows->count() * ReviewScheduleService::REVIEW_DURATION_MINUTES)->all();
         return $this->generateAgenda($subjects, $units, $configuration);
     }
 
-    public function reprogram(int $tenantId, int $studentId, string $scheduleId, ?string $fromDate = null): int
+    public function reprogram(int $tenantId, int $studentId, string $scheduleId, ?string $fromDate = null, bool $preview = false): int|array
     {
         $schedule = DB::table('mentoria_schedules')
             ->where('tenant_id', $tenantId)
@@ -43,10 +50,15 @@ class ScheduleEngineService
             throw new RuntimeException('Cronograma não encontrado.');
         }
 
+        if ($schedule->type === 'ciclo_inteligente') {
+            throw new RuntimeException('Ciclos não têm datas. Gere uma nova prévia para alterar sua distribuição.');
+        }
+        $deadline = DB::table('mentoria_contests')->where('tenant_id', $tenantId)->where('id', $schedule->contest_id)->value('exam_date');
         $configuration = $this->decodeJson($schedule->configuration);
-        $start = $fromDate ? CarbonImmutable::parse($fromDate)->startOfDay() : CarbonImmutable::today();
-        if ($start->isBefore(CarbonImmutable::today())) {
-            $start = CarbonImmutable::today();
+        $today = CarbonImmutable::today($configuration['timezone'] ?? config('app.timezone'));
+        $start = $fromDate ? CarbonImmutable::parse($fromDate, $today->timezone)->startOfDay() : $today;
+        if ($start->isBefore($today)) {
+            $start = $today;
         }
 
         $items = DB::table('mentoria_schedule_items')
@@ -59,7 +71,7 @@ class ScheduleEngineService
             ->get();
 
         if ($items->isEmpty()) {
-            return 0;
+            return $preview ? [] : 0;
         }
 
         $hours = $this->hours($configuration);
@@ -73,7 +85,10 @@ class ScheduleEngineService
             $duration = max(1, (int) ($item->duration_minutes ?: ($configuration['minutosTopico'] ?? 60)));
             $placed = false;
 
-            for ($guard = 0; $guard < 1095; $guard++) {
+            for ($guard = 0; $guard < 365; $guard++) {
+                if ($deadline && $cursor->gte(CarbonImmutable::parse($deadline))) {
+                    break;
+                }
                 $key = $cursor->toDateString();
                 $capacity = (int) round(($hours[$this->weekdayKey($cursor)] ?? 0) * 60);
                 $used = $occupied[$key] ?? ['minutes' => 0, 'count' => 0];
@@ -101,6 +116,10 @@ class ScheduleEngineService
             if (! $placed) {
                 throw new RuntimeException('Não foi possível reprogramar todas as atividades com a carga horária atual.');
             }
+        }
+
+        if ($preview) {
+            return $updates;
         }
 
         DB::transaction(function () use ($tenantId, $updates): void {
@@ -203,7 +222,7 @@ class ScheduleEngineService
                 ->whereIn('item_id', $unitIds)
                 ->count();
 
-            $questionStats = DB::table('mentoria_question_logs')
+            $questionStats = DB::table('mentoria_question_logs')->where(fn ($query) => $query->whereNull('origin')->orWhere('origin', '!=', 'mentor_preview'))
                 ->where('tenant_id', $tenantId)
                 ->where('student_id', $studentId)
                 ->where('contest_id', $contestId)
@@ -214,19 +233,22 @@ class ScheduleEngineService
 
             $solved = (int) ($questionStats->solved ?? 0);
             $correct = (int) ($questionStats->correct ?? 0);
-            $accuracy = $solved > 0 ? ($correct / $solved) * 100 : 65;
+            $accuracy = $solved > 0 ? ($correct / $solved) * 100 : null;
             $coverage = count($units) > 0 ? ($completed / count($units)) * 100 : 0;
 
             $base = (float) ($subject->relevance ?? 50);
             $weight = (float) ($subject->weight ?? 1);
             $manual = $this->manualPriority((string) ($priorities[$subjectId] ?? 'media'));
-            $affinityValue = is_numeric($affinity[$subjectId] ?? null) ? (float) $affinity[$subjectId] : 50;
+            $defaultAffinity = match ($configuration['nivelAtual'] ?? null) { 'iniciante' => 30, 'avancado' => 70, default => 50 };
+            $affinityValue = is_numeric($affinity[$subjectId] ?? null) ? (float) $affinity[$subjectId] : $defaultAffinity;
+            $goal = max(1, min(100, (int) ($configuration['metaAcertos'] ?? 80)));
+            $performanceGap = $accuracy === null ? 50 : max(0, ($goal - $accuracy) / $goal * 100);
 
             $priority = (int) round(
                 ($base * 0.25)
                 + (min(100, $weight * 25) * 0.15)
                 + ((100 - $coverage) * 0.25)
-                + ((100 - $accuracy) * 0.20)
+                + ($performanceGap * 0.20)
                 + ($manual * 0.10)
                 + ((100 - $affinityValue) * 0.05)
             );
@@ -244,6 +266,8 @@ class ScheduleEngineService
                 'completed' => $completed,
                 'solved' => $solved,
                 'correct' => $correct,
+                'accuracy' => $accuracy,
+                'evidence' => $solved < 20 ? 'insuficiente' : 'inicial',
                 'priority' => $priority,
             ];
             $unitsBySubject[$subjectId] = $units;
@@ -258,12 +282,16 @@ class ScheduleEngineService
      * @param  array<int, array<string, mixed>>  $subjects
      * @return array<int, array<string, mixed>>
      */
-    private function generateCycle(array $subjects): array
+    private function generateCycle(array $subjects, array $configuration): array
     {
+        $maxMinutes = (int) floor(max($this->hours($configuration)) * 60);
+        if ($maxMinutes < 5) {
+            throw new RuntimeException('Informe disponibilidade para pelo menos um bloco de estudo.');
+        }
         $items = [];
         foreach ($subjects as $index => $subject) {
             $priority = (int) $subject['priority'];
-            $duration = $priority >= 70 ? 90 : ($priority >= 55 ? 70 : ($priority >= 40 ? 50 : 30));
+            $duration = min($maxMinutes, max(5, (int) ($configuration['minutosTopico'] ?? 30)));
             $items[] = [
                 'planned_date' => null,
                 'cycle_position' => $index + 1,
@@ -295,7 +323,12 @@ class ScheduleEngineService
         $maxPerDay = max(0, (int) ($configuration['maxTopicosDia'] ?? $configuration['max_topics_per_day'] ?? 0));
         $repetitions = max(1, (int) ($configuration['repeticoesEdital'] ?? $configuration['edict_repetitions'] ?? 1));
         $hours = $this->hours($configuration);
-        $today = CarbonImmutable::today();
+        $today = CarbonImmutable::today($configuration['timezone'] ?? config('app.timezone'));
+        $end = ! empty($configuration['_exam_date']) ? CarbonImmutable::parse($configuration['_exam_date'])->subDay() : $today->addDays(364);
+        if ($end->isBefore($today)) {
+            throw new RuntimeException('A data da prova não permite um novo plano. Atualize o concurso.');
+        }
+        $remainingUnits = array_sum(array_map('count', $unitsBySubject)) * $repetitions;
 
         $pointers = [];
         foreach ($subjects as $subject) {
@@ -305,13 +338,11 @@ class ScheduleEngineService
         $subjectIndex = 0;
         $items = [];
 
-        for ($day = 0; $day < 1095; $day++) {
+        for ($day = 0; $day < 365 && $today->addDays($day)->lte($end); $day++) {
             $date = $today->addDays($day);
             $available = (float) ($hours[$this->weekdayKey($date)] ?? 0);
-            $capacity = (int) floor(($available * 60) / $minutes);
-            if ($available > 0 && $capacity < 1) {
-                $capacity = 1;
-            }
+            $freeMinutes = max(0, (int) floor($available * 60) - (int) ($configuration['_review_occupancy'][$date->toDateString()] ?? 0));
+            $capacity = (int) floor($freeMinutes / $minutes);
             if ($maxPerDay > 0) {
                 $capacity = min($capacity, $maxPerDay);
             }
@@ -358,6 +389,7 @@ class ScheduleEngineService
                 $units = $unitsBySubject[$subjectId];
                 $unit = $units[$pointers[$subjectId] % count($units)];
                 $pointers[$subjectId]++;
+                $remainingUnits--;
 
                 $items[] = [
                     'planned_date' => $date->toDateString(),
@@ -373,6 +405,9 @@ class ScheduleEngineService
             }
         }
 
+        if ($remainingUnits > 0) {
+            throw new RuntimeException('O conteúdo não cabe na disponibilidade até a prova (ou no horizonte de um ano). Reduza matérias/repetições, ajuste a duração dos blocos ou amplie a disponibilidade.');
+        }
         return $items;
     }
 

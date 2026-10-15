@@ -233,6 +233,7 @@ class QuestionController extends Controller
         $subjectId = $this->resolveSubjectId($tenant, (int) $student->id, $contestId ? (string) $contestId : null, (string) $row->subject);
 
         DB::transaction(function () use ($tenant, $student, $row, $data, $correct, $answerId, $now, $contestId, $subjectId): void {
+            DB::table('users')->where('id', $student->id)->lockForUpdate()->first();
             DB::table('mentoria_question_answers')->insert([
                 'id' => $answerId,
                 'tenant_id' => $tenant,
@@ -240,6 +241,8 @@ class QuestionController extends Controller
                 'question_id' => $row->id,
                 'contest_id' => $contestId,
                 'answer' => $data['answer'],
+                'actor_id' => request()->attributes->get('mentoria.workspace_actor')?->id ?? $student->id,
+                'is_student_evidence' => ! request()->attributes->get('mentoria.workspace_actor'),
                 'is_correct' => $correct,
                 'answered_at' => $now,
                 'created_at' => $now,
@@ -257,12 +260,13 @@ class QuestionController extends Controller
                 'solved' => 1,
                 'correct' => $correct ? 1 : 0,
                 'wrong' => $correct ? 0 : 1,
-                'origin' => 'banco_questoes',
+                'origin' => request()->attributes->get('mentoria.workspace_actor') ? 'mentor_preview' : 'banco_questoes',
                 'is_active' => true,
                 'recorded_at' => $now,
                 'created_at' => $now,
                 'updated_at' => $now,
             ]);
+            app(\Plugins\Mentoria\Services\LearningRewardsService::class)->recordAnswer($tenant, (int) $student->id, $contestId ? (string) $contestId : null, (string) $row->id, $answerId, $correct);
         });
 
         return response()->json([
@@ -284,7 +288,7 @@ class QuestionController extends Controller
             throw new NotFoundHttpException('Questão não disponível para este aluno.');
         }
 
-        $history = DB::table('mentoria_question_answers as a')
+        $history = DB::table('mentoria_question_answers as a')->where('a.is_student_evidence', true)
             ->join('mentoria_question_bank as q', 'q.id', '=', 'a.question_id')
             ->where('a.tenant_id', $tenant)
             ->where('a.student_id', $student->id)
@@ -318,7 +322,7 @@ class QuestionController extends Controller
             throw new NotFoundHttpException('Concurso fora do escopo do aluno.');
         }
 
-        $base = DB::table('mentoria_question_answers as a')
+        $base = DB::table('mentoria_question_answers as a')->where('a.is_student_evidence', true)
             ->join('mentoria_question_bank as q', 'q.id', '=', 'a.question_id')
             ->where('a.tenant_id', $tenant)
             ->where('a.student_id', $student->id)

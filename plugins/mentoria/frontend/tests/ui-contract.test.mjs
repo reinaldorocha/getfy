@@ -84,15 +84,10 @@ test('the active contest selector cannot force horizontal scrolling on mobile', 
     assert.match(css, /@media \(max-width: 900px\)[\s\S]*\.mentoria-contest-selector\s*\{[^}]*width:\s*100%/);
 });
 
-test('calendar schedule completion opens the study form instead of closing it immediately', () => {
+test('calendar schedule completion delegates to the guided execution dialog', () => {
     const student = source('src/student.js');
-    const calendarStart = student.indexOf("if(m.type==='scheduleDay')");
-    const calendarEnd = student.indexOf("if(m.type==='metricsDetail')", calendarStart);
-    const calendar = student.slice(calendarStart, calendarEnd);
-
-    assert.match(calendar, /btn\(item\.status==='concluido'\?'Reabrir':'Concluir'/);
-    assert.doesNotMatch(calendar, /await toggleScheduleItem\(item\);closeModal\(\);/);
-    assert.match(calendar, /await toggleScheduleItem\(item\);if\(item\.status==='concluido'\)closeModal\(\);/);
+    assert.match(student, /guided.openExecution\(item\)/);
+    assert.match(student, /openScheduleCompletion\(item\)/);
 });
 
 test('student course cards use the product cover with a polished fallback', () => {

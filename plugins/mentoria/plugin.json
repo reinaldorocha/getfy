@@ -1,7 +1,7 @@
 {
   "slug": "mentoria",
   "name": "Mentoria",
-  "version": "1.5.0",
+  "version": "2.0.0",
   "description": "Mentoria e preparação para concursos integrada ao Getfy. Reutiliza usuários, produtos, acesso, pagamentos, SMTP e tenants do core.",
   "type": "member",
   "requires": {

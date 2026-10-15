@@ -74,13 +74,11 @@ test('student workspace keeps the global timer launcher available to mentors usi
     assert.match(stylesheet, /\.mentoria-timer-launcher\s*\{/);
 });
 
-test('a scheduled study opens one completion form that records study before resolving the task', () => {
+test('scheduled execution uses the guided form instead of multiple independent requests', () => {
     const student = source('frontend/src/student.js');
-
-    assert.match(student, /function openScheduleCompletion\(item\)/);
-    assert.match(student, /type:'scheduleCompletion'/);
-    assert.match(student, /schedule_item_id:item\.id/);
-    assert.match(student, /create_session:false/);
-    assert.match(student, /Estudo parcial/);
-    assert.match(student, /Concluir assunto/);
+    const guided = source('frontend/src/guided-workspace.js');
+    assert.match(student, /guided.openExecution\(item\)/);
+    assert.match(guided, /request_id: m.requestId/);
+    assert.match(guided, /minutes: Number\(f.minutes\)/);
+    assert.match(guided, /Registrar execução/);
 });

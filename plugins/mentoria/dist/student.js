@@ -3,20 +3,23 @@ import {
     api, alertBox, badge, btn, card, checkbox, choiceCard, cn, countdown, empty, field, fmtDate, fmtDateTime,
     fmtHours, input, jsonBody, modal, optionize, progressBar, safeJson, sectionTitle, select,
     stat, textarea, mentoriaShell, useMentoriaShell, svgIcon, renderIcon, renderRadarChart,
-} from './shared.js?v=2315fc17bb77';
-import { displayAlternative } from './question-alternatives.js?v=2315fc17bb77';
+} from './shared.js?v=e48f89876fec';
+import { useGuidedWorkspace } from './guided-workspace.js?v=e48f89876fec';
+import { displayAlternative } from './question-alternatives.js?v=e48f89876fec';
 
 const MODULES = [
-    ['dashboard', 'Dashboard', 'dashboard', 'dashboard'],
+    ['dashboard', 'Hoje', 'dashboard', 'dashboard'],
+    ['schedule', 'Meu plano', 'cronograma', 'schedule'],
+    ['questions', 'Questões', 'questoes', 'questions'],
+    ['flashcards', 'Flashcards', 'flashcards', 'flashcards'],
+    ['reviews', 'Revisões', 'revisoes', 'reviews'],
+    ['mocks', 'Simulados', 'simulados', 'mocks'],
+    ['mentoring', 'Acompanhamento', 'dashboard', 'students'],
+    ['metrics', 'Desempenho', 'metricas', 'metrics'],
+    ['evolution', 'Conquistas', 'dashboard', 'contests'],
     ['edict', 'Edital verticalizado', 'edital', 'edicts'],
     ['materials', 'Materiais', 'materiais', 'materials'],
-    ['schedule', 'Cronograma', 'cronograma', 'schedule'],
-    ['reviews', 'Revisões', 'revisoes', 'reviews'],
-    ['flashcards', 'Flashcards', 'flashcards', 'flashcards'],
-    ['questions', 'Questões', 'questoes', 'questions'],
-    ['mocks', 'Simulados', 'simulados', 'mocks'],
     ['notebooks', 'Cadernos', 'cadernos', 'notebooks'],
-    ['metrics', 'Métricas', 'metricas', 'metrics'],
     ['courses', 'Cursos', 'cursos', 'courses'],
     ['history', 'Histórico', 'metricas', 'history'],
 ];
@@ -66,7 +69,7 @@ export const MentoriaStudent = {
         const notebookQuery = ref('');
         const notebookFolder = ref('');
         const notebookFilterType = ref('todos');
-        const scheduleView = ref('calendar');
+        const scheduleView = ref(typeof window !== 'undefined' && window.matchMedia('(max-width: 700px)').matches ? 'list' : 'calendar');
         const scheduleStatus = ref('todos');
         const scheduleMonthOffset = ref(0);
         const shell = useMentoriaShell();
@@ -95,11 +98,8 @@ export const MentoriaStudent = {
         const aiChatLoading = ref(false);
         const aiChatLoaded = ref(false);
         const contests = computed(() => state.value.contests || []);
-        const activeContestId = ref(
-            localStorage.getItem('mentoria_active_contest_'+(props.plugin_ui_page?.tenant_id || ''))
-            || state.value.active_contest_id
-            || '',
-        );
+        const contestStorageKey = 'mentoria_active_contest_' + (state.value.tenant_id || '') + '_' + (state.value.student?.id || '');
+        const activeContestId = ref(state.value.active_contest_id || '');
 
         const activeContest = computed(() => contests.value.find(c => String(c.id) === String(activeContestId.value)) || contests.value[0] || null);
         const activeEdicts = computed(() => (state.value.edicts || []).filter(e => !activeContestId.value || e.contest_id === activeContestId.value));
@@ -167,9 +167,13 @@ export const MentoriaStudent = {
 
         function setContest(id) {
             activeContestId.value = id;
-            localStorage.setItem('mentoria_active_contest_'+tenant.value, id);
+            try { localStorage.setItem(contestStorageKey, id); } catch { /* storage unavailable */ }
             refresh(id).catch(e => message.value=e.message);
         }
+
+        const guided = useGuidedWorkspace({ state, base, contest: activeContestId, mentor: actingAsMentor, busy, run,
+            navigate: id => activeTab.value = id, label: item => itemLabel(item), openTimer,
+            aiAvailable: aiWidgetVisible, askAi: prompt => { aiChatInput.value = prompt; aiChatOpen.value = true; if (!aiChatLoaded.value) loadAiHistory(); } });
 
         function closeModal() { modalState.value = null; }
 
@@ -656,113 +660,10 @@ export const MentoriaStudent = {
             }));
         }
 
-        function openScheduleGenerator() {
-            const selected={}; const affinity={}; const priorities={};
-            activeSubjects.value.forEach(s=>{selected[s.id]=true;affinity[s.id]=50;priorities[s.id]='media';});
-            modalState.value={
-                type:'schedule',
-                form:{
-                    mode: capabilities.value.includes('cronograma_inteligente')?'ciclo_inteligente':'agendado',
-                    minutes:60,max_topics:0,repetitions:1,goal:80,alert_goal:true,
-                    hours:{seg:2,ter:2,qua:2,qui:2,sex:2,sab:0,dom:0},
-                    selected,affinity,priorities,
-                },
-            };
-        }
+        function openScheduleGenerator() { guided.openPlan(); }
+        function openOnboarding() { guided.openProfile(); }
 
-        async function generateSchedule(m) {
-            if (!activeContestId.value) { message.value='Selecione um concurso.'; return; }
-            const f=m.form;
-            await run(()=>api(base.value+'/schedules/generate',{
-                method:'POST',
-                body:jsonBody({
-                    contest_id:activeContestId.value,
-                    mode:f.mode,
-                    configuration:{
-                        tipo:f.mode,
-                        horas:f.hours,
-                        minutosTopico:Number(f.minutes||60),
-                        maxTopicosDia:Number(f.max_topics||0),
-                        repeticoesEdital:Number(f.repetitions||1),
-                        metaAcertos:Number(f.goal||80),
-                        alertaMetaHabilitado:!!f.alert_goal,
-                        materiasSelecionadas:f.selected,
-                        materiaAfinidade:f.affinity,
-                        materiaPrioridades:f.priorities,
-                    },
-                }),
-            }),'Cronograma gerado.');
-            closeModal();
-        }
-
-        function openOnboarding(step = 1) {
-            const selected = {}; const affinity = {}; const priorities = {}; const levels = {};
-            activeSubjects.value.forEach(s => {
-                selected[s.id] = true;
-                affinity[s.id] = 60;
-                priorities[s.id] = 'media';
-                levels[s.id] = 'intermediario';
-            });
-            modalState.value = {
-                type: 'onboarding',
-                step: step || 1,
-                form: {
-                    contest_id: activeContestId.value || (contests.value[0]?.id || ''),
-                    mode: capabilities.value.includes('cronograma_inteligente') ? 'ciclo_inteligente' : 'agendado',
-                    preset: 'moderado',
-                    minutes: 60,
-                    max_topics: 0,
-                    repetitions: 1,
-                    goal: 80,
-                    alert_goal: true,
-                    hours: { seg: 2, ter: 2, qua: 2, qui: 2, sex: 2, sab: 2, dom: 0 },
-                    selected,
-                    affinity,
-                    priorities,
-                    levels,
-                },
-            };
-        }
-
-        async function finishOnboarding(m) {
-            const f = m.form;
-            const cid = f.contest_id || activeContestId.value;
-            if (!cid) { message.value = 'Selecione um concurso.'; return; }
-            if (cid !== activeContestId.value) {
-                await setContest(cid);
-            }
-            await run(() => api(base.value + '/schedules/generate', {
-                method: 'POST',
-                body: jsonBody({
-                    contest_id: cid,
-                    mode: f.mode,
-                    configuration: {
-                        tipo: f.mode,
-                        horas: f.hours,
-                        minutosTopico: Number(f.minutes || 60),
-                        maxTopicosDia: Number(f.max_topics || 0),
-                        repeticoesEdital: Number(f.repetitions || 1),
-                        metaAcertos: Number(f.goal || 80),
-                        alertaMetaHabilitado: !!f.alert_goal,
-                        materiasSelecionadas: f.selected,
-                        materiaAfinidade: f.affinity,
-                        materiaPrioridades: f.priorities,
-                    },
-                }),
-            }), 'Plano de estudos gerado com sucesso!');
-            try {
-                localStorage.setItem('mentoria_onboarded_' + cid, '1');
-            } catch (e) {}
-            closeModal();
-            activeTab.value = 'schedule';
-        }
-
-        async function reprogramSchedule() {
-            await run(()=>api(base.value+'/schedules/reprogram',{
-                method:'POST',
-                body:jsonBody({contest_id:activeContestId.value||null}),
-            }),'Pendências reprogramadas.');
-        }
+        function reprogramSchedule() { guided.openReprogram(); }
 
         function dateFromToday(days=0) {
             const date=new Date();
@@ -771,84 +672,7 @@ export const MentoriaStudent = {
             return date.getFullYear()+'-'+String(date.getMonth()+1).padStart(2,'0')+'-'+String(date.getDate()).padStart(2,'0');
         }
 
-        function openScheduleCompletion(item) {
-            modalState.value={type:'scheduleCompletion',item,form:{
-                minutes:Math.max(1,Number(item.duration_minutes||60)),
-                solved:'',correct:'',notes:'',
-            }};
-        }
-
-        async function saveScheduleCompletion(m, completed) {
-            const item=m.item;
-            const f=m.form;
-            const minutes=Math.max(1,Number(f.minutes||0));
-            const solved=Math.max(0,Number(f.solved||0));
-            const correct=Math.min(solved,Math.max(0,Number(f.correct||0)));
-            const tomorrow=dateFromToday(1);
-
-            await run(async()=>{
-                await api(base.value+'/study-sessions',{
-                    method:'POST',
-                    body:jsonBody({
-                        contest_id:activeContestId.value||null,
-                        subject_id:item.subject_id||null,
-                        topic_id:item.topic_id||null,
-                        subtopic_id:item.subtopic_id||null,
-                        schedule_item_id:item.id,
-                        seconds:minutes*60,
-                        mode:'cronograma',
-                        notes:f.notes||null,
-                        origin:'cronograma',
-                    }),
-                });
-                if(solved>0){
-                    await api(base.value+'/question-logs',{
-                        method:'POST',
-                        body:jsonBody({
-                            contest_id:activeContestId.value||null,
-                            subject_id:item.subject_id||null,
-                            topic_id:item.topic_id||null,
-                            subtopic_id:item.subtopic_id||null,
-                            solved,correct,wrong:Math.max(0,solved-correct),origin:'cronograma',
-                        }),
-                    });
-                }
-
-                await api(base.value+'/schedule-items/'+item.id,{
-                    method:'PATCH',body:jsonBody({status:'concluido',create_session:false}),
-                });
-
-                if(completed){
-                    const targetId=item.subtopic_id||item.topic_id;
-                    if(targetId){
-                        await api(base.value+'/edict-progress/'+targetId,{
-                            method:'PATCH',body:jsonBody({item_type:item.subtopic_id?'subtopico':'topico',studied:true}),
-                        });
-                    }
-                    return;
-                }
-
-                const schedule=state.value.schedule;
-                if(!schedule?.id)throw new Error('Cronograma ativo não encontrado.');
-                await api(base.value+'/schedules/'+schedule.id+'/items',{
-                    method:'POST',body:jsonBody({
-                        planned_date:tomorrow,
-                        cycle_position:item.cycle_position||null,
-                        subject_id:item.subject_id||null,
-                        topic_id:item.topic_id||null,
-                        subtopic_id:item.subtopic_id||null,
-                        duration_minutes:Math.max(1,Number(item.duration_minutes||minutes)),
-                        priority:item.priority||0,
-                        position:item.position||0,
-                        status:'pendente',
-                    }),
-                });
-                await api(base.value+'/schedules/reprogram',{
-                    method:'POST',body:jsonBody({contest_id:activeContestId.value||null,from_date:tomorrow}),
-                });
-            },completed?'Assunto concluído e estudo registrado.':'Estudo registrado; o restante foi adiado.');
-            closeModal();
-        }
+        function openScheduleCompletion(item) { guided.openExecution(item); }
 
         async function toggleScheduleItem(item) {
             if(item.status!=='concluido'){
@@ -1144,211 +968,10 @@ export const MentoriaStudent = {
         }
 
         function renderStreakWidget() {
-            const streak = Number(state.value.metrics_summary?.current_streak || 0);
-            const todaySec = Number(state.value.metrics_summary?.seconds_today || 0);
-            const todayKey = new Date().toISOString().slice(0, 10);
-            const plannedToday = (state.value.schedule_items || state.value.all_schedule_items || [])
-                .filter(i => String(i.planned_date || '').slice(0, 10) === todayKey)
-                .reduce((acc, i) => acc + (Number(i.duration_minutes || 0) * 60), 0);
-            const targetSec = plannedToday > 0 ? plannedToday : 7200;
-            const pct = Math.min(100, Math.round((todaySec / targetSec) * 100));
-            const goalDone = todaySec >= targetSec;
-
-            return h('div', { class: 'mentoria-header-consistency' }, [
-                h('div', {
-                    class: cn('mentoria-streak-widget', streak > 0 ? 'mentoria-streak-widget--active' : ''),
-                    title: streak > 0 ? `${streak} dia(s) seguidos de estudo! Mantenha a chama acesa.` : 'Estude hoje para iniciar sua sequência!',
-                }, [
-                    h('span', { class: 'mentoria-streak-widget__icon', 'aria-hidden': 'true' }, '🔥'),
-                    h('span', { class: 'mentoria-streak-widget__count' }, streak > 0 ? `${streak} ${streak === 1 ? 'dia' : 'dias'}` : '0 dias'),
-                    h('span', { class: 'mentoria-streak-widget__label' }, streak > 0 ? 'seguidos' : 'sequência'),
-                ]),
-                h('div', {
-                    class: cn('mentoria-daily-goal-widget', goalDone && 'mentoria-daily-goal-widget--done'),
-                    title: `Meta de hoje: ${fmtHours(todaySec)} de ${fmtHours(targetSec)} planejados (${pct}%)`,
-                }, [
-                    h('div', { class: 'mentoria-daily-goal-widget__header' }, [
-                        h('span', { class: 'mentoria-daily-goal-widget__title' }, goalDone ? 'Meta batida! 🎉' : 'Meta de hoje:'),
-                        h('strong', { class: 'mentoria-daily-goal-widget__numbers' }, `${fmtHours(todaySec)} / ${fmtHours(targetSec)}`),
-                        h('span', { class: 'mentoria-daily-goal-widget__percent' }, `${pct}%`),
-                    ]),
-                    h('div', { class: 'mentoria-daily-goal-widget__track' }, [
-                        h('div', { class: 'mentoria-daily-goal-widget__fill', style: { width: pct + '%' } }),
-                    ]),
-                ]),
-            ]);
-        }
-
-        function renderMissionHero() {
-            const todayKey = new Date().toISOString().slice(0, 10);
-            const pendingSchedule = (state.value.schedule_items || []).filter(i => i.status === 'pendente');
-            const pendingReviews = (state.value.reviews || []).filter(r => !r.completed && r.next_date && r.next_date <= todayKey);
-
-            let mission = null;
-            if (pendingReviews.length > 0) {
-                const rev = pendingReviews[0];
-                const sName = (state.value.subjects || []).find(s => s.id === rev.subject_id)?.name || 'Disciplina';
-                const tName = (state.value.topics || []).find(t => t.id === rev.topic_id)?.name;
-                const subName = (state.value.subtopics || []).find(st => st.id === rev.subtopic_id)?.name;
-                mission = {
-                    type: 'review',
-                    badge: 'Revisão Prioritária',
-                    title: [sName, tName, subName].filter(Boolean).join(' › '),
-                    duration: 30,
-                    hint: rev.next_date < todayKey ? 'Atrasada desde ' + fmtDate(rev.next_date) : 'Agendada para hoje',
-                    actionLabel: 'Iniciar Revisão no Timer',
-                    startTimer: () => openTimer({
-                        subject_id: rev.subject_id || '',
-                        topic_id: rev.topic_id || '',
-                        subtopic_id: rev.subtopic_id || '',
-                        mode: 'revisao',
-                    }),
-                    complete: () => completeReview(rev),
-                };
-            } else if (pendingSchedule.length > 0) {
-                const item = pendingSchedule[0];
-                const sName = (state.value.subjects || []).find(s => s.id === item.subject_id)?.name || 'Disciplina';
-                const tName = (state.value.topics || []).find(t => t.id === item.topic_id)?.name;
-                const subName = (state.value.subtopics || []).find(st => st.id === item.subtopic_id)?.name;
-                const isRev = Boolean(item.scheduled_review_id);
-                mission = {
-                    type: 'schedule',
-                    badge: isRev ? '↻ Revisão do Ciclo' : '⚡ Próxima Atividade do Ciclo',
-                    title: [sName, tName, subName].filter(Boolean).join(' › '),
-                    duration: item.duration_minutes || 45,
-                    hint: item.planned_date ? 'Planejada para ' + fmtDate(item.planned_date) : 'Ciclo #' + (item.cycle_position || item.position),
-                    actionLabel: 'Iniciar Missão Agora',
-                    startTimer: () => openTimer({
-                        subject_id: item.subject_id || '',
-                        topic_id: item.topic_id || '',
-                        subtopic_id: item.subtopic_id || '',
-                        mode: isRev ? 'revisao' : 'estudo',
-                    }),
-                    complete: () => openScheduleCompletion(item),
-                };
-            }
-
-            if (!mission) {
-                const hasSchedule = (state.value.schedule_items || []).length > 0;
-                if (!hasSchedule) {
-                    return h('div', { class: 'mentoria-mission-hero' }, [
-                        h('div', { class: 'mentoria-mission-hero__header' }, [
-                            h('span', { class: 'mentoria-mission-hero__badge' }, [renderIcon('sparkles', '', 14), 'Diagnóstico Inicial']),
-                        ]),
-                        h('div', { class: 'mentoria-mission-hero__title' }, 'Vamos estruturar a sua rota de aprovação!'),
-                        h('div', { class: 'mentoria-mission-hero__meta' }, [
-                            h('span', {}, 'Você ainda não possui um cronograma ativo. Complete o diagnóstico guiado de 4 passos para calibrar seu ritmo, nível de cada matéria e metas semanais.'),
-                        ]),
-                        h('div', { class: 'mentoria-mission-hero__actions' }, [
-                            btn('✨ Iniciar Diagnóstico do Aluno', () => openOnboarding(), 'primary', { icon: 'zap' }),
-                            btn('Explorar Edital', () => activeTab.value = 'edict', 'ghost', { icon: 'target' }),
-                        ]),
-                    ]);
-                }
-
-                return h('div', { class: 'mentoria-mission-hero' }, [
-                    h('div', { class: 'mentoria-mission-hero__header' }, [
-                        h('span', { class: 'mentoria-mission-hero__badge' }, [renderIcon('sparkles', '', 14), 'Dia em Dia']),
-                    ]),
-                    h('div', { class: 'mentoria-mission-hero__title' }, 'Você está com todas as missões concluídas!'),
-                    h('div', { class: 'mentoria-mission-hero__meta' }, [
-                        h('span', {}, 'Nenhuma atividade ou revisão pendente no seu cronograma ativo.'),
-                    ]),
-                    h('div', { class: 'mentoria-mission-hero__actions' }, [
-                        btn('Abrir Timer Livre', () => openTimer(), 'primary', { icon: 'timer' }),
-                        btn('Revisar Questões', () => activeTab.value = 'questions', 'ghost', { icon: 'questions' }),
-                        capabilities.value.includes('cronograma') || capabilities.value.includes('cronograma_inteligente')
-                            ? btn('Ajustar Cronograma', () => activeTab.value = 'schedule', 'ghost', { icon: 'schedule' })
-                            : null,
-                    ]),
-                ]);
-            }
-
-            return h('div', { class: 'mentoria-mission-hero' }, [
-                h('div', { class: 'mentoria-mission-hero__header' }, [
-                    h('span', { class: 'mentoria-mission-hero__badge' }, [renderIcon('target', '', 14), mission.badge]),
-                    h('span', { class: 'text-xs text-sky-400 font-medium' }, mission.hint),
-                ]),
-                h('div', { class: 'mentoria-mission-hero__title' }, mission.title),
-                h('div', { class: 'mentoria-mission-hero__meta' }, [
-                    h('span', { class: 'flex items-center gap-1' }, [renderIcon('timer', '', 14), mission.duration + ' min sugeridos']),
-                    h('span', { class: 'text-zinc-500' }, '·'),
-                    h('span', {}, 'Foco recomendado: ' + (mission.type === 'review' ? 'Revisão ativa e fixação' : 'Estudo teórico e questões')),
-                ]),
-                h('div', { class: 'mentoria-mission-hero__actions' }, [
-                    h('button', {
-                        type: 'button',
-                        class: 'mentoria-mission-hero__btn-main',
-                        onClick: mission.startTimer,
-                    }, [renderIcon('play', '', 16), mission.actionLabel]),
-                    mission.complete ? btn('Registrar conclusão', mission.complete, 'ghost', { icon: 'check' }) : null,
-                    btn('Ver cronograma', () => activeTab.value = 'schedule', 'ghost', { icon: 'schedule' }),
-                ]),
-            ]);
-        }
-
-        function renderDashboard() {
-            const m=state.value.metrics_summary||{};
-            const contest=activeContest.value;
-            const cd=countdown(contest?.exam_date);
-            const now=new Date();const day=now.getDay();const monday=new Date(now);monday.setDate(now.getDate()-(day===0?6:day-1));
-            const todayKey=now.toISOString().slice(0,10);
-            const week=Array.from({length:7},(_,i)=>{const d=new Date(monday);d.setDate(monday.getDate()+i);const key=d.toISOString().slice(0,10);const sec=(state.value.recent_sessions||[]).filter(s=>String(s.studied_at||'').slice(0,10)===key).reduce((n,s)=>n+Number(s.seconds||0),0);return {key,label:['Seg','Ter','Qua','Qui','Sex','Sáb','Dom'][i],seconds:sec};});
-            const subjectRows=(state.value.metrics_subjects||[]).slice(0,10);
-            const radarSubjects=(state.value.metrics_subjects||[]).filter(s=>Number(s.questions||0)>0||s.accuracy!==null).slice(0,7).map(s=>({
-                label:s.name,
-                value:s.accuracy??0,
-            }));
-            return h('div',{class:'space-y-5'},[
-                contest?card([h('div',{class:'flex flex-wrap items-center justify-between gap-4'},[
-                    h('div',[h('div',{class:'text-xs font-semibold uppercase tracking-wide text-sky-500'},contest.group||'foco'),h('h2',{class:'mt-1 text-xl font-bold'},contest.name),h('p',{class:'text-xs text-zinc-400'},[contest.board,contest.position].filter(Boolean).join(' · '))]),
-                    cd?h('div',{class:'grid grid-cols-3 gap-2 text-center'},[stat('Dias',cd.days,'','blue'),stat('Horas',cd.hours,'','indigo'),stat('Min',cd.minutes,'','cyan')]):contest.pre_notice?badge('Pré-edital','amber'):null,
-                ])]):null,
-                renderMissionHero(),
-                h('div',{class:'grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8'},[
-                    stat('Hoje',fmtHours(m.seconds_today||0), '', 'blue', 'history'),
-                    stat('Questões hoje',m.questions_today||0, '', 'cyan', 'questions'),
-                    stat('30 dias',fmtHours(m.seconds_studied||0), '', 'indigo', 'schedule'),
-                    stat('Acerto',(m.accuracy??0)+'%', '', (m.accuracy>=75?'emerald':m.accuracy>=50?'amber':'rose'), 'check', { meter: m.accuracy ?? 0 }),
-                    stat('Sequência',(m.current_streak||0)+' dias', '', 'flame', 'flame'),
-                    stat('Edital',(m.edict_percentage||0)+'%', '', 'purple', 'edicts', { meter: m.edict_percentage ?? 0 }),
-                    stat('Simulados',m.mocks_completed||0, '', 'blue', 'mocks'),
-                    stat('Média',m.mock_average===null?'—':m.mock_average+'%', '', 'teal', 'metrics', { meter: m.mock_average }),
-                ]),
-                card([sectionTitle('Ações rápidas','Registre estudo ou abra os módulos principais.'),h('div',{class:'flex flex-wrap gap-2'},[
-                    btn('Abrir timer',()=>openTimer(),'primary',{icon:'timer'}),
-                    capabilities.value.includes('cronograma')||capabilities.value.includes('cronograma_inteligente')?btn('Cronograma',()=>activeTab.value='schedule','ghost',{icon:'schedule'}):null,
-                    capabilities.value.includes('revisoes')?btn('Revisões',()=>activeTab.value='reviews','ghost',{icon:'reviews'}):null,
-                    capabilities.value.includes('questoes')?btn('Questões',()=>activeTab.value='questions','ghost',{icon:'questions'}):null,
-                    capabilities.value.includes('flashcards')?btn('Flashcards',()=>activeTab.value='flashcards','ghost',{icon:'flashcards'}):null,
-                ])]),
-                radarSubjects.length>=3?h('div',{class:'grid gap-4 lg:grid-cols-2'},[
-                    card([sectionTitle('Estudo semanal','Tempo registrado de segunda a domingo.'),h('div',{class:'grid grid-cols-7 gap-2'},week.map(d=>{
-                        const pct=Math.min(100,d.seconds/7200*100);
-                        const isToday = d.key === todayKey;
-                        return h('div',{class:'mentoria-week-col'+(isToday?' border-sky-500/50 bg-sky-500/5': '')},[
-                            h('div',{class:'font-semibold text-xs'},d.label),
-                            h('div',{class:'mentoria-week-bar-container'},[
-                                h('div',{class:'mentoria-week-bar-fill',style:{height:Math.max(d.seconds > 0 ? 6 : 0, pct)+'%'}}),
-                            ]),
-                            h('div',{class:'text-[11px] text-zinc-400'},fmtHours(d.seconds)),
-                        ]);
-                    }))]),
-                    card([sectionTitle('Radar de disciplinas','Equilíbrio e rendimento nas matérias com questões.'),renderRadarChart(radarSubjects,{size:280})]),
-                ]):card([sectionTitle('Estudo semanal','Tempo registrado de segunda a domingo.'),h('div',{class:'grid grid-cols-7 gap-2'},week.map(d=>{
-                    const pct=Math.min(100,d.seconds/7200*100);
-                    const isToday = d.key === todayKey;
-                    return h('div',{class:'mentoria-week-col'+(isToday?' border-sky-500/50 bg-sky-500/5': '')},[
-                        h('div',{class:'font-semibold text-xs'},d.label),
-                        h('div',{class:'mentoria-week-bar-container'},[
-                            h('div',{class:'mentoria-week-bar-fill',style:{height:Math.max(d.seconds > 0 ? 6 : 0, pct)+'%'}}),
-                        ]),
-                        h('div',{class:'text-[11px] text-zinc-400'},fmtHours(d.seconds)),
-                    ]);
-                }))]),
-                card([sectionTitle('Matérias do edital','Cobertura e desempenho por disciplina.'),subjectRows.length?h('div',{class:'space-y-2'},subjectRows.map(s=>h('div',{class:'grid gap-2 rounded-lg bg-zinc-50 p-3 text-xs dark:bg-zinc-800 md:grid-cols-[1fr_120px_90px_180px]'},[
-                    h('strong',s.name),h('span','Tempo: '+fmtHours(s.seconds||0)),h('span','Acerto: '+(s.accuracy??'—')+'%'),progressBar(s.coverage||0,'Edital'),
-                ]))):empty('Estude e resolva questões para preencher as métricas por matéria.')]),
+            const days = state.value.learning?.week || [];
+            const fulfilled = days.filter(d => d.total > 0 && d.completed === d.total).length;
+            return h('span', { class: 'mentoria-streak-widget', title: 'Dias do plano cumpridos nesta semana; descanso não penaliza.' }, [
+                renderIcon('flame', '', 16), h('span', { class: 'mentoria-streak-widget__count' }, fulfilled + ' dias do plano'),
             ]);
         }
 
@@ -1552,7 +1175,7 @@ export const MentoriaStudent = {
                     ]:[
                         badge(item.status,item.status==='concluido'?'green':item.status==='ignorado'?'zinc':'amber'),
                         btn('⏱',()=>openTimer({subject_id:item.subject_id||'',topic_id:item.topic_id||'',subtopic_id:item.subtopic_id||'',mode:'estudo'}),'ghost'),
-                        btn(item.status==='concluido'?'Reabrir':'Concluir',()=>toggleScheduleItem(item),item.status==='concluido'?'ghost':'success'),
+                        item.status!=='concluido'?btn('Registrar execução',()=>openScheduleCompletion(item),'success'):null,
                     ]),
                 ]);
             };
@@ -1563,17 +1186,16 @@ export const MentoriaStudent = {
             const monthLabel=baseMonth.toLocaleDateString('pt-BR',{month:'long',year:'numeric'});
             return h('div',{class:'space-y-4'},[
                 card([
-                    sectionTitle('Cronograma',schedule?'Versão '+schedule.version+' · '+schedule.type:'Nenhum cronograma ativo',h('div',{class:'flex flex-wrap gap-2'},[
-                        schedule?btn('Reprogramar pendências',reprogramSchedule,'ghost'):null,
-                        btn('✨ Assistente de Diagnóstico', () => openOnboarding(), 'primary'),
-                        btn(schedule?'Gerador avançado':'Gerar cronograma',openScheduleGenerator,'ghost'),
+                    sectionTitle('Atividades do plano',schedule?'Versão '+schedule.version+' · '+schedule.type:'Nenhum cronograma ativo',h('div',{class:'flex flex-wrap gap-2'},[
+                        actingAsMentor.value&&schedule&&schedule.type!=='ciclo_inteligente'?btn('Reprogramar pendências',reprogramSchedule,'ghost'):null,
+                        actingAsMentor.value?btn('Prévia do plano',openScheduleGenerator,'ghost'):null,
                     ])),
                     schedule?h('div',{class:'flex flex-wrap items-center gap-2'},[
                         badge(schedule.state,'sky'),badge(schedule.type,'violet'),
                         btn('Lista',()=>scheduleView.value='list',scheduleView.value==='list'?'primary':'ghost'),
                         schedule.type!=='ciclo_inteligente'?btn('Calendário',()=>scheduleView.value='calendar',scheduleView.value==='calendar'?'primary':'ghost'):null,
                         ...['todos','pendente','concluido'].map(v=>btn(v==='todos'?'Todos':v==='pendente'?'Pendentes':'Concluídos',()=>scheduleStatus.value=v,scheduleStatus.value===v?'soft':'ghost')),
-                    ]):empty('Gere seu cronograma a partir do edital e da carga horária semanal.'),
+                    ]):empty('Aguardando um plano publicado pelo mentor a partir do edital e da sua disponibilidade.'),
                 ]),
                 schedule&&scheduleView.value==='calendar'&&schedule.type!=='ciclo_inteligente'?card([
                     h('div',{class:'mb-4 flex items-center justify-between gap-2'},[
@@ -2064,7 +1686,9 @@ export const MentoriaStudent = {
         function renderTab() {
             if(activeTab.value==='edict')return renderEdict();
             if(activeTab.value==='materials')return renderMaterials();
-            if(activeTab.value==='schedule')return renderSchedule();
+            if(activeTab.value==='schedule')return h('div',{class:'space-y-4'},[guided.renderPlanIntro(),renderSchedule()]);
+            if(activeTab.value==='mentoring')return guided.renderMentor();
+            if(activeTab.value==='evolution')return guided.renderRewards(true);
             if(activeTab.value==='reviews')return renderReviews();
             if(activeTab.value==='flashcards')return renderFlashcards();
             if(activeTab.value==='questions')return renderQuestions();
@@ -2074,7 +1698,7 @@ export const MentoriaStudent = {
             if(activeTab.value==='courses')return renderCourses();
             if(activeTab.value==='history')return renderHistory();
             if(activeTab.value==='help')return renderHelp();
-            return renderDashboard();
+            return guided.renderToday();
         }
 
         function renderModal() {
@@ -2106,7 +1730,7 @@ export const MentoriaStudent = {
                         h('div',[h('strong',itemLabel(item)),h('div',{class:'text-xs text-zinc-500'},(item.duration_minutes||0)+' min · '+item.status)]),
                         h('div',{class:'flex gap-1'},[
                             btn('⏱ Timer',()=>{closeModal();openTimer({subject_id:item.subject_id||'',topic_id:item.topic_id||'',subtopic_id:item.subtopic_id||'',mode:'estudo'});},'ghost'),
-                            btn(item.status==='concluido'?'Reabrir':'Concluir',async()=>{await toggleScheduleItem(item);if(item.status==='concluido')closeModal();},item.status==='concluido'?'ghost':'success'),
+                            item.status!=='concluido'?btn('Registrar execução',()=>{closeModal();openScheduleCompletion(item);},'success'):null,
                         ]),
                     ]);
                 })),closeModal);
@@ -2227,320 +1851,6 @@ export const MentoriaStudent = {
                         (f.topic_id || f.subtopic_id) ? checkbox(f, 'mark_studied', 'Marcar este conteúdo como estudado ao finalizar') : null,
                     ]), closeModal, [btn('Registrar e finalizar', finishTimer, 'primary', { disabled: timer.value.elapsed < 1 })]);
                 }
-
-                if(m.type==='scheduleCompletion'){
-                    const item=m.item;
-                    const f=m.form;
-                    const subject=(state.value.subjects||[]).find(s=>String(s.id)===String(item.subject_id))?.name||'Matéria';
-                    const topic=(state.value.topics||[]).find(t=>String(t.id)===String(item.topic_id))?.name;
-                    const subtopic=(state.value.subtopics||[]).find(s=>String(s.id)===String(item.subtopic_id))?.name;
-                    const planned=String(item.planned_date||'').slice(0,10);
-                    const isLate=planned&&planned!==dateFromToday();
-                    return modal('Registrar estudo',h('div',{class:'space-y-4'},[
-                        h('div',{class:'rounded-lg bg-sky-50 p-3 text-sm dark:bg-sky-950'},[
-                            h('strong',subject),h('div',{class:'mt-1 text-xs text-zinc-500'},[topic,subtopic].filter(Boolean).join(' › ')||'Atividade de estudo'),
-                        ]),
-                        isLate?h('div',{class:'rounded-lg border border-sky-200 bg-sky-50 p-3 text-xs text-sky-800 dark:border-sky-900 dark:bg-sky-950 dark:text-sky-100'},'Esta atividade estava programada para '+fmtDate(planned)+'. O estudo será registrado hoje.'):null,
-                        formGrid([
-                            field('Tempo estudado (minutos)',input(f,'minutes',{type:'number',number:true,min:1,max:1440})),
-                            field('Questões resolvidas',input(f,'solved',{type:'number',number:true,min:0})),
-                            field('Acertos',input(f,'correct',{type:'number',number:true,min:0,max:Number(f.solved||0)})),
-                        ]),
-                        field('Anotações / observações',textarea(f,'notes',{rows:3,placeholder:'Observações sobre o estudo (opcional)…'})),
-                        h('p',{class:'text-center text-xs text-zinc-500'},'O assunto foi totalmente concluído?'),
-                    ]),closeModal,[
-                        btn('Estudo parcial',()=>saveScheduleCompletion(m,false),'warning',{disabled:busy.value}),
-                        btn('Concluir assunto',()=>saveScheduleCompletion(m,true),'primary',{disabled:busy.value}),
-                    ]);
-                }
-
-                if (m.type === 'onboarding') {
-                    const f = m.form;
-                    const step = m.step || 1;
-                    const weeklyTotal = Object.values(f.hours || {}).reduce((acc, v) => acc + Number(v || 0), 0);
-
-                    const stepTitles = [
-                        '1. Concurso e Método',
-                        '2. Nível por Matéria',
-                        '3. Carga Horária',
-                        '4. Revisão e Ativação',
-                    ];
-
-                    const stepIndicators = h('div', { class: 'mentoria-onboarding-steps' }, [1, 2, 3, 4].map(sNum => {
-                        const isDone = sNum < step;
-                        const isActive = sNum === step;
-                        return h('div', {
-                            class: 'mentoria-onboarding-step-indicator ' + (isActive ? 'mentoria-onboarding-step-indicator--active' : isDone ? 'mentoria-onboarding-step-indicator--done' : ''),
-                            title: stepTitles[sNum - 1],
-                        }, isDone ? '✓' : String(sNum));
-                    }));
-
-                    let bodyContent = null;
-
-                    if (step === 1) {
-                        bodyContent = h('div', { class: 'space-y-5' }, [
-                            h('div', [
-                                h('h3', { class: 'text-base font-bold' }, 'Qual concurso é o seu foco principal?'),
-                                h('p', { class: 'text-xs text-zinc-500' }, 'O cronograma será estruturado em cima das disciplinas e edital deste concurso.'),
-                            ]),
-                            contests.value.length ? h('div', { class: 'grid gap-3 sm:grid-cols-2' }, contests.value.map(c => {
-                                const isSelected = f.contest_id === c.id;
-                                return h('div', {
-                                    class: 'mentoria-onboarding-card ' + (isSelected ? 'mentoria-onboarding-card--selected' : ''),
-                                    onClick: () => {
-                                        f.contest_id = c.id;
-                                        if (c.id !== activeContestId.value) {
-                                            setContest(c.id);
-                                        }
-                                    },
-                                }, [
-                                    h('div', { class: 'flex items-center justify-between' }, [
-                                        h('strong', { class: 'text-sm font-semibold' }, c.name),
-                                        isSelected ? h('span', { class: 'text-xs font-bold text-sky-500' }, '● Ativo') : null,
-                                    ]),
-                                    h('div', { class: 'mt-1 text-xs text-zinc-500' }, [c.board, c.position].filter(Boolean).join(' · ') || 'Concurso cadastrado'),
-                                    c.exam_date ? h('div', { class: 'mt-2 text-[11px] text-zinc-400' }, '📅 Prova: ' + fmtDate(c.exam_date)) : null,
-                                ]);
-                            })) : h('div', { class: 'text-xs text-zinc-500' }, 'Nenhum concurso vinculado ainda.'),
-
-                            h('div', { class: 'pt-2' }, [
-                                h('h3', { class: 'text-base font-bold' }, 'Como você prefere organizar seus estudos?'),
-                                h('p', { class: 'text-xs text-zinc-500 mb-3' }, 'Escolha o formato que melhor se adapta à sua rotina:'),
-                                h('div', { class: 'grid gap-3 sm:grid-cols-2' }, [
-                                    h('div', {
-                                        class: 'mentoria-onboarding-card ' + (f.mode === 'ciclo_inteligente' ? 'mentoria-onboarding-card--selected' : ''),
-                                        onClick: () => f.mode = 'ciclo_inteligente',
-                                    }, [
-                                        h('div', { class: 'flex items-center gap-2 font-bold text-sm text-sky-600 dark:text-sky-400' }, [
-                                            renderIcon('zap', '', 16),
-                                            h('span', 'Ciclo Inteligente (Recomendado)'),
-                                        ]),
-                                        h('p', { class: 'mt-1.5 text-xs text-zinc-600 dark:text-zinc-400' },
-                                            'Alterna disciplinas continuamente baseado na dificuldade e peso. Se imprevistos acontecerem, você não perde o calendário — apenas continua de onde parou.'
-                                        ),
-                                    ]),
-                                    h('div', {
-                                        class: 'mentoria-onboarding-card ' + (f.mode === 'agendado' ? 'mentoria-onboarding-card--selected' : ''),
-                                        onClick: () => f.mode = 'agendado',
-                                    }, [
-                                        h('div', { class: 'flex items-center gap-2 font-bold text-sm text-purple-600 dark:text-purple-400' }, [
-                                            renderIcon('schedule', '', 16),
-                                            h('span', 'Cronograma Fixo Semanal'),
-                                        ]),
-                                        h('p', { class: 'mt-1.5 text-xs text-zinc-600 dark:text-zinc-400' },
-                                            'Grade semanal com matérias agendadas em dias específicos (ex: Segundas = Constitucional). Indicado para quem tem horários 100% rígidos.'
-                                        ),
-                                    ]),
-                                ]),
-                            ]),
-                        ]);
-                    } else if (step === 2) {
-                        const subs = activeSubjects.value;
-                        const setAll = (level) => {
-                            subs.forEach(s => {
-                                f.levels[s.id] = level;
-                                if (level === 'iniciante') { f.affinity[s.id] = 30; f.priorities[s.id] = 'alta'; }
-                                else if (level === 'intermediario') { f.affinity[s.id] = 60; f.priorities[s.id] = 'media'; }
-                                else if (level === 'avancado') { f.affinity[s.id] = 90; f.priorities[s.id] = 'baixa'; }
-                            });
-                        };
-
-                        bodyContent = h('div', { class: 'space-y-4' }, [
-                            h('div', { class: 'flex flex-wrap items-center justify-between gap-2' }, [
-                                h('div', [
-                                    h('h3', { class: 'text-base font-bold' }, 'Diagnóstico de Domínio por Disciplina'),
-                                    h('p', { class: 'text-xs text-zinc-500' }, 'Classifique seu nível. O algoritmo dedicará mais tempo para matérias onde você tem mais dificuldade.'),
-                                ]),
-                                h('div', { class: 'flex items-center gap-1.5 text-xs' }, [
-                                    h('span', { class: 'text-zinc-500' }, 'Definir todas:'),
-                                    btn('Iniciante', () => setAll('iniciante'), 'ghost'),
-                                    btn('Intermediário', () => setAll('intermediario'), 'ghost'),
-                                    btn('Avançado', () => setAll('avancado'), 'ghost'),
-                                ]),
-                            ]),
-                            subs.length ? h('div', { class: 'max-h-96 space-y-2.5 overflow-y-auto pr-1' }, subs.map(s => {
-                                const curLevel = f.levels[s.id] || 'intermediario';
-                                const isSelected = f.selected[s.id] !== false;
-                                return h('div', { class: 'rounded-xl border border-zinc-200 bg-zinc-50/50 p-3 dark:border-zinc-800 dark:bg-zinc-900/50' }, [
-                                    h('div', { class: 'flex flex-wrap items-center justify-between gap-2' }, [
-                                        h('label', { class: 'flex items-center gap-2 cursor-pointer' }, [
-                                            h('input', {
-                                                type: 'checkbox',
-                                                checked: isSelected,
-                                                class: 'rounded text-sky-600',
-                                                onChange: e => f.selected[s.id] = e.target.checked,
-                                            }),
-                                            h('span', { class: 'text-sm font-semibold' + (!isSelected ? ' line-through text-zinc-400' : '') }, s.name),
-                                        ]),
-                                        isSelected ? h('div', { class: 'flex flex-wrap gap-1' }, [
-                                            h('button', {
-                                                type: 'button',
-                                                class: 'mentoria-level-pill ' + (curLevel === 'iniciante' ? 'mentoria-level-pill--active-iniciante' : ''),
-                                                onClick: () => { f.levels[s.id] = 'iniciante'; f.affinity[s.id] = 30; f.priorities[s.id] = 'alta'; },
-                                            }, '🔴 Iniciante (Alta Prioridade)'),
-                                            h('button', {
-                                                type: 'button',
-                                                class: 'mentoria-level-pill ' + (curLevel === 'intermediario' ? 'mentoria-level-pill--active-intermediario' : ''),
-                                                onClick: () => { f.levels[s.id] = 'intermediario'; f.affinity[s.id] = 60; f.priorities[s.id] = 'media'; },
-                                            }, '🟡 Intermediário (Média)'),
-                                            h('button', {
-                                                type: 'button',
-                                                class: 'mentoria-level-pill ' + (curLevel === 'avancado' ? 'mentoria-level-pill--active-avancado' : ''),
-                                                onClick: () => { f.levels[s.id] = 'avancado'; f.affinity[s.id] = 90; f.priorities[s.id] = 'baixa'; },
-                                            }, '🟢 Avançado (Manutenção)'),
-                                        ]) : h('span', { class: 'text-xs text-zinc-400 italic' }, 'Disciplina ignorada'),
-                                    ]),
-                                ]);
-                            })) : h('div', { class: 'text-xs text-zinc-500' }, 'Nenhuma disciplina encontrada no edital verticalizado.'),
-                        ]);
-                    } else if (step === 3) {
-                        bodyContent = h('div', { class: 'space-y-5' }, [
-                            h('div', [
-                                h('h3', { class: 'text-base font-bold' }, 'Disponibilidade Real de Horas'),
-                                h('p', { class: 'text-xs text-zinc-500' }, 'Selecione um ritmo predefinido ou ajuste os horários por dia da semana:'),
-                            ]),
-                            h('div', { class: 'grid gap-3 sm:grid-cols-3' }, [
-                                h('div', {
-                                    class: 'mentoria-onboarding-card ' + (f.preset === 'moderado' ? 'mentoria-onboarding-card--selected' : ''),
-                                    onClick: () => {
-                                        f.preset = 'moderado';
-                                        f.hours = { seg: 2, ter: 2, qua: 2, qui: 2, sex: 2, sab: 2, dom: 0 };
-                                    },
-                                }, [
-                                    h('strong', { class: 'text-sm font-semibold' }, '🌱 Moderado'),
-                                    h('div', { class: 'mt-1 text-xs text-zinc-500' }, '2h/dia útil + sáb (12h/sem)'),
-                                    h('div', { class: 'mt-2 text-[11px] text-zinc-400' }, 'Trabalho em período integral.'),
-                                ]),
-                                h('div', {
-                                    class: 'mentoria-onboarding-card ' + (f.preset === 'foco' ? 'mentoria-onboarding-card--selected' : ''),
-                                    onClick: () => {
-                                        f.preset = 'foco';
-                                        f.hours = { seg: 3.5, ter: 3.5, qua: 3.5, qui: 3.5, sex: 3.5, sab: 4, dom: 1 };
-                                    },
-                                }, [
-                                    h('strong', { class: 'text-sm font-semibold' }, '⚡ Foco Total'),
-                                    h('div', { class: 'mt-1 text-xs text-zinc-500' }, '3.5h/dia útil + fds (~22h/sem)'),
-                                    h('div', { class: 'mt-2 text-[11px] text-zinc-400' }, 'Alta intensidade e constância.'),
-                                ]),
-                                h('div', {
-                                    class: 'mentoria-onboarding-card ' + (f.preset === 'exclusivo' ? 'mentoria-onboarding-card--selected' : ''),
-                                    onClick: () => {
-                                        f.preset = 'exclusivo';
-                                        f.hours = { seg: 6, ter: 6, qua: 6, qui: 6, sex: 6, sab: 6, dom: 0 };
-                                    },
-                                }, [
-                                    h('strong', { class: 'text-sm font-semibold' }, '🚀 Exclusivo'),
-                                    h('div', { class: 'mt-1 text-xs text-zinc-500' }, '6h/dia seg a sáb (36h/sem)'),
-                                    h('div', { class: 'mt-2 text-[11px] text-zinc-400' }, 'Dedicação total aos estudos.'),
-                                ]),
-                            ]),
-                            h('div', [
-                                h('div', { class: 'mb-2 flex items-center justify-between' }, [
-                                    h('div', { class: 'text-xs font-semibold' }, 'Horas disponíveis por dia'),
-                                    h('div', { class: 'text-xs font-bold text-sky-600 dark:text-sky-400' }, 'Total: ' + weeklyTotal + 'h semanais'),
-                                ]),
-                                h('div', { class: 'grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7' }, [
-                                    ['seg', 'Segunda'], ['ter', 'Terça'], ['qua', 'Quarta'], ['qui', 'Quinta'],
-                                    ['sex', 'Sexta'], ['sab', 'Sábado'], ['dom', 'Domingo'],
-                                ].map(([k, label]) => field(label, input(f.hours, k, { type: 'number', number: true, min: 0, max: 24, step: '0.5' })))),
-                            ]),
-                            formGrid([
-                                field('Duração do bloco de estudo', select(f, 'minutes', [
-                                    { value: 45, label: '45 minutos (foco ágil)' },
-                                    { value: 50, label: '50 minutos (Pomodoro padrão)' },
-                                    { value: 60, label: '60 minutos (1 hora completa)' },
-                                    { value: 90, label: '90 minutos (aprofundamento)' },
-                                ])),
-                                field('Meta de acertos em questões', select(f, 'goal', [
-                                    { value: 70, label: '70% (construção de base)' },
-                                    { value: 80, label: '80% (padrão competitivo)' },
-                                    { value: 85, label: '85% (alto rendimento)' },
-                                    { value: 90, label: '90% (elite de concurso)' },
-                                ])),
-                            ]),
-                        ]);
-                    } else if (step === 4) {
-                        const targetContest = contests.value.find(c => c.id === f.contest_id) || contests.value[0];
-                        const activeSubsCount = activeSubjects.value.filter(s => f.selected[s.id] !== false).length;
-                        const iniciantes = activeSubjects.value.filter(s => f.selected[s.id] !== false && (f.levels[s.id] === 'iniciante')).length;
-                        const intermediarios = activeSubjects.value.filter(s => f.selected[s.id] !== false && (!f.levels[s.id] || f.levels[s.id] === 'intermediario')).length;
-                        const avancados = activeSubjects.value.filter(s => f.selected[s.id] !== false && (f.levels[s.id] === 'avancado')).length;
-
-                        bodyContent = h('div', { class: 'space-y-5' }, [
-                            h('div', [
-                                h('h3', { class: 'text-base font-bold' }, '🎉 Tudo pronto para gerar seu Plano de Estudos!'),
-                                h('p', { class: 'text-xs text-zinc-500' }, 'Revise o diagnóstico abaixo. Ao confirmar, o motor do Mentoria gerará seu ciclo personalizado.'),
-                            ]),
-                            h('div', { class: 'grid gap-3 sm:grid-cols-2' }, [
-                                h('div', { class: 'rounded-xl border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-900' }, [
-                                    h('div', { class: 'text-xs font-semibold text-zinc-500' }, 'CONCURSO ALVO'),
-                                    h('div', { class: 'mt-1 text-base font-bold' }, targetContest?.name || 'Não selecionado'),
-                                    h('div', { class: 'mt-1 text-xs text-zinc-400' }, [targetContest?.board, targetContest?.position].filter(Boolean).join(' · ')),
-                                ]),
-                                h('div', { class: 'rounded-xl border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-900' }, [
-                                    h('div', { class: 'text-xs font-semibold text-zinc-500' }, 'MODALIDADE & CARGA'),
-                                    h('div', { class: 'mt-1 text-base font-bold' }, f.mode === 'ciclo_inteligente' ? '⚡ Ciclo Inteligente' : '📅 Cronograma Semanal'),
-                                    h('div', { class: 'mt-1 text-xs text-zinc-400' }, weeklyTotal + ' horas semanais · ' + f.minutes + ' min / bloco'),
-                                ]),
-                                h('div', { class: 'rounded-xl border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-900' }, [
-                                    h('div', { class: 'text-xs font-semibold text-zinc-500' }, 'MATÉRIAS ATIVAS'),
-                                    h('div', { class: 'mt-1 text-base font-bold' }, activeSubsCount + ' disciplinas selecionadas'),
-                                    h('div', { class: 'mt-1 flex flex-wrap gap-1 text-xs' }, [
-                                        badge(iniciantes + ' Iniciantes', 'rose'),
-                                        badge(intermediarios + ' Intermediárias', 'amber'),
-                                        badge(avancados + ' Avançadas', 'green'),
-                                    ]),
-                                ]),
-                                h('div', { class: 'rounded-xl border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-900' }, [
-                                    h('div', { class: 'text-xs font-semibold text-zinc-500' }, 'METAS E REPETIÇÃO'),
-                                    h('div', { class: 'mt-1 text-base font-bold' }, f.goal + '% de acerto alvo'),
-                                    h('div', { class: 'mt-1 text-xs text-zinc-400' }, 'Repetições espaçadas automatizadas ativas'),
-                                ]),
-                            ]),
-                        ]);
-                    }
-
-                    const footerActions = [
-                        btn('Cancelar', closeModal, 'ghost'),
-                        step > 1 ? btn('← Voltar', () => m.step--, 'ghost') : null,
-                        step < 4
-                            ? btn('Avançar →', () => m.step++, 'primary')
-                            : btn('🚀 Gerar Meu Plano de Estudos', () => finishOnboarding(m), 'primary', { disabled: busy.value }),
-                    ].filter(Boolean);
-
-                    return modal(
-                        'Diagnóstico Inicial & Plano de Estudos',
-                        h('div', { class: 'space-y-4' }, [stepIndicators, bodyContent]),
-                        closeModal,
-                        footerActions,
-                        'mentoria-onboarding-dialog max-w-4xl'
-                    );
-                }
-
-                if(m.type==='schedule'){
-                const f=m.form;
-                return modal('Gerar cronograma inteligente',h('div',{class:'space-y-5'},[
-                    formGrid([
-                        field('Modo',select(f,'mode',[
-                            {value:'agendado',label:'Agenda por dias'},
-                            ...(capabilities.value.includes('cronograma_inteligente')?[{value:'ciclo_inteligente',label:'Ciclo inteligente'}]:[]),
-                        ])),
-                        field('Minutos por tópico',input(f,'minutes',{type:'number',number:true,min:1})),
-                        field('Máx. tópicos / dia (0 = livre)',input(f,'max_topics',{type:'number',number:true,min:0})),
-                        field('Repetições do edital',input(f,'repetitions',{type:'number',number:true,min:1})),
-                        field('Meta de acertos (%)',input(f,'goal',{type:'number',number:true,min:0,max:100})),
-                        checkbox(f,'alert_goal','Usar meta como referência'),
-                    ]),
-                    h('div',[h('div',{class:'mb-2 text-xs font-semibold'},'Horas disponíveis por dia'),h('div',{class:'grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7'},[
-                        ['seg','Seg'],['ter','Ter'],['qua','Qua'],['qui','Qui'],['sex','Sex'],['sab','Sáb'],['dom','Dom'],
-                    ].map(([key,label])=>field(label,input(f.hours,key,{type:'number',number:true,min:0,max:24,step:'0.5'}))))]),
-                    h('div',[h('div',{class:'mb-2 text-xs font-semibold'},'Matérias, afinidade e prioridade'),h('div',{class:'max-h-80 space-y-2 overflow-y-auto'},activeSubjects.value.map(s=>h('div',{class:'grid gap-2 rounded-lg bg-zinc-50 p-2 dark:bg-zinc-800 md:grid-cols-[1fr_100px_150px]'},[
-                        h('label',{class:'flex items-center gap-2 text-sm'},[h('input',{type:'checkbox',checked:f.selected[s.id]!==false,onChange:e=>f.selected[s.id]=e.target.checked}),h('span',s.name)]),
-                        input(f.affinity,s.id,{type:'number',number:true,min:0,max:100}),
-                        select(f.priorities,s.id,[{value:'alta',label:'Alta'},{value:'media',label:'Média'},{value:'baixa',label:'Baixa'}]),
-                    ])))]),
-                ]),closeModal,[btn('Gerar',()=>generateSchedule(m),'primary',{disabled:busy.value})],'max-w-5xl');
-            }
 
             if(m.type==='review'){
                 const f=m.form;
@@ -3045,6 +2355,7 @@ export const MentoriaStudent = {
                 renderTimerLauncher(),
                 renderAiFloatingWidget(),
                 renderModal(),
+                guided.renderDialog(),
             ],
         });
     },
