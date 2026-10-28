@@ -1,0 +1,65 @@
+{
+  "slug": "mentoria2",
+  "name": "Mentoria 2.0",
+  "version": "2.0.0",
+  "description": "Preparação para concursos com edital integrado, planejamento, prática, mentoria e evolução. Plugin independente integrado ao Getfy.",
+  "type": "member",
+  "requires": {
+    "plugin_api": 2
+  },
+  "menu": [
+    {
+      "label": "Mentoria 2.0",
+      "href": "/mentoria2",
+      "icon": "graduation-cap"
+    }
+  ],
+  "routes": "routes.php",
+  "migrations": "migrations",
+  "capabilities": [
+    {
+      "id": "manage",
+      "label": "Gerenciar Mentoria2"
+    },
+    {
+      "id": "content",
+      "label": "Gerenciar conteúdo Mentoria2"
+    },
+    {
+      "id": "students",
+      "label": "Acompanhar alunos Mentoria2"
+    }
+  ],
+  "frontend": {
+    "entry": "dist/plugin-ui.js",
+    "manifest": "dist/ui.manifest.json",
+    "pages": {
+      "Index": {
+        "export": "Mentoria2Index",
+        "layout": "standalone"
+      },
+      "Student": {
+        "export": "Mentoria2Student",
+        "layout": "standalone"
+      }
+    },
+    "exports": {
+      "member_builder": {
+        "mentoria2_exercises": "Mentoria2CourseBuilder"
+      }
+    }
+  },
+  "member_builder_tabs": [
+    {
+      "id": "mentoria2_exercises",
+      "label": "Exercícios Mentoria2",
+      "ui_export": "Mentoria2CourseBuilder"
+    }
+  ],
+  "render_zones": {
+    "member.lesson.after_content": {
+      "id": "mentoria2-lesson-exercises",
+      "export": "Mentoria2LessonExercises"
+    }
+  }
+}

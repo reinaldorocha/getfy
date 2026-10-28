@@ -1,0 +1,752 @@
+<?php
+
+namespace Plugins\Mentoria2\Http\Controllers;
+
+use App\Http\Controllers\Controller;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
+use Plugins\Mentoria2\Services\AccessService;
+use Plugins\Mentoria2\Services\AuditService;
+use Plugins\Mentoria2\Services\ContentAudienceService;
+use Plugins\Mentoria2\Services\QuestionAnswerService;
+use Plugins\Mentoria2\Services\GamificationService;
+use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
+
+class QuestionController extends Controller
+{
+    public function __construct(
+        private readonly AccessService $access,
+        private readonly AuditService $audit,
+        private readonly ContentAudienceService $audience,
+        private readonly QuestionAnswerService $answers,
+        private readonly GamificationService $gamification,
+    ) {}
+
+    public function index(Request $request): JsonResponse
+    {
+        $actor = $request->user();
+        $tenantId = $this->access->tenantId($actor);
+        $perPage = min(max((int) $request->query('per_page', 25), 5), 100);
+
+        $query = DB::table('mentoria2_question_bank')
+            ->where('tenant_id', $tenantId)
+            ->where('is_active', true);
+
+        if ($request->filled('subject')) {
+            $query->where('subject', $request->query('subject'));
+        }
+        if ($request->filled('topic')) {
+            $query->where('topic', $request->query('topic'));
+        }
+        if ($request->filled('difficulty')) {
+            $query->where('difficulty', $request->query('difficulty'));
+        }
+        if ($request->filled('content_status')) {
+            $query->where('content_status', $request->query('content_status'));
+        }
+        if ($request->filled('search')) {
+            $search = '%'.$request->query('search').'%';
+            $query->where(function ($sub) use ($search) {
+                $sub->where('prompt', 'like', $search)
+                    ->orWhere('subject', 'like', $search)
+                    ->orWhere('topic', 'like', $search);
+            });
+        }
+
+        $paginated = $query->latest('created_at')->paginate($perPage);
+        $questionIds = collect($paginated->items())->pluck('id')->all();
+        $targets = $this->audience->targetsForMany($tenantId, 'question', $questionIds);
+
+        $items = collect($paginated->items())->map(function ($q) use ($targets) {
+            $q->alternatives = is_string($q->alternatives) ? json_decode($q->alternatives, true) : (array) $q->alternatives;
+            $q->targets = $targets[(string) $q->id] ?? [];
+            return $q;
+        });
+
+        return response()->json([
+            'data' => $items,
+            'meta' => [
+                'current_page' => $paginated->currentPage(),
+                'last_page' => $paginated->lastPage(),
+                'per_page' => $paginated->perPage(),
+                'total' => $paginated->total(),
+            ],
+            'links' => [
+                'first' => $paginated->url(1),
+                'last' => $paginated->url($paginated->lastPage()),
+                'prev' => $paginated->previousPageUrl(),
+                'next' => $paginated->nextPageUrl(),
+            ],
+        ]);
+    }
+
+    public function studentIndex(Request $request, int $tenant): JsonResponse
+    {
+        $student = $request->user();
+        $this->access->assertStudentInTenant($student, $tenant);
+        $perPage = min(max((int) $request->query('per_page', 25), 5), 100);
+
+        $visibleIds = $this->audience->visibleIds($student, $tenant, 'question');
+        if ($visibleIds === []) {
+            return response()->json([
+                'data' => [],
+                'meta' => ['current_page' => 1, 'last_page' => 1, 'per_page' => $perPage, 'total' => 0],
+                'links' => ['first' => null, 'last' => null, 'prev' => null, 'next' => null],
+            ]);
+        }
+
+        $query = DB::table('mentoria2_question_bank')
+            ->where('tenant_id', $tenant)
+            ->whereIn('id', $visibleIds)
+            ->where('is_active', true);
+        $query->where('content_status', 'publicado');
+
+        if ($request->filled('subject')) {
+            $query->where('subject', $request->query('subject'));
+        }
+        if ($request->filled('topic')) {
+            $query->where('topic', $request->query('topic'));
+        }
+        if ($request->filled('difficulty')) {
+            $query->where('difficulty', $request->query('difficulty'));
+        }
+        if ($request->filled('search')) {
+            $search = '%'.$request->query('search').'%';
+            $query->where(function ($sub) use ($search) {
+                $sub->where('prompt', 'like', $search)
+                    ->orWhere('subject', 'like', $search)
+                    ->orWhere('topic', 'like', $search);
+            });
+        }
+
+        $paginated = $query->latest('created_at')->paginate($perPage);
+        $pageIds = collect($paginated->items())->pluck('id')->all();
+
+        $lastAnswers = DB::table('mentoria2_question_answers')
+            ->where('tenant_id', $tenant)
+            ->where('student_id', $student->id)
+            ->whereIn('question_id', $pageIds)
+            ->orderByDesc('answered_at')
+            ->get()
+            ->unique('question_id')
+            ->keyBy('question_id');
+
+        $items = collect($paginated->items())->map(function ($q) use ($lastAnswers) {
+            $ans = $lastAnswers->get($q->id);
+            return [
+                'id' => $q->id,
+                'subject' => $q->subject,
+                'topic' => $q->topic,
+                'type' => $q->type,
+                'prompt' => $q->prompt,
+                'alternatives' => is_string($q->alternatives) ? json_decode($q->alternatives, true) : (array) $q->alternatives,
+                'difficulty' => $q->difficulty,
+                'scope' => $q->scope,
+                'contest_id' => $q->contest_id,
+                'answered' => $ans !== null,
+                'last_answer' => $ans?->answer,
+                'last_correct' => $ans?->is_correct !== null ? (bool) $ans->is_correct : null,
+                'last_answered_at' => $ans?->answered_at,
+            ];
+        });
+
+        return response()->json([
+            'data' => $items,
+            'meta' => [
+                'current_page' => $paginated->currentPage(),
+                'last_page' => $paginated->lastPage(),
+                'per_page' => $paginated->perPage(),
+                'total' => $paginated->total(),
+            ],
+            'links' => [
+                'first' => $paginated->url(1),
+                'last' => $paginated->url($paginated->lastPage()),
+                'prev' => $paginated->previousPageUrl(),
+                'next' => $paginated->nextPageUrl(),
+            ],
+        ]);
+    }
+
+    public function store(Request $request): JsonResponse
+    {
+        $data = $this->validatedQuestion($request);
+        $data['content_status'] = 'publicado';
+        $actor = $request->user();
+        $tenantId = $this->access->tenantId($actor);
+        $id = $this->insertQuestion($tenantId, $actor->id, $data);
+
+        $targets = $this->targetsFromRequest($request, $data);
+        $this->audience->replaceTargets($tenantId, 'question', $id, $targets);
+
+        $this->audit->record($tenantId, $actor, 'question.created', 'question', $id, null, [
+            'subject' => $data['subject'],
+            'targets' => $targets,
+        ]);
+
+        return response()->json(['ok' => true, 'id' => $id], 201);
+    }
+
+    public function import(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'questions' => ['nullable', 'array'],
+            'questoes' => ['nullable', 'array'],
+            'targets' => ['nullable', 'array'],
+        ]);
+
+        $items = $data['questions'] ?? $data['questoes'] ?? [];
+        if ($items === [] && is_array($request->json()->all())) {
+            $all = $request->json()->all();
+            if (array_is_list($all)) {
+                $items = $all;
+            } elseif (isset($all['prompt']) || isset($all['enunciado'])) {
+                $items = [$all];
+            }
+        }
+
+        if (! is_array($items) || $items === []) {
+            return response()->json(['message' => 'Informe ao menos uma questão para importar.'], 422);
+        }
+
+        if (count($items) > 1000) {
+            return response()->json(['message' => 'Importe no máximo 1000 questões por vez.'], 422);
+        }
+
+        $actor = $request->user();
+        $tenantId = $this->access->tenantId($actor);
+        $defaultTargets = is_array($data['targets'] ?? null) ? $data['targets'] : [['type' => 'global']];
+        $created = [];
+
+        DB::transaction(function () use ($items, $defaultTargets, $tenantId, $actor, &$created): void {
+            foreach ($items as $raw) {
+                if (! is_array($raw)) {
+                    continue;
+                }
+
+                $normalized = $this->normalizeQuestionInput($raw);
+                $this->validateNormalizedQuestion($normalized, $tenantId);
+
+                $id = $this->insertQuestion($tenantId, $actor->id, $normalized);
+                $targets = is_array($raw['targets'] ?? null) ? $raw['targets'] : $defaultTargets;
+                $this->audience->replaceTargets($tenantId, 'question', $id, $targets);
+                $created[] = $id;
+            }
+        });
+
+        $this->audit->record($tenantId, $actor, 'questions.imported', 'question', null, null, ['count' => count($created)]);
+
+        return response()->json(['ok' => true, 'imported' => count($created), 'ids' => $created], 201);
+    }
+
+    public function update(Request $request, string $question): JsonResponse
+    {
+        $actor = $request->user();
+        $tenantId = $this->access->tenantId($actor);
+        $row = $this->requireQuestion($tenantId, $question);
+
+        $data = $request->validate([
+            'subject' => ['sometimes', 'required', 'string', 'max:150'],
+            'topic' => ['sometimes', 'nullable', 'string', 'max:150'],
+            'type' => ['sometimes', 'in:multipla_escolha,certo_errado'],
+            'prompt' => ['sometimes', 'required', 'string'],
+            'alternatives' => ['sometimes', 'nullable', 'array'],
+            'correct_answer' => ['sometimes', 'required', 'string', 'max:255'],
+            'difficulty' => ['sometimes', 'required', 'in:Fácil,Média,Difícil,Muito Difícil,facil,media,dificil,muito_dificil'],
+            'explanation' => ['sometimes', 'nullable', 'string'],
+            'scope' => ['sometimes', 'in:global,concurso'],
+            'contest_id' => ['sometimes', 'nullable', 'uuid'],
+            'targets' => ['sometimes', 'array'],
+        ]);
+
+        if (array_key_exists('contest_id', $data) && $data['contest_id']) {
+            $this->requireContest($tenantId, $data['contest_id']);
+        }
+
+        $targets = $data['targets'] ?? null;
+        unset($data['targets']);
+
+        if (array_key_exists('alternatives', $data)) {
+            $data['alternatives'] = $data['alternatives'] === null
+                ? null
+                : json_encode($this->normalizeAlternatives($data['alternatives']), JSON_UNESCAPED_UNICODE);
+        }
+
+        if (array_key_exists('subject', $data)) {
+            $data['subject'] = trim((string) $data['subject']);
+        }
+        if (array_key_exists('correct_answer', $data)) {
+            $data['correct_answer'] = trim((string) $data['correct_answer']);
+        }
+
+        if ($targets !== null) {
+            [$legacyScope, $legacyContest] = $this->legacyScopeFromTargets($targets);
+            $data['scope'] = $legacyScope;
+            $data['contest_id'] = $legacyContest;
+            $this->audience->replaceTargets($tenantId, 'question', $question, $targets);
+        }
+
+        $data['updated_at'] = now();
+        DB::table('mentoria2_question_bank')->where('tenant_id', $tenantId)->where('id', $question)->update($data);
+
+        $this->audit->record($tenantId, $actor, 'question.updated', 'question', $question, null, [
+            'changes' => array_keys($data),
+        ]);
+
+        return response()->json(['ok' => true]);
+    }
+
+    public function destroy(Request $request, string $question): JsonResponse
+    {
+        $actor = $request->user();
+        $tenantId = $this->access->tenantId($actor);
+        $this->requireQuestion($tenantId, $question);
+
+        DB::table('mentoria2_question_bank')
+            ->where('tenant_id', $tenantId)
+            ->where('id', $question)
+            ->update(['is_active' => false, 'updated_at' => now()]);
+
+        $this->audience->deleteTargets($tenantId, 'question', $question);
+        $this->audit->record($tenantId, $actor, 'question.disabled', 'question', $question);
+
+        return response()->json(['ok' => true]);
+    }
+
+    public function updateCuration(Request $request, string $question): JsonResponse
+    {
+        $actor = $request->user();
+        $tenantId = $this->access->tenantId($actor);
+        $this->requireQuestion($tenantId, $question);
+        $data = $request->validate([
+            'content_status' => ['required', 'in:rascunho,em_revisao,publicado,bloqueado'],
+            'review_note' => ['nullable', 'string', 'max:5000'],
+            'content_source' => ['nullable', 'string', 'max:80'],
+            'content_confidence' => ['nullable', 'integer', 'min:0', 'max:100'],
+        ]);
+        $status = $data['content_status'];
+        DB::table('mentoria2_question_bank')->where('tenant_id', $tenantId)->where('id', $question)->update([
+            ...$data,
+            'reviewed_by' => $status === 'em_revisao' ? null : $actor->id,
+            'reviewed_at' => $status === 'em_revisao' ? null : now(),
+            'updated_at' => now(),
+        ]);
+        $this->audit->record($tenantId, $actor, 'question.curated', 'question', $question, null, ['status' => $status]);
+
+        return response()->json(['ok' => true, 'content_status' => $status]);
+    }
+
+    public function bulkDestroy(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'ids' => ['required', 'array', 'min:1'],
+            'ids.*' => ['required', 'string'],
+        ]);
+
+        $actor = $request->user();
+        $tenantId = $this->access->tenantId($actor);
+        $ids = array_values(array_unique(array_filter($data['ids'], 'is_string')));
+
+        if ($ids === []) {
+            return response()->json(['message' => 'Nenhuma questão válida informada.'], 422);
+        }
+
+        $validIds = DB::table('mentoria2_question_bank')
+            ->where('tenant_id', $tenantId)
+            ->whereIn('id', $ids)
+            ->where('is_active', true)
+            ->pluck('id')
+            ->all();
+
+        if ($validIds !== []) {
+            DB::table('mentoria2_question_bank')
+                ->where('tenant_id', $tenantId)
+                ->whereIn('id', $validIds)
+                ->update(['is_active' => false, 'updated_at' => now()]);
+
+            DB::table('mentoria2_content_targets')
+                ->where('tenant_id', $tenantId)
+                ->where('content_type', 'question')
+                ->whereIn('content_id', $validIds)
+                ->delete();
+
+            $this->audit->record($tenantId, $actor, 'questions.bulk_disabled', 'question', null, null, [
+                'count' => count($validIds),
+                'ids' => $validIds,
+            ]);
+        }
+
+        return response()->json([
+            'ok' => true,
+            'deleted' => count($validIds),
+            'ids' => $validIds,
+        ]);
+    }
+
+    public function answerStudentQuestion(Request $request, int $tenant, string $question): JsonResponse
+    {
+        $student = $request->user();
+        $this->access->assertCapability($student, $tenant, 'questoes');
+
+        $data = $request->validate([
+            'answer' => ['required', 'string', 'max:255'],
+            'contest_id' => ['nullable', 'uuid'],
+        ]);
+
+        $row = $this->requireQuestion($tenant, $question, true);
+        if (! $this->audience->canStudentAccess($student, $tenant, 'question', $question)) {
+            throw new NotFoundHttpException('Questão não disponível para este aluno.');
+        }
+
+        $contestId = $data['contest_id'] ?? $row->contest_id;
+        if ($contestId && ! $this->studentHasContest($tenant, (int) $student->id, (string) $contestId)) {
+            throw new NotFoundHttpException('Concurso fora do escopo do aluno.');
+        }
+
+        $correct = $this->answers->matches((string) $data['answer'], (string) $row->correct_answer, $row->alternatives);
+        $answerId = (string) Str::uuid();
+        $now = now();
+        $subjectId = $this->resolveSubjectId($tenant, (int) $student->id, $contestId ? (string) $contestId : null, (string) $row->subject);
+
+        DB::transaction(function () use ($tenant, $student, $row, $data, $correct, $answerId, $now, $contestId, $subjectId): void {
+            DB::table('mentoria2_question_answers')->insert([
+                'id' => $answerId,
+                'tenant_id' => $tenant,
+                'student_id' => $student->id,
+                'question_id' => $row->id,
+                'contest_id' => $contestId,
+                'answer' => $data['answer'],
+                'is_correct' => $correct,
+                'answered_at' => $now,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ]);
+
+            DB::table('mentoria2_question_logs')->insert([
+                'id' => (string) Str::uuid(),
+                'tenant_id' => $tenant,
+                'student_id' => $student->id,
+                'contest_id' => $contestId,
+                'subject_id' => $subjectId,
+                'topic_id' => null,
+                'subtopic_id' => null,
+                'solved' => 1,
+                'correct' => $correct ? 1 : 0,
+                'wrong' => $correct ? 0 : 1,
+                'origin' => 'banco_questoes',
+                'is_active' => true,
+                'recorded_at' => $now,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ]);
+        });
+
+        $gamification = $this->gamification->awardXp($tenant, (int) $student->id, 'question_answered', 2, 'question_answer_'.$answerId, 'question_answer', $answerId, ['correct' => $correct]);
+        return response()->json([
+            'ok' => true,
+            'answer_id' => $answerId,
+            'correct' => $correct,
+            'is_correct' => $correct,
+            'correct_answer' => $row->correct_answer,
+            'explanation' => $row->explanation,
+            'gamification' => $gamification,
+        ]);
+    }
+
+    public function studentHistory(Request $request, int $tenant, string $question): JsonResponse
+    {
+        $student = $request->user();
+        $this->access->assertCapability($student, $tenant, 'questoes');
+        $this->requireQuestion($tenant, $question, true);
+
+        if (! $this->audience->canStudentAccess($student, $tenant, 'question', $question)) {
+            throw new NotFoundHttpException('Questão não disponível para este aluno.');
+        }
+
+        $history = DB::table('mentoria2_question_answers as a')
+            ->join('mentoria2_question_bank as q', 'q.id', '=', 'a.question_id')
+            ->where('a.tenant_id', $tenant)
+            ->where('a.student_id', $student->id)
+            ->where('a.question_id', $question)
+            ->select(
+                'a.id',
+                'a.question_id',
+                'q.subject',
+                'q.topic',
+                'q.type',
+                'q.prompt',
+                'a.answer',
+                'a.is_correct',
+                'a.answered_at',
+                'a.contest_id',
+            )
+            ->orderByDesc('a.answered_at')
+            ->limit(200)
+            ->get();
+
+        return response()->json(['history' => $history]);
+    }
+
+    public function studentStatistics(Request $request, int $tenant): JsonResponse
+    {
+        $student = $request->user();
+        $this->access->assertCapability($student, $tenant, 'questoes');
+
+        $contestId = $request->query('contest_id');
+        if ($contestId && ! $this->studentHasContest($tenant, (int) $student->id, (string) $contestId)) {
+            throw new NotFoundHttpException('Concurso fora do escopo do aluno.');
+        }
+
+        $base = DB::table('mentoria2_question_answers as a')
+            ->join('mentoria2_question_bank as q', 'q.id', '=', 'a.question_id')
+            ->where('a.tenant_id', $tenant)
+            ->where('a.student_id', $student->id)
+            ->when($contestId, fn ($query) => $query->where('a.contest_id', $contestId));
+
+        $totals = (clone $base)
+            ->selectRaw('COUNT(*) total_answered, SUM(CASE WHEN a.is_correct=1 THEN 1 ELSE 0 END) correct, SUM(CASE WHEN a.is_correct=0 THEN 1 ELSE 0 END) wrong')
+            ->first();
+
+        $answered = (int) ($totals->total_answered ?? 0);
+        $correct = (int) ($totals->correct ?? 0);
+        $wrong = (int) ($totals->wrong ?? 0);
+
+        $bySubject = (clone $base)
+            ->selectRaw('q.subject, COUNT(*) total, SUM(CASE WHEN a.is_correct=1 THEN 1 ELSE 0 END) correct, SUM(CASE WHEN a.is_correct=0 THEN 1 ELSE 0 END) wrong')
+            ->groupBy('q.subject')
+            ->orderBy('q.subject')
+            ->get()
+            ->map(fn ($row) => [
+                'subject' => $row->subject,
+                'total' => (int) $row->total,
+                'correct' => (int) $row->correct,
+                'wrong' => (int) $row->wrong,
+                'accuracy' => (int) $row->total > 0 ? round(((int) $row->correct / (int) $row->total) * 100, 1) : 0,
+            ]);
+
+        $byTopic = (clone $base)
+            ->whereNotNull('q.topic')
+            ->selectRaw('q.subject, q.topic, COUNT(*) total, SUM(CASE WHEN a.is_correct=1 THEN 1 ELSE 0 END) correct, SUM(CASE WHEN a.is_correct=0 THEN 1 ELSE 0 END) wrong')
+            ->groupBy('q.subject', 'q.topic')
+            ->orderBy('q.subject')
+            ->orderBy('q.topic')
+            ->get()
+            ->map(fn ($row) => [
+                'subject' => $row->subject,
+                'topic' => $row->topic,
+                'total' => (int) $row->total,
+                'correct' => (int) $row->correct,
+                'wrong' => (int) $row->wrong,
+                'accuracy' => (int) $row->total > 0 ? round(((int) $row->correct / (int) $row->total) * 100, 1) : 0,
+            ]);
+
+        $recent = (clone $base)
+            ->select('a.id', 'a.question_id', 'q.subject', 'q.topic', 'q.prompt', 'a.answer', 'a.is_correct', 'a.answered_at')
+            ->orderByDesc('a.answered_at')
+            ->limit(30)
+            ->get();
+
+        return response()->json([
+            'total_answered' => $answered,
+            'total_solved' => $answered,
+            'correct' => $correct,
+            'wrong' => $wrong,
+            'accuracy' => $answered > 0 ? round(($correct / $answered) * 100, 1) : 0,
+            'by_subject' => $bySubject,
+            'by_topic' => $byTopic,
+            'recent_history' => $recent,
+        ]);
+    }
+
+    private function validatedQuestion(Request $request): array
+    {
+        $data = $request->validate([
+            'subject' => ['required', 'string', 'max:150'],
+            'topic' => ['nullable', 'string', 'max:150'],
+            'type' => ['nullable', 'in:multipla_escolha,certo_errado'],
+            'prompt' => ['required', 'string'],
+            'alternatives' => ['nullable', 'array'],
+            'correct_answer' => ['required', 'string', 'max:255'],
+            'explanation' => ['nullable', 'string'],
+            'scope' => ['nullable', 'in:global,concurso'],
+            'contest_id' => ['nullable', 'uuid'],
+            'targets' => ['nullable', 'array'],
+            'content_source' => ['nullable', 'string', 'max:80'],
+            'content_confidence' => ['nullable', 'integer', 'min:0', 'max:100'],
+        ]);
+
+        if (! empty($data['contest_id'])) {
+            $tenantId = $this->access->tenantId($request->user());
+            $this->requireContest($tenantId, $data['contest_id']);
+        }
+
+        if (array_key_exists('alternatives', $data) && $data['alternatives'] !== null) {
+            $data['alternatives'] = $this->normalizeAlternatives($data['alternatives']);
+        }
+
+        return $data;
+    }
+
+    private function normalizeQuestionInput(array $raw): array
+    {
+        $alternatives = $raw['alternatives'] ?? $raw['alternativas'] ?? [];
+        if (is_string($alternatives)) {
+            $alternatives = preg_split('/\r?\n/', $alternatives) ?: [];
+        }
+
+        return [
+            'subject' => trim((string) ($raw['subject'] ?? $raw['disciplina'] ?? '')),
+            'topic' => ($raw['topic'] ?? $raw['assunto'] ?? null) ?: null,
+            'type' => (string) ($raw['type'] ?? $raw['tipo'] ?? 'multipla_escolha'),
+            'prompt' => trim((string) ($raw['prompt'] ?? $raw['enunciado'] ?? '')),
+            'alternatives' => $this->normalizeAlternatives(is_array($alternatives) ? $alternatives : []),
+            'correct_answer' => trim((string) ($raw['correct_answer'] ?? $raw['respostaCorreta'] ?? $raw['resposta_correta'] ?? '')),
+            'explanation' => ($raw['explanation'] ?? $raw['explicacao'] ?? null) ?: null,
+            'scope' => (string) ($raw['scope'] ?? $raw['alcance'] ?? 'global'),
+            'contest_id' => ($raw['contest_id'] ?? $raw['concursoId'] ?? null) ?: null,
+            'content_source' => (string) ($raw['content_source'] ?? 'importacao_json'),
+            'content_status' => (string) ($raw['content_status'] ?? 'em_revisao'),
+        ];
+    }
+
+    private function validateNormalizedQuestion(array $data, int $tenantId): void
+    {
+        if ($data['subject'] === '' || $data['prompt'] === '' || $data['correct_answer'] === '') {
+            throw new \InvalidArgumentException('Questão importada sem disciplina, enunciado ou resposta correta.');
+        }
+
+        if (! in_array($data['type'], ['multipla_escolha', 'certo_errado'], true)) {
+            throw new \InvalidArgumentException('Tipo de questão importada inválido.');
+        }
+
+        if ($data['contest_id']) {
+            $this->requireContest($tenantId, (string) $data['contest_id']);
+        }
+    }
+
+    private function normalizeAlternatives(array $alternatives): array
+    {
+        return array_values(array_filter(array_map(
+            static fn ($alternative) => preg_replace('/^\s*\(?[A-Z]\)?\s*[\)\.\-:]\s*/iu', '', trim((string) $alternative)),
+            $alternatives,
+        ), static fn ($alternative) => $alternative !== ''));
+    }
+
+    private function insertQuestion(int $tenantId, int $actorId, array $data): string
+    {
+        $targets = is_array($data['targets'] ?? null) ? $data['targets'] : null;
+        if ($targets !== null) {
+            [$scope, $contestId] = $this->legacyScopeFromTargets($targets);
+        } else {
+            $scope = ($data['scope'] ?? 'global') === 'concurso' ? 'concurso' : 'global';
+            $contestId = $scope === 'concurso' ? ($data['contest_id'] ?? null) : null;
+        }
+
+        $id = (string) Str::uuid();
+        DB::table('mentoria2_question_bank')->insert([
+            'id' => $id,
+            'tenant_id' => $tenantId,
+            'subject' => trim((string) $data['subject']),
+            'topic' => $data['topic'] ?? null,
+            'type' => $data['type'] ?? 'multipla_escolha',
+            'prompt' => $data['prompt'],
+            'alternatives' => ! empty($data['alternatives']) ? json_encode(array_values($data['alternatives']), JSON_UNESCAPED_UNICODE) : null,
+            'correct_answer' => trim((string) $data['correct_answer']),
+            'explanation' => $data['explanation'] ?? null,
+            'scope' => $scope,
+            'contest_id' => $contestId,
+            'created_by' => $actorId,
+            'content_status' => $data['content_status'] ?? 'publicado',
+            'content_source' => $data['content_source'] ?? null,
+            'content_confidence' => $data['content_confidence'] ?? null,
+            'is_active' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        return $id;
+    }
+
+    private function targetsFromRequest(Request $request, array $data): array
+    {
+        if (is_array($data['targets'] ?? null)) {
+            return $data['targets'];
+        }
+
+        if (($data['scope'] ?? 'global') === 'concurso' && ! empty($data['contest_id'])) {
+            return [['type' => 'contest', 'id' => $data['contest_id']]];
+        }
+
+        return [['type' => 'global', 'id' => null]];
+    }
+
+    private function legacyScopeFromTargets(array $targets): array
+    {
+        foreach ($targets as $target) {
+            $type = $target['type'] ?? $target['target_type'] ?? null;
+            $id = $target['id'] ?? $target['target_id'] ?? null;
+            if ($type === 'contest' && $id) {
+                return ['concurso', (string) $id];
+            }
+        }
+
+        return ['global', null];
+    }
+
+    private function requireQuestion(int $tenantId, string $questionId, bool $activeOnly = false): object
+    {
+        $query = DB::table('mentoria2_question_bank')->where('tenant_id', $tenantId)->where('id', $questionId);
+        if ($activeOnly) {
+            $query->where('is_active', true);
+        }
+        $row = $query->first();
+
+        if (! $row) {
+            throw new NotFoundHttpException('Questão não encontrada.');
+        }
+
+        return $row;
+    }
+
+    private function requireContest(int $tenantId, string $contestId): void
+    {
+        if (! DB::table('mentoria2_contests')->where('tenant_id', $tenantId)->where('id', $contestId)->where('is_active', true)->exists()) {
+            throw new NotFoundHttpException('Concurso não encontrado.');
+        }
+    }
+
+    private function studentHasContest(int $tenantId, int $studentId, string $contestId): bool
+    {
+        return DB::table('mentoria2_student_contests')
+            ->where('tenant_id', $tenantId)
+            ->where('student_id', $studentId)
+            ->where('contest_id', $contestId)
+            ->where('is_active', true)
+            ->exists();
+    }
+
+    private function resolveSubjectId(int $tenantId, int $studentId, ?string $contestId, string $subjectName): ?string
+    {
+        if (! $contestId) {
+            return null;
+        }
+
+        return DB::table('mentoria2_subjects as s')
+            ->join('mentoria2_edicts as e', 'e.id', '=', 's.edict_id')
+            ->join('mentoria2_student_edicts as se', 'se.edict_id', '=', 'e.id')
+            ->where('s.tenant_id', $tenantId)
+            ->where('se.student_id', $studentId)
+            ->where('se.is_active', true)
+            ->where('e.contest_id', $contestId)
+            ->where('e.is_active', true)
+            ->where('s.is_active', true)
+            ->whereRaw('LOWER(s.name) = ?', [mb_strtolower(trim($subjectName), 'UTF-8')])
+            ->value('s.id');
+    }
+
+    private function normalized(string $value): string
+    {
+        return mb_strtolower(trim($value), 'UTF-8');
+    }
+}
