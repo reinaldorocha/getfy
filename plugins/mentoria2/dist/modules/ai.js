@@ -1,4 +1,4 @@
-import { state, icon, escapeHtml, plainTextWithBreaks } from './core.js?v=10e94e945bc8';
+import { state, icon, escapeHtml, plainTextWithBreaks } from './core.js?v=d6fd58c3ef81';
 
 export   function viewTutor() {
     const contestTitle = (window.M2Data.contests && window.M2Data.contests[0]) ? (window.M2Data.contests[0].name || window.M2Data.contests[0].title) : 'Edital Ativo';

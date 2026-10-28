@@ -5,23 +5,22 @@ import test from 'node:test';
 const pluginRoot = new URL('../..', import.meta.url);
 const source = (path) => readFileSync(new URL(path, pluginRoot), 'utf8');
 
-test('Mentoria 2.0 has dedicated migrations for all 6 benchmark features', () => {
-    assert.equal(existsSync(new URL('migrations/2026_10_15_000002_create_essay_and_discursive_tables.php', pluginRoot)), true);
-    assert.equal(existsSync(new URL('migrations/2026_10_15_000003_create_ai_memory_and_reports_tables.php', pluginRoot)), true);
-    assert.equal(existsSync(new URL('migrations/2026_10_15_000004_create_radar_contests_and_timer_logs_tables.php', pluginRoot)), true);
+test('Mentoria 2.0 has one baseline migration with all benchmark tables', () => {
+    const migrationPath = 'migrations/2026_10_28_000001_create_mentoria2_schema.php';
+    assert.equal(existsSync(new URL(migrationPath, pluginRoot)), true);
 
-    const mEssay = source('migrations/2026_10_15_000002_create_essay_and_discursive_tables.php');
-    assert.match(mEssay, /mentoria2_essays/);
-    assert.match(mEssay, /mentoria2_essay_submissions/);
-
-    const mAi = source('migrations/2026_10_15_000003_create_ai_memory_and_reports_tables.php');
-    assert.match(mAi, /mentoria2_ai_memory/);
-    assert.match(mAi, /mentoria2_question_reports/);
-
-    const mRadar = source('migrations/2026_10_15_000004_create_radar_contests_and_timer_logs_tables.php');
-    assert.match(mRadar, /mentoria2_radar_contests/);
-    assert.match(mRadar, /mentoria2_timer_logs/);
-    assert.match(mRadar, /mentoria2_gamification_logs/);
+    const migration = source(migrationPath);
+    for (const table of [
+        'mentoria2_essays',
+        'mentoria2_essay_submissions',
+        'mentoria2_ai_memory',
+        'mentoria2_question_reports',
+        'mentoria2_radar_contests',
+        'mentoria2_timer_logs',
+        'mentoria2_gamification_logs',
+    ]) {
+        assert.match(migration, new RegExp(table));
+    }
 });
 
 test('Mentoria 2.0 defines Clean Architecture contracts and DTOs', () => {

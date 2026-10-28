@@ -13,7 +13,7 @@ test('Mentoria2 owns its slug, routes, exports and isolated table prefix', () =>
     const bootstrap = source('bootstrap.php');
     const student = source('frontend/src/student.js');
     const entry = source('frontend/src/plugin-ui.js');
-    const migration = source('migrations/2026_09_19_000001_create_mentoria2_tables.php');
+    const migration = source('migrations/2026_10_28_000001_create_mentoria2_schema.php');
     const all = [manifestText, bootstrap, student, entry, migration].join('\n');
 
     assert.equal(manifest.slug, 'mentoria2');
@@ -29,13 +29,13 @@ test('Mentoria2 owns its slug, routes, exports and isolated table prefix', () =>
 });
 
 test('scheduled reviews are linked to one 30-minute schedule reservation', () => {
-    const migrationPath = new URL('migrations/2026_09_20_000004_add_scheduled_review_to_mentoria2_schedule_items.php', pluginRoot);
+    const migrationPath = new URL('migrations/2026_10_28_000001_create_mentoria2_schema.php', pluginRoot);
     const servicePath = new URL('src/Services/ReviewScheduleService.php', pluginRoot);
 
     assert.equal(existsSync(migrationPath), true);
     assert.equal(existsSync(servicePath), true);
 
-    const migration = source('migrations/2026_09_20_000004_add_scheduled_review_to_mentoria2_schedule_items.php');
+    const migration = source('migrations/2026_10_28_000001_create_mentoria2_schema.php');
     const service = source('src/Services/ReviewScheduleService.php');
     assert.match(migration, /scheduled_review_id/);
     assert.match(service, /function syncForContest\(int \$tenantId, int \$studentId, string \$contestId\): void/);

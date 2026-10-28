@@ -1,4 +1,4 @@
-import { state, icon, escapeHtml, plainTextWithBreaks, formatTimer } from './core.js?v=10e94e945bc8';
+import { state, icon, escapeHtml, plainTextWithBreaks, formatTimer } from './core.js?v=d6fd58c3ef81';
 
 export function renderTopbar() {
     const unread = Number(window.M2Data?.notifications?.unread_count || 0);

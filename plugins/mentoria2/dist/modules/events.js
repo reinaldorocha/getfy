@@ -10,10 +10,10 @@
   navigate,
   render,
   hydrateDataFromPayload
-} from './core.js?v=10e94e945bc8';
-import { sendTutorChat } from './tutor-client.js?v=10e94e945bc8';
-import { loadMentorResource, loadContestSyllabus, loadDeckCards } from './mentor-resources.js?v=10e94e945bc8';
-import { getFilteredStudyQuestions } from './study.js?v=10e94e945bc8';
+} from './core.js?v=d6fd58c3ef81';
+import { sendTutorChat } from './tutor-client.js?v=d6fd58c3ef81';
+import { loadMentorResource, loadContestSyllabus, loadDeckCards } from './mentor-resources.js?v=d6fd58c3ef81';
+import { getFilteredStudyQuestions } from './study.js?v=d6fd58c3ef81';
 
 function scrollTutorMessages(elementId) {
   const box = document.getElementById(elementId);
