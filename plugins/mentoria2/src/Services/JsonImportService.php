@@ -189,19 +189,29 @@ class JsonImportService implements JsonImportServiceInterface
                     $board = $data['contest']['board'] ?? $data['banca'] ?? ($payload['board'] ?? null);
 
                     $targetContestId = (string) Str::uuid();
-                    DB::table('mentoria2_contests')->insert([
+                    $contest = [
                         'id' => $targetContestId,
                         'tenant_id' => $tenantId,
                         'name' => $contestName,
                         'position' => $role,
-                        'organization' => $org,
                         'board' => $board,
-                        'phase' => 'Publicado',
                         'is_active' => true,
                         'created_by' => $actor->id,
                         'created_at' => now(),
                         'updated_at' => now(),
-                    ]);
+                    ];
+
+                    // Instala??es anteriores podem ainda n?o ter recebido a
+                    // migration de metadados do cat?logo. O cargo sempre usa
+                    // a coluna can?nica `position`; ?rg?o e fase s?o opcionais.
+                    if (Schema::hasColumn('mentoria2_contests', 'organization')) {
+                        $contest['organization'] = $org;
+                    }
+                    if (Schema::hasColumn('mentoria2_contests', 'phase')) {
+                        $contest['phase'] = 'Publicado';
+                    }
+
+                    DB::table('mentoria2_contests')->insert($contest);
                 }
 
                 $edict = DB::table('mentoria2_edicts')
