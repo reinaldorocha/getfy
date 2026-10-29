@@ -193,7 +193,7 @@ class JsonImportService implements JsonImportServiceInterface
                         'id' => $targetContestId,
                         'tenant_id' => $tenantId,
                         'name' => $contestName,
-                        'role' => $role,
+                        'position' => $role,
                         'organization' => $org,
                         'board' => $board,
                         'phase' => 'Publicado',

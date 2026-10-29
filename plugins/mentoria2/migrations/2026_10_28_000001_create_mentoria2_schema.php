@@ -42,7 +42,8 @@ return new class extends Migration
         if (! Schema::hasTable('mentoria2_contests')) {
             Schema::create('mentoria2_contests', function (Blueprint $t) {
                 $t->uuid('id')->primary(); $t->unsignedBigInteger('tenant_id')->index();
-                $t->string('name'); $t->string('board',160)->nullable(); $t->string('position')->nullable();
+                $t->string('name'); $t->string('organization',160)->nullable(); $t->string('board',160)->nullable(); $t->string('position')->nullable();
+                $t->string('phase',30)->default('Publicado');
                 $t->decimal('salary',12,2)->nullable(); $t->date('exam_date')->nullable();
                 $t->boolean('pre_notice')->default(false); $t->longText('logo')->nullable();
                 $t->string('review_intervals')->default('1,7,30');
