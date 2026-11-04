@@ -8,7 +8,6 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
-use Illuminate\Support\Str;
 use Inertia\Inertia;
 use Inertia\Response;
 use Plugins\Mentoria2\Services\AccessService;
@@ -17,11 +16,11 @@ use Plugins\Mentoria2\Services\GoalService;
 use Plugins\Mentoria2\Services\Mentoria2SeederService;
 use Plugins\Mentoria2\Services\MetricsService;
 use Plugins\Mentoria2\Services\StudentHomeBannerService;
+use Plugins\Mentoria2\Services\EdictProgressService;
 use Plugins\Mentoria2\Services\ReviewScheduleService;
 use Plugins\Mentoria2\Services\ScheduleEngineService;
 use Plugins\Mentoria2\Services\GamificationService;
 use Plugins\Mentoria2\Services\NotificationService;
-use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
 class StudentController extends Controller
 {
@@ -35,6 +34,7 @@ class StudentController extends Controller
         private readonly GamificationService $gamification,
         private readonly NotificationService $notifications,
         private readonly StudentHomeBannerService $banners,
+        private readonly EdictProgressService $edictProgress,
     ) {}
 
     public function index(Request $request, int $tenant): Response
@@ -55,6 +55,108 @@ class StudentController extends Controller
         $this->access->assertStudentAccess($student, $tenant);
         $workspaceBase = $request->attributes->get('mentoria2.workspace_base');
         $payload = $this->payload($student, $tenant, $request->query('contest_id'), $workspaceBase);
+
+        if ($workspaceBase) {
+            $payload['acting_as_mentor'] = true;
+            $payload['previewed_student_name'] = $student->name;
+            $payload['preview_return_url'] = url('/mentoria2');
+            $payload['workspace_base'] = $workspaceBase;
+        }
+
+        return response()->json($payload);
+    }
+
+    public function setActiveContest(Request $request, int $tenant): JsonResponse
+    {
+        $student = $request->user();
+        $this->access->assertStudentAccess($student, $tenant);
+        $studentId = (int) $student->id;
+
+        $validated = $request->validate([
+            'contest_id' => ['required', 'string'],
+        ]);
+        $contestId = $validated['contest_id'];
+
+        $contestExists = DB::table('mentoria2_contests')
+            ->where('tenant_id', $tenant)
+            ->where('id', $contestId)
+            ->where('is_active', true)
+            ->exists();
+
+        if (! $contestExists) {
+            return response()->json(['message' => 'Concurso não encontrado.'], 404);
+        }
+
+        // Set all other contests with 'foco' to 'mira'
+        DB::table('mentoria2_student_contests')
+            ->where('tenant_id', $tenant)
+            ->where('student_id', $studentId)
+            ->where('contest_id', '!=', $contestId)
+            ->where('group', 'foco')
+            ->update([
+                'group' => 'mira',
+                'updated_at' => now(),
+            ]);
+
+        // Upsert chosen contest with 'foco'
+        $existing = DB::table('mentoria2_student_contests')
+            ->where('tenant_id', $tenant)
+            ->where('student_id', $studentId)
+            ->where('contest_id', $contestId)
+            ->first();
+
+        if ($existing) {
+            DB::table('mentoria2_student_contests')
+                ->where('id', $existing->id)
+                ->update([
+                    'group' => 'foco',
+                    'is_active' => true,
+                    'updated_at' => now(),
+                ]);
+        } else {
+            DB::table('mentoria2_student_contests')->insert([
+                'id' => (string) \Illuminate\Support\Str::uuid(),
+                'tenant_id' => $tenant,
+                'student_id' => $studentId,
+                'contest_id' => $contestId,
+                'assigned_by' => $studentId,
+                'group' => 'foco',
+                'position' => 0,
+                'include_in_stats' => true,
+                'is_active' => true,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
+
+        // Persist in mentoria2_preferences.settings['active_contest_id']
+        $existingPref = DB::table('mentoria2_preferences')
+            ->where('tenant_id', $tenant)
+            ->where('student_id', $studentId)
+            ->first();
+
+        $settings = $existingPref ? $this->decodeJson($existingPref->settings) : [];
+        $settings['active_contest_id'] = $contestId;
+
+        if ($existingPref) {
+            DB::table('mentoria2_preferences')->where('id', $existingPref->id)->update([
+                'settings' => json_encode($settings, JSON_UNESCAPED_UNICODE),
+                'updated_at' => now(),
+            ]);
+        } else {
+            DB::table('mentoria2_preferences')->insert([
+                'id' => (string) \Illuminate\Support\Str::uuid(),
+                'tenant_id' => $tenant,
+                'student_id' => $studentId,
+                'tour_completed' => false,
+                'settings' => json_encode($settings, JSON_UNESCAPED_UNICODE),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
+
+        $workspaceBase = $request->attributes->get('mentoria2.workspace_base');
+        $payload = $this->payload($student, $tenant, $contestId, $workspaceBase);
 
         if ($workspaceBase) {
             $payload['acting_as_mentor'] = true;
@@ -96,130 +198,128 @@ class StudentController extends Controller
             'notes' => ['nullable', 'string'],
         ]);
 
-        $type = match ($data['item_type']) {
-            'topico', 'topic' => 'topico',
-            default => 'subtopico',
-        };
+        $result = $this->edictProgress->setStudied(
+            $tenant,
+            (int) $student->id,
+            $data['item_type'],
+            $item,
+            (bool) $data['studied'],
+            $data['notes'] ?? null,
+        );
 
-        $context = $this->itemContext($tenant, (int) $student->id, $type, $item);
-        $existing = DB::table('mentoria2_edict_progress')
-            ->where('tenant_id', $tenant)
-            ->where('student_id', $student->id)
-            ->where('item_type', $type)
-            ->where('item_id', $item)
-            ->first();
+        return response()->json(['ok' => true] + $result);
+    }
 
-        $payload = [
-            'studied' => (bool) $data['studied'],
-            'completed_at' => $data['studied'] ? now() : null,
-            'notes' => $data['notes'] ?? null,
-            'updated_at' => now(),
-        ];
+    public function todaySummary(Request $request, int $tenant): JsonResponse
+    {
+        $student = $request->user();
+        $this->access->assertStudentAccess($student, $tenant);
+        $studentId = (int) $student->id;
+        $today = today()->toDateString();
 
-        DB::transaction(function () use ($tenant, $student, $type, $item, $existing, $payload, $data, $context): void {
-            if ($existing) {
-                DB::table('mentoria2_edict_progress')->where('id', $existing->id)->update($payload);
-            } else {
-                DB::table('mentoria2_edict_progress')->insert($payload + [
-                    'id' => (string) Str::uuid(),
-                    'tenant_id' => $tenant,
-                    'student_id' => $student->id,
-                    'item_type' => $type,
-                    'item_id' => $item,
-                    'created_at' => now(),
-                ]);
-            }
-
-            if (! $data['studied']) {
-                $query = DB::table('mentoria2_scheduled_reviews')
-                    ->where('tenant_id', $tenant)
-                    ->where('student_id', $student->id)
-                    ->where('completed', false);
-
-                if ($type === 'topico') {
-                    $query->where('topic_id', $item)->whereNull('subtopic_id');
-                } else {
-                    $query->where('subtopic_id', $item);
-                }
-
-                $query->update(['is_active' => false, 'updated_at' => now()]);
-                return;
-            }
-
-            $intervals = collect(explode(',', (string) $context->review_intervals))
-                ->map(fn ($value) => (int) trim($value))
-                ->filter(fn ($days) => $days > 0)
-                ->values();
-
-            foreach ($intervals as $index => $days) {
-                $cycle = $index + 1;
-                $query = DB::table('mentoria2_scheduled_reviews')
-                    ->where('tenant_id', $tenant)
-                    ->where('student_id', $student->id)
-                    ->where('contest_id', $context->contest_id)
-                    ->where('subject_id', $context->subject_id)
-                    ->where('topic_id', $context->topic_id)
-                    ->where('current_cycle', $cycle)
-                    ->where('is_active', true);
-
-                if ($context->subtopic_id) {
-                    $query->where('subtopic_id', $context->subtopic_id);
-                } else {
-                    $query->whereNull('subtopic_id');
-                }
-
-                $review = $query->first();
-                $reviewPayload = [
-                    'next_date' => today()->addDays($days)->toDateString(),
-                    'completed' => false,
-                    'completed_at' => null,
-                    'is_active' => true,
-                    'updated_at' => now(),
-                ];
-
-                if ($review) {
-                    DB::table('mentoria2_scheduled_reviews')->where('id', $review->id)->update($reviewPayload);
-                } else {
-                    DB::table('mentoria2_scheduled_reviews')->insert($reviewPayload + [
-                        'id' => (string) Str::uuid(),
-                        'tenant_id' => $tenant,
-                        'student_id' => $student->id,
-                        'contest_id' => $context->contest_id,
-                        'subject_id' => $context->subject_id,
-                        'topic_id' => $context->topic_id,
-                        'subtopic_id' => $context->subtopic_id,
-                        'current_cycle' => $cycle,
-                        'previous_percentage' => null,
-                        'notes' => null,
-                        'created_at' => now(),
-                    ]);
-                }
-            }
-        });
-
-        $reprogrammed = 0;
-        $warning = null;
         $schedule = DB::table('mentoria2_schedules')
             ->where('tenant_id', $tenant)
-            ->where('student_id', $student->id)
-            ->where('contest_id', $context->contest_id)
+            ->where('student_id', $studentId)
             ->where('is_active', true)
-            ->latest('updated_at')
+            ->orderByDesc('updated_at')
             ->first();
 
-        if ($schedule) {
-            try {
-                $this->reviewSchedule->syncForContest($tenant, (int) $student->id, (string) $context->contest_id);
-                $reprogrammed = $this->scheduleEngine->reprogram($tenant, $student->id, $schedule->id);
-            } catch (\Throwable $e) {
-                $warning = $e->getMessage();
-            }
-        }
+        $todayTasks = $schedule
+            ? DB::table('mentoria2_schedule_items')
+                ->where('tenant_id', $tenant)
+                ->where('schedule_id', $schedule->id)
+                ->where('planned_date', $today)
+                ->orderBy('position')
+                ->get()
+            : collect();
+
+        $pendingReviewsCount = DB::table('mentoria2_scheduled_reviews')
+            ->where('tenant_id', $tenant)
+            ->where('student_id', $studentId)
+            ->where('is_active', true)
+            ->where('completed', false)
+            ->where(function ($q) use ($today) {
+                $q->whereNull('next_date')->orWhere('next_date', '<=', $today);
+            })
+            ->count();
+
+        $gamification = $this->gamification->getSummary($tenant, $studentId);
+        $banners = $this->banners->forTenant($tenant);
 
         return response()->json([
-            'ok' => true,
-            'reprogrammed' => $reprogrammed,
-            'warning' => $warning,
+            'today' => $today,
+            'today_tasks' => $todayTasks,
+            'pending_reviews_count' => $pendingReviewsCount,
+            'gamification' => $gamification,
+            'banners' => $banners,
+        ]);
+    }
+
+    public function syllabusTree(Request $request, int $tenant): JsonResponse
+    {
+        $student = $request->user();
+        $this->access->assertCapability($student, $tenant, 'edital');
+        $studentId = (int) $student->id;
+
+        $contestId = $request->query('contest_id');
+        $edictId = $request->query('edict_id');
+
+        $edictQuery = DB::table('mentoria2_edicts as e')
+            ->join('mentoria2_contests as c', 'c.id', '=', 'e.contest_id')
+            ->where('e.tenant_id', $tenant)
+            ->where('e.is_active', true);
+
+        if ($edictId) {
+            $edictQuery->where('e.id', $edictId);
+        } elseif ($contestId) {
+            $edictQuery->where('e.contest_id', $contestId);
+        }
+
+        $edict = $edictQuery->select('e.*', 'c.name as contest_name')->first();
+        if (! $edict) {
+            return response()->json([
+                'edict' => null,
+                'subjects' => [],
+                'topics' => [],
+                'subtopics' => [],
+                'progress' => [],
+            ]);
+        }
+
+        $subjects = DB::table('mentoria2_subjects')
+            ->where('tenant_id', $tenant)
+            ->where('edict_id', $edict->id)
+            ->where('is_active', true)
+            ->orderBy('position')->orderBy('name')
+            ->get();
+
+        $subjectIds = $subjects->pluck('id');
+        $topics = DB::table('mentoria2_topics')
+            ->where('tenant_id', $tenant)
+            ->whereIn('subject_id', $subjectIds)
+            ->where('is_active', true)
+            ->orderBy('position')->orderBy('name')
+            ->get();
+
+        $topicIds = $topics->pluck('id');
+        $subtopics = DB::table('mentoria2_subtopics')
+            ->where('tenant_id', $tenant)
+            ->whereIn('topic_id', $topicIds)
+            ->where('is_active', true)
+            ->orderBy('position')->orderBy('name')
+            ->get();
+
+        $progress = DB::table('mentoria2_edict_progress')
+            ->where('tenant_id', $tenant)
+            ->where('student_id', $studentId)
+            ->get();
+
+        return response()->json([
+            'edict' => $edict,
+            'subjects' => $this->decodeJsonColumns($subjects, ['materials']),
+            'topics' => $this->decodeJsonColumns($topics, ['materials']),
+            'subtopics' => $this->decodeJsonColumns($subtopics, ['materials']),
+            'progress' => $progress,
         ]);
     }
 
@@ -255,8 +355,8 @@ class StudentController extends Controller
                 ->where('is_active', true)
                 ->select(
                     'id', 'name', 'board', 'position', 'salary', 'exam_date',
-                    'pre_notice', 'review_intervals', 'logo',
-                    DB::raw("'foco' as `group`"),
+                    'pre_notice', 'review_intervals', 'fixed_plan_items', 'logo',
+                    DB::raw("'mira' as `group`"),
                     DB::raw('0 as `order`'),
                     DB::raw('1 as `include_in_stats`'),
                     DB::raw('NULL as `result`'),
@@ -269,9 +369,73 @@ class StudentController extends Controller
                 ->get();
         }
 
-        $activeContestId = $requestedContestId && $contests->contains('id', $requestedContestId)
-            ? $requestedContestId
-            : ($contests->firstWhere('group', 'foco')?->id ?? $contests->first()?->id);
+        // Concursos vinculados automaticamente através dos produtos adquiridos pelo aluno
+        $productContestIds = [];
+        $productSettingsRows = DB::table('product_user')
+            ->join('mentoria2_products', 'mentoria2_products.product_id', '=', 'product_user.product_id')
+            ->where('product_user.user_id', $studentId)
+            ->where('mentoria2_products.tenant_id', $tenantId)
+            ->where('mentoria2_products.is_active', true)
+            ->pluck('mentoria2_products.settings');
+
+        foreach ($productSettingsRows as $stJson) {
+            $st = is_array($stJson) ? $stJson : json_decode($stJson ?: '[]', true);
+            foreach ($st['contest_ids'] ?? [] as $cId) {
+                if ($cId) {
+                    $productContestIds[(string) $cId] = true;
+                }
+            }
+        }
+
+        if (! empty($productContestIds)) {
+            $productContests = DB::table('mentoria2_contests')
+                ->where('tenant_id', $tenantId)
+                ->where('is_active', true)
+                ->whereIn('id', array_keys($productContestIds))
+                ->select(
+                    'id', 'name', 'board', 'position', 'salary', 'exam_date',
+                    'pre_notice', 'review_intervals', 'fixed_plan_items', 'logo',
+                    DB::raw("'mira' as `group`"),
+                    DB::raw('0 as `order`'),
+                    DB::raw('1 as `include_in_stats`'),
+                    DB::raw('NULL as `result`'),
+                    DB::raw('NULL as `ranking`'),
+                    DB::raw('NULL as `final_score`'),
+                    DB::raw('0 as `appointed`'),
+                    DB::raw('NULL as `appointment_date`')
+                )
+                ->get();
+            $contests = $contests->concat($productContests)->unique('id')->values();
+        }
+
+        $prefRow = DB::table('mentoria2_preferences')
+            ->where('tenant_id', $tenantId)
+            ->where('student_id', $studentId)
+            ->first();
+        $prefSettings = $prefRow ? $this->decodeJson($prefRow->settings) : [];
+        $prefActiveContestId = $prefSettings['active_contest_id'] ?? null;
+
+        $activeContestId = null;
+        if ($requestedContestId && $contests->contains('id', $requestedContestId)) {
+            $activeContestId = $requestedContestId;
+        } elseif ($prefActiveContestId && $contests->contains('id', $prefActiveContestId)) {
+            $activeContestId = $prefActiveContestId;
+        } else {
+            $activeContestId = $contests->firstWhere('group', 'foco')?->id ?? $contests->first()?->id;
+        }
+
+        if ($activeContestId) {
+            $contests = $contests->map(function ($c) use ($activeContestId) {
+                if (is_object($c)) {
+                    if ((string) $c->id === (string) $activeContestId) {
+                        $c->group = 'foco';
+                    } elseif ($c->group === 'foco') {
+                        $c->group = 'mira';
+                    }
+                }
+                return $c;
+            });
+        }
 
         $contestIds = $contests->pluck('id')->filter()->all();
 
@@ -373,12 +537,16 @@ class StudentController extends Controller
             ->get();
 
         $scheduleIds = $schedules->pluck('id');
-        $scheduleItems = DB::table('mentoria2_schedule_items')
-            ->where('tenant_id', $tenantId)
-            ->whereIn('schedule_id', $scheduleIds)
-            ->orderByRaw('planned_date IS NULL, planned_date')
-            ->orderBy('position')
-            ->limit(1500)
+        $scheduleItems = DB::table('mentoria2_schedule_items as i')
+            ->leftJoin('mentoria2_subjects as sub', 'sub.id', '=', 'i.subject_id')
+            ->leftJoin('mentoria2_topics as top', 'top.id', '=', 'i.topic_id')
+            ->leftJoin('mentoria2_subtopics as subtop', 'subtop.id', '=', 'i.subtopic_id')
+            ->where('i.tenant_id', $tenantId)
+            ->whereIn('i.schedule_id', $scheduleIds)
+            ->select('i.*', 'sub.name as subject_name', 'top.name as topic_name', 'subtop.name as subtopic_name')
+            ->orderByRaw('i.planned_date IS NULL, i.planned_date')
+            ->orderBy('i.position')
+            ->limit(250)
             ->get();
 
         $activeSchedule = $activeContestId
@@ -418,7 +586,7 @@ class StudentController extends Controller
                     $query->whereIn('deck_id', $ownDeckIds)->orWhere('content_status', 'publicado');
                 })
                 ->orderBy('created_at')
-                ->limit(2000)
+                ->limit(100)
                 ->get();
 
         $cardReviews = DB::table('mentoria2_flashcard_reviews')
@@ -452,7 +620,7 @@ class StudentController extends Controller
                 ->where('is_active', true)
                 ->where('content_status', 'publicado')
                 ->orderBy('subject')->orderBy('topic')->latest('created_at')
-                ->limit(1000)
+                ->limit(100)
                 ->get();
 
         $lastAnswers = DB::table('mentoria2_question_answers')
@@ -469,6 +637,7 @@ class StudentController extends Controller
                 'id' => $question->id,
                 'subject' => $question->subject,
                 'topic' => $question->topic,
+                'board' => $question->board ?? null,
                 'type' => $question->type,
                 'prompt' => $question->prompt,
                 'alternatives' => $this->decodeJson($question->alternatives),
@@ -483,13 +652,78 @@ class StudentController extends Controller
             ];
         })->values();
 
-        $reviews = DB::table('mentoria2_scheduled_reviews')
-            ->where('tenant_id', $tenantId)
-            ->where('student_id', $studentId)
-            ->where('is_active', true)
-            ->orderByRaw('completed ASC, next_date IS NULL, next_date')
-            ->limit(500)
+        $reviews = DB::table('mentoria2_scheduled_reviews as r')
+            ->leftJoin('mentoria2_subjects as s', 's.id', '=', 'r.subject_id')
+            ->leftJoin('mentoria2_topics as t', 't.id', '=', 'r.topic_id')
+            ->where('r.tenant_id', $tenantId)
+            ->where('r.student_id', $studentId)
+            ->where('r.is_active', true)
+            ->select(
+                'r.id',
+                'r.tenant_id',
+                'r.student_id',
+                'r.contest_id',
+                'r.subject_id',
+                'r.topic_id',
+                'r.subtopic_id',
+                'r.current_cycle',
+                'r.next_date',
+                'r.completed',
+                'r.completed_at',
+                'r.is_active',
+                's.name as subject_name',
+                't.name as topic_name'
+            )
+            ->orderByRaw('r.completed ASC, r.next_date IS NULL, r.next_date')
+            ->limit(100)
             ->get();
+
+        $errorAnswers = DB::table('mentoria2_question_answers as qa')
+            ->join('mentoria2_question_bank as qb', 'qb.id', '=', 'qa.question_id')
+            ->where('qa.tenant_id', $tenantId)
+            ->where('qa.student_id', $studentId)
+            ->where('qa.is_correct', 0)
+            ->select(
+                'qa.id',
+                'qa.question_id',
+                'qa.contest_id',
+                'qa.answer as student_answer',
+                'qa.answered_at',
+                'qb.subject',
+                'qb.topic',
+                'qb.board',
+                'qb.difficulty',
+                'qb.type',
+                'qb.prompt',
+                'qb.alternatives',
+                'qb.correct_answer',
+                'qb.explanation'
+            )
+            ->orderByDesc('qa.answered_at')
+            ->get()
+            ->unique('question_id')
+            ->values();
+
+        $errorNotebook = $errorAnswers->map(function ($row) {
+            return [
+                'id' => $row->id,
+                'question_id' => $row->question_id,
+                'contest_id' => $row->contest_id,
+                'subject' => $row->subject,
+                'topic' => $row->topic,
+                'board' => $row->board,
+                'difficulty' => $row->difficulty,
+                'type' => $row->type,
+                'prompt' => $row->prompt,
+                'alternatives' => $this->decodeJson($row->alternatives),
+                'student_answer' => $row->student_answer,
+                'correct_answer' => $row->correct_answer,
+                'explanation' => $row->explanation,
+                'answered_at' => $row->answered_at,
+                'errorCause' => 'Erro de conteúdo / pegadinha',
+                'personalNote' => null,
+            ];
+        });
 
         $notebooks = DB::table('mentoria2_notebooks as n')
             ->leftJoin('mentoria2_edicts as e', 'e.id', '=', 'n.edict_id')
@@ -509,7 +743,7 @@ class StudentController extends Controller
             ->where('is_active', true)
             ->orderByRaw('performed_at IS NULL, performed_at DESC')
             ->latest('created_at')
-            ->limit(300)
+            ->limit(50)
             ->get();
 
         $mockIds = $mockExams->pluck('id');
@@ -533,7 +767,7 @@ class StudentController extends Controller
             ->where('student_id', $studentId)
             ->where('is_active', true)
             ->latest('studied_at')
-            ->limit(500)
+            ->limit(100)
             ->get();
 
         $questionLogs = DB::table('mentoria2_question_logs')
@@ -541,7 +775,7 @@ class StudentController extends Controller
             ->where('student_id', $studentId)
             ->where('is_active', true)
             ->latest('recorded_at')
-            ->limit(500)
+            ->limit(100)
             ->get();
 
         $metricSummary = $this->metrics->summary(
@@ -576,12 +810,30 @@ class StudentController extends Controller
                 'email' => $student->email,
                 'cohort_name' => $cohortName,
             ],
-            'mentorship' => ['student_home_banner' => $this->banners->forTenant($tenantId)],
+            'mentorship' => [
+                'student_home_banner' => $this->banners->forTenant($tenantId),
+                'platform_logo' => $this->banners->logoForTenant($tenantId),
+                'platform_branding' => $this->banners->brandingForTenant($tenantId),
+                'platform_colors' => $this->banners->platformColorsForTenant($tenantId),
+                'promotional_banners' => $this->banners->promotionalBannersForTenant($tenantId),
+            ],
             'gamification' => $this->gamification->getSummary($tenantId, $studentId),
             'gamification_history' => $this->gamification->history($tenantId, $studentId, 20),
             'ranking' => $this->gamification->ranking($tenantId, $studentId),
             'notifications' => $this->notifications->inbox($tenantId, $studentId),
             'capabilities' => $capabilities,
+            'bonus_access' => $this->access->studentBonusStatus($student, $tenantId),
+            'ai_configured' => app(\Plugins\Mentoria2\Services\EssayService::class)->isAiConfigured($tenantId),
+            'has_ai_access' => $this->access->hasAiAccess($student, $tenantId),
+            'available_boards' => DB::table('mentoria2_question_bank')
+                ->where('tenant_id', $tenantId)
+                ->where('is_active', true)
+                ->whereNotNull('board')
+                ->where('board', '<>', '')
+                ->distinct()
+                ->orderBy('board')
+                ->pluck('board')
+                ->all(),
             'active_contest_id' => $activeContestId,
             'contests' => $contests,
             'edicts' => $edicts,
@@ -597,6 +849,7 @@ class StudentController extends Controller
                 : collect(),
             'all_schedule_items' => $scheduleItems,
             'reviews' => $reviews,
+            'error_notebook' => $errorNotebook,
             'decks' => $decks,
             'cards' => $cards,
             'questions' => $questions,
@@ -636,9 +889,8 @@ class StudentController extends Controller
             'ai_memory' => Schema::hasTable('mentoria2_ai_memory')
                 ? DB::table('mentoria2_ai_memory')->where('tenant_id', $tenantId)->where('student_id', $studentId)->first()
                 : null,
-            'radar_contests' => Schema::hasTable('mentoria2_radar_contests')
-                ? DB::table('mentoria2_radar_contests')->where('is_active', true)->latest()->limit(50)->get()
-                : collect(),
+            // O Radar possui endpoint próprio paginado; nunca mistura pendências de curadoria no payload geral.
+            'radar_contests' => collect(),
             'timer_logs' => Schema::hasTable('mentoria2_timer_logs')
                 ? DB::table('mentoria2_timer_logs')->where('tenant_id', $tenantId)->where('student_id', $studentId)->latest()->limit(50)->get()
                 : collect(),
@@ -737,51 +989,6 @@ class StudentController extends Controller
             ->where('is_active', true)
             ->orderBy('folder')->orderBy('title')
             ->get();
-    }
-
-    private function itemContext(int $tenantId, int $studentId, string $type, string $itemId): object
-    {
-        if ($type === 'topico') {
-            $row = DB::table('mentoria2_topics as t')
-                ->join('mentoria2_subjects as s', 's.id', '=', 't.subject_id')
-                ->join('mentoria2_edicts as e', 'e.id', '=', 's.edict_id')
-                ->join('mentoria2_contests as c', 'c.id', '=', 'e.contest_id')
-                ->join('mentoria2_student_edicts as se', function ($join) use ($studentId): void {
-                    $join->on('se.edict_id', '=', 'e.id')->where('se.student_id', '=', $studentId);
-                })
-                ->where('t.tenant_id', $tenantId)
-                ->where('t.id', $itemId)
-                ->where('t.is_active', true)
-                ->where('s.is_active', true)
-                ->where('e.is_active', true)
-                ->where('se.is_active', true)
-                ->selectRaw('e.contest_id, s.id subject_id, t.id topic_id, NULL subtopic_id, c.review_intervals')
-                ->first();
-        } else {
-            $row = DB::table('mentoria2_subtopics as st')
-                ->join('mentoria2_topics as t', 't.id', '=', 'st.topic_id')
-                ->join('mentoria2_subjects as s', 's.id', '=', 't.subject_id')
-                ->join('mentoria2_edicts as e', 'e.id', '=', 's.edict_id')
-                ->join('mentoria2_contests as c', 'c.id', '=', 'e.contest_id')
-                ->join('mentoria2_student_edicts as se', function ($join) use ($studentId): void {
-                    $join->on('se.edict_id', '=', 'e.id')->where('se.student_id', '=', $studentId);
-                })
-                ->where('st.tenant_id', $tenantId)
-                ->where('st.id', $itemId)
-                ->where('st.is_active', true)
-                ->where('t.is_active', true)
-                ->where('s.is_active', true)
-                ->where('e.is_active', true)
-                ->where('se.is_active', true)
-                ->select('e.contest_id', 's.id as subject_id', 't.id as topic_id', 'st.id as subtopic_id', 'c.review_intervals')
-                ->first();
-        }
-
-        if (! $row) {
-            throw new NotFoundHttpException('Item fora do edital atribuído ao aluno.');
-        }
-
-        return $row;
     }
 
     private function decodeJsonColumns($collection, array $columns)
@@ -909,5 +1116,38 @@ class StudentController extends Controller
         }
 
         return response()->json(['ok' => true]);
+    }
+
+    public function grantBonusAccess(Request $request, int $student): JsonResponse
+    {
+        $actor = $request->user();
+        $tenantId = $this->access->tenantId($actor);
+        $studentUser = $this->access->assertStudentInTenant($actor, $student);
+        $days = (int) $request->input('days', 7);
+        if ($days <= 0 || $days > 365) {
+            $days = 7;
+        }
+
+        $status = $this->access->grantBonusAccess($tenantId, (int) $studentUser->id, $days);
+
+        return response()->json([
+            'ok' => true,
+            'message' => "Bônus de {$days} dias concedido com sucesso para {$studentUser->name}.",
+            'bonus' => $status,
+        ]);
+    }
+
+    public function revokeBonusAccess(Request $request, int $student): JsonResponse
+    {
+        $actor = $request->user();
+        $tenantId = $this->access->tenantId($actor);
+        $studentUser = $this->access->assertStudentInTenant($actor, $student);
+
+        $this->access->revokeBonusAccess($tenantId, (int) $studentUser->id);
+
+        return response()->json([
+            'ok' => true,
+            'message' => "Bônus de acesso revogado para {$studentUser->name}.",
+        ]);
     }
 }

@@ -15,6 +15,15 @@
     }
   ],
   "routes": "routes.php",
+  "commands": [
+    "Plugins\\Mentoria2\\Console\\SyncPoliceRadarCommand"
+  ],
+  "schedule": [
+    {
+      "command": "mentoria2:radar:sync",
+      "cron": "15 5 * * *"
+    }
+  ],
   "migrations": "migrations",
   "capabilities": [
     {

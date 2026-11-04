@@ -18,6 +18,9 @@ use Plugins\Mentoria2\Http\Controllers\TimerLogController;
 
 Route::prefix('/students/{student}/workspace/{tenant}')->whereNumber(['student', 'tenant'])->group(function (): void {
     Route::get('/data', [StudentController::class, 'data'])->name('mentoria2.workspace.data');
+    Route::post('/active-contest', [StudentController::class, 'setActiveContest'])->name('mentoria2.workspace.contest.set-active');
+    Route::get('/today-summary', [StudentController::class, 'todaySummary'])->name('mentoria2.workspace.today-summary');
+    Route::get('/syllabus-tree', [StudentController::class, 'syllabusTree'])->name('mentoria2.workspace.syllabus-tree');
     Route::get('/goals', [GoalController::class, 'index'])->name('mentoria2.workspace.goals.index');
     Route::get('/gamification', [GamificationController::class, 'studentSummary'])->name('mentoria2.workspace.gamification.summary');
     Route::get('/notifications', [NotificationController::class, 'index'])->name('mentoria2.workspace.notifications.index');
@@ -44,10 +47,13 @@ Route::prefix('/students/{student}/workspace/{tenant}')->whereNumber(['student',
     Route::patch('/question-logs/{log}', [StudyController::class, 'updateStudentQuestionLog'])->name('mentoria2.workspace.question-logs.update');
     Route::delete('/question-logs/{log}', [StudyController::class, 'deleteStudentQuestionLog'])->name('mentoria2.workspace.question-logs.destroy');
 
+    Route::get('/reviews', [StudyController::class, 'studentReviews'])->name('mentoria2.workspace.reviews.index');
     Route::post('/reviews', [StudyController::class, 'saveStudentReview'])->name('mentoria2.workspace.reviews.store');
     Route::patch('/reviews/{review}', [StudyController::class, 'updateStudentReview'])->name('mentoria2.workspace.reviews.update');
     Route::delete('/reviews/{review}', [StudyController::class, 'deleteStudentReview'])->name('mentoria2.workspace.reviews.destroy');
 
+    Route::get('/flashcard-decks', [FlashcardController::class, 'studentDecks'])->name('mentoria2.workspace.flashcard-decks.index');
+    Route::get('/flashcard-decks/{deck}/cards', [FlashcardController::class, 'studentDeckCards'])->name('mentoria2.workspace.flashcard-decks.cards');
     Route::post('/flashcard-decks', [FlashcardController::class, 'storeStudentDeck'])->name('mentoria2.workspace.flashcard-decks.store');
     Route::patch('/flashcard-decks/{deck}', [FlashcardController::class, 'updateStudentDeck'])->name('mentoria2.workspace.flashcard-decks.update');
     Route::delete('/flashcard-decks/{deck}', [FlashcardController::class, 'destroyStudentDeck'])->name('mentoria2.workspace.flashcard-decks.destroy');
@@ -59,10 +65,12 @@ Route::prefix('/students/{student}/workspace/{tenant}')->whereNumber(['student',
     Route::get('/flashcards/history', [FlashcardController::class, 'studentHistory'])->name('mentoria2.workspace.flashcards.history');
 
     Route::get('/questions', [QuestionController::class, 'studentIndex'])->name('mentoria2.workspace.questions.index');
+    Route::get('/error-notebook', [QuestionController::class, 'studentErrorNotebook'])->name('mentoria2.workspace.questions.error-notebook');
     Route::post('/questions/{question}/answer', [QuestionController::class, 'answerStudentQuestion'])->name('mentoria2.workspace.questions.answer');
     Route::get('/questions/{question}/history', [QuestionController::class, 'studentHistory'])->name('mentoria2.workspace.questions.history');
     Route::get('/questions/statistics', [QuestionController::class, 'studentStatistics'])->name('mentoria2.workspace.questions.statistics');
 
+    Route::get('/mock-exams', [StudyController::class, 'studentMockExams'])->name('mentoria2.workspace.mock-exams.index');
     Route::post('/mock-exams', [StudyController::class, 'storeStudentMockExam'])->name('mentoria2.workspace.mock-exams.store');
     Route::patch('/mock-exams/{mock}', [StudyController::class, 'updateStudentMockExam'])->name('mentoria2.workspace.mock-exams.update');
     Route::delete('/mock-exams/{mock}', [StudyController::class, 'deleteStudentMockExam'])->name('mentoria2.workspace.mock-exams.destroy');
@@ -72,6 +80,7 @@ Route::prefix('/students/{student}/workspace/{tenant}')->whereNumber(['student',
     Route::get('/exam-config/{contest}', [StudyController::class, 'studentExamConfiguration'])->name('mentoria2.workspace.exam-config.show');
     Route::put('/exam-config/{contest}', [StudyController::class, 'saveStudentExamConfiguration'])->name('mentoria2.workspace.exam-config.update');
 
+    Route::get('/notebooks', [StudyController::class, 'studentNotebooks'])->name('mentoria2.workspace.notebooks.index');
     Route::post('/notebooks', [StudyController::class, 'storeStudentNotebook'])->name('mentoria2.workspace.notebooks.store');
     Route::patch('/notebooks/{notebook}', [StudyController::class, 'updateStudentNotebook'])->name('mentoria2.workspace.notebooks.update');
     Route::delete('/notebooks/{notebook}', [StudyController::class, 'destroyStudentNotebook'])->name('mentoria2.workspace.notebooks.destroy');

@@ -26,5 +26,10 @@ interface AiMemoryServiceInterface
      * Build the context prompt payload to inject into the 24h AI Tutor.
      */
     public function buildTutorContext(int $tenantId, int $studentId, ?string $currentTopic = null): string;
+
+    /**
+     * Gera diagnóstico cognitivo e prescrição de estudos de 7 dias com IA.
+     */
+    public function generateAiPrescription(int $tenantId, int $studentId): array;
 }
 

@@ -1,8 +1,8 @@
-﻿import { icon as renderIconSvg } from '../m2-icons.js?v=d6fd58c3ef81';
-import { M2Data } from '../m2-data.js?v=d6fd58c3ef81';
-import { requestJson as api } from '../api/client.js?v=d6fd58c3ef81';
-import { createMentoriaContext } from '../app/context.js?v=d6fd58c3ef81';
-import { escapeHtml, escapeRegExp, plainTextWithBreaks } from '../utils/escape-html.js?v=d6fd58c3ef81';
+import { icon as renderIconSvg } from '../m2-icons.js?v=b93e67d2d013';
+import { M2Data } from '../m2-data.js?v=b93e67d2d013';
+import { requestJson as api, http, buildQuery, sanitizeErrorMessage, unwrap } from './api/client.js?v=b93e67d2d013';
+import { createMentoriaContext } from '../app/context.js?v=b93e67d2d013';
+import { escapeHtml, escapeRegExp, plainTextWithBreaks } from '../utils/escape-html.js?v=b93e67d2d013';
 
 if (typeof window === 'undefined') {
   globalThis.window = globalThis;
@@ -22,8 +22,37 @@ const state = {
   theme: (typeof localStorage !== 'undefined' && localStorage.getItem('m2_theme')) || 'dark',
   sidebarOpen: false,
   sidebarCollapsed: typeof localStorage !== 'undefined' ? localStorage.getItem('m2_sidebar_collapsed') === 'true' : false,
+  sidebarSectionsOpen: (() => {
+    try {
+      return typeof localStorage !== 'undefined' && localStorage.getItem('m2_sidebar_sections')
+        ? JSON.parse(localStorage.getItem('m2_sidebar_sections'))
+        : {};
+    } catch (e) {
+      return {};
+    }
+  })(),
+  mentorSettingsTab: 'general', // 'general' | 'appearance'
+  colorEditScheme: 'dark', // 'dark' | 'light'
+  // Estado da Oficina de Redação IA
+  redacaoDocType: 'dissertacao',
+  redacaoTheme: '',
+  redacaoInputMode: 'texto',
+  redacaoSuggestedThemes: [],
+  redacaoGeneratingThemes: false,
+  redacaoAnalyzing: false,
+  redacaoResult: null,
+  redacaoShowCorrigida: false,
+  redacaoFotoPreview: null,
+  redacaoFotoBase64: null,
+  embeddedCourseUrl: null,
+  embeddedCourseTitle: '',
+  embeddedCourseId: null,
+  embeddedCourseFullscreen: false,
   currentTargets: [{ type: 'global', id: null }],
   managingAudienceItem: null,
+  syllabusFilter: 'all',
+  activeTopicNoteModal: null,
+  aiLogsFilter: 'all',
   editingDeck: null,
   editingMaterial: null,
   contestId: null,
@@ -145,6 +174,8 @@ const state = {
 
   // Estado do Radar de Editais (Item 14)
   radarFilterSphere: 'all',
+  radarFilters: { sphere: 'all', careerTrack: 'all' },
+  radarLoading: false,
 
   // Estado do Reporte de Questão (Item 18)
   reportingQuestionId: null,
@@ -168,6 +199,10 @@ function hydrateDataFromPayload(payload) {
 
   if (payload.tenant_id) state.tenantId = payload.tenant_id;
   state.workspaceBase = state.context?.workspaceBase || payload.workspace_base || null;
+  window.M2Data.ai_configured = Boolean(payload.ai_configured);
+  state.redacaoAiConfigured = Boolean(payload.ai_configured);
+  window.M2Data.has_ai_access = payload.has_ai_access !== false;
+  state.hasAiAccess = payload.has_ai_access !== false;
 
   // O servidor decide a disponibilidade pelo produto ao qual o aluno tem acesso.
   // A interface usa este contrato para chamar o ai-member, sem respostas locais.
@@ -180,6 +215,11 @@ function hydrateDataFromPayload(payload) {
   };
 
   window.M2Data.mentorship = payload.mentorship && typeof payload.mentorship === 'object' ? payload.mentorship : {};
+
+  // Estatísticas e custos de IA para o painel do mentor
+  if (payload.ai_stats) {
+    window.M2Data.ai_stats = payload.ai_stats;
+  }
 
   // 0. Mentor
   if (payload.mentor) {
@@ -212,7 +252,9 @@ function hydrateDataFromPayload(payload) {
       coveredUnits: 0,
       subjectsCount: payload.subjects?.length || 0,
       totalQuestions: payload.questions?.length || 0,
-      isDefault: Boolean(c.is_default || (payload.active_contest_id && String(c.id) === String(payload.active_contest_id)))
+      isDefault: Boolean(c.is_default || (payload.active_contest_id && String(c.id) === String(payload.active_contest_id))),
+      reviewIntervals: c.review_intervals || '1,7,30',
+      fixedPlanItems: Array.isArray(c.fixed_plan_items) ? c.fixed_plan_items : (() => { try { const parsed = JSON.parse(c.fixed_plan_items || '[]'); return Array.isArray(parsed) ? parsed : []; } catch { return []; } })()
     }));
     state.contestId = payload.active_contest_id || payload.contests[0]?.id;
   } else {
@@ -273,53 +315,108 @@ function hydrateDataFromPayload(payload) {
     const allQuestions = Array.isArray(payload.questions) ? payload.questions : [];
     const progressByItem = new Map(
       (Array.isArray(payload.progress) ? payload.progress : [])
-        .filter(item => Boolean(item.studied))
         .map(item => [`${item.item_type}:${item.item_id}`, item])
     );
-    const isStudied = (type, id) => progressByItem.has(`${type}:${id}`);
+
+    const getProgressItem = (type, id) => {
+      const p = progressByItem.get(`${type}:${id}`);
+      let theory = false;
+      let law = false;
+      let summary = false;
+      let note = '';
+      let studied = false;
+      if (p) {
+        studied = Boolean(p.studied);
+        if (p.notes) {
+          try {
+            const parsed = JSON.parse(p.notes);
+            if (parsed && typeof parsed === 'object') {
+              theory = Boolean(parsed.theory);
+              law = Boolean(parsed.law);
+              summary = Boolean(parsed.summary);
+              note = typeof parsed.note === 'string' ? parsed.note : '';
+            } else {
+              note = String(p.notes);
+            }
+          } catch (e) {
+            note = String(p.notes);
+          }
+        }
+        if (studied && !theory && !law && !summary) {
+          theory = true;
+          law = true;
+          summary = true;
+        }
+      }
+      return {
+        completed: studied || (theory && law && summary),
+        theory,
+        law,
+        summary,
+        note
+      };
+    };
 
     window.M2Data.subjects = payload.subjects.map(s => {
       const subTopics = allTopics.filter(t => t.subject_id === s.id);
       const subQCount = allQuestions.filter(q => q.subject_id === s.id || q.subject === s.name).length;
+      const theme = getSubjectTheme(s.name);
       return {
         id: s.id,
         name: s.name,
-        icon: s.name.toLowerCase().includes('portug') ? 'book-open' : s.name.toLowerCase().includes('constitucional') ? 'shield' : s.name.toLowerCase().includes('admin') ? 'file-text' : s.name.toLowerCase().includes('lógico') ? 'calculator' : 'layers',
+        theme,
+        icon: theme.icon,
         weight: s.weight || 1,
         relevance: s.relevance || 'Média',
         progress: 0,
         hours: 0,
         questionsCount: subQCount,
         accuracy: 0,
-        topics: subTopics.map((t) => ({
-          id: t.id,
-          name: t.name,
-          status: 'pending',
-          accuracy: 0,
-          theoryDone: false,
-          lawDone: false,
-          flashcardsCount: 0,
-          questionsCount: allQuestions.filter(q => q.topic_id === t.id || q.topic === t.name).length
-        }))
+        topics: subTopics.map((t) => {
+          const tProgress = getProgressItem('topico', t.id);
+          return {
+            id: t.id,
+            name: t.name,
+            status: tProgress.completed ? 'completed' : 'pending',
+            accuracy: 0,
+            theoryDone: tProgress.theory,
+            lawDone: tProgress.law,
+            flashcardsCount: 0,
+            questionsCount: allQuestions.filter(q => q.topic_id === t.id || q.topic === t.name).length
+          };
+        })
       };
     });
 
     window.M2Data.syllabus = payload.subjects.map(s => {
       const subTopics = allTopics.filter(t => t.subject_id === s.id);
+      const theme = getSubjectTheme(s.name);
       const syllabusTopics = subTopics.map((t) => {
+        const tProgress = getProgressItem('topico', t.id);
         const topicSubtopics = allSubtopics
           .filter(subtopic => subtopic.topic_id === t.id)
-          .map(subtopic => ({
-            id: subtopic.id,
-            name: subtopic.name,
-            completed: isStudied('subtopico', subtopic.id),
-            questionsCount: allQuestions.filter(question => question.subtopic_id === subtopic.id).length,
-          }));
+          .map(subtopic => {
+            const sProgress = getProgressItem('subtopico', subtopic.id);
+            return {
+              id: subtopic.id,
+              name: subtopic.name,
+              completed: sProgress.completed,
+              theory: sProgress.theory,
+              law: sProgress.law,
+              summary: sProgress.summary,
+              note: sProgress.note,
+              questionsCount: allQuestions.filter(question => question.subtopic_id === subtopic.id).length,
+            };
+          });
 
         return {
           id: t.id,
           name: t.name,
-          completed: isStudied('topico', t.id),
+          completed: tProgress.completed,
+          theory: tProgress.theory,
+          law: tProgress.law,
+          summary: tProgress.summary,
+          note: tProgress.note,
           subtopics: topicSubtopics,
         };
       });
@@ -327,6 +424,7 @@ function hydrateDataFromPayload(payload) {
       return {
         id: s.id,
         name: s.name,
+        theme,
         weight: s.weight || 1,
         relevance: s.relevance || 'Média',
         coveredPct: syllabusTopics.length > 0 ? Math.round((completedTopics / syllabusTopics.length) * 100) : 0,
@@ -354,6 +452,8 @@ function hydrateDataFromPayload(payload) {
   // The server remains the authority for access. This copy only controls
   // whether a product capability is presented as an available option.
   window.M2Data.capabilities = Array.isArray(payload.capabilities) ? payload.capabilities : [];
+  window.M2Data.bonus_access = payload.bonus_access && typeof payload.bonus_access === 'object' ? payload.bonus_access : null;
+  window.M2Data.available_boards = Array.isArray(payload.available_boards) ? payload.available_boards : [];
   const favQuestions = Array.isArray(userSettings.favorite_questions) ? userSettings.favorite_questions.map(String) : [];
   const followedContests = Array.isArray(userSettings.followed_contests) ? userSettings.followed_contests.map(String) : [];
   if (userSettings.week_hours_goal && window.M2Data.student) {
@@ -642,6 +742,81 @@ function hydrateDataFromPayload(payload) {
     window.M2Data.courses = [];
   }
 
+  // Caderno de Erros (Respostas Incorretas Reais)
+  if (Array.isArray(payload.error_notebook)) {
+    window.M2Data.errorNotebook = payload.error_notebook.map(err => ({
+      id: err.id,
+      questionId: err.question_id,
+      contestId: err.contest_id,
+      subject: err.subject || 'Geral',
+      topic: err.topic || 'Geral',
+      board: err.board || '',
+      difficulty: err.difficulty || 'Média',
+      type: err.type || 'multipla_escolha',
+      prompt: err.prompt || '',
+      alternatives: err.alternatives || {},
+      studentAnswer: err.student_answer || '',
+      correctAnswer: err.correct_answer || '',
+      explanation: err.explanation || '',
+      answeredAt: err.answered_at || '',
+      errorCause: err.errorCause || 'Erro de conteúdo / pegadinha',
+      personalNote: err.personalNote || ''
+    }));
+  } else {
+    window.M2Data.errorNotebook = [];
+  }
+
+  // Revisões Programadas
+  if (Array.isArray(payload.reviews)) {
+    window.M2Data.reviews = payload.reviews.map(rev => {
+      const activeContest = (window.M2Data.contests || []).find(c => String(c.id) === String(rev.contest_id || state.contestId));
+      const intervals = (activeContest?.reviewIntervals || '1,7,30').split(',').map(s => s.trim()).filter(Boolean);
+      const cycleIndex = (Number(rev.current_cycle) || 1) - 1;
+      const intervalDays = intervals[cycleIndex] || (rev.current_cycle === 1 ? '1' : rev.current_cycle === 2 ? '7' : '30');
+
+      const targetDateStr = rev.next_date ? String(rev.next_date).slice(0, 10) : '';
+      const todayStr = new Date().toISOString().slice(0, 10);
+      let status = 'scheduled';
+      if (rev.completed) {
+        status = 'completed';
+      } else if (targetDateStr && targetDateStr < todayStr) {
+        status = 'delayed';
+      } else if (targetDateStr === todayStr) {
+        status = 'pending';
+      }
+
+      const formattedDate = targetDateStr
+        ? (() => {
+            try {
+              const [y, m, d] = targetDateStr.split('-');
+              return `${d}/${m}/${y}`;
+            } catch (_) {
+              return targetDateStr;
+            }
+          })()
+        : 'A definir';
+
+      return {
+        id: rev.id,
+        contestId: rev.contest_id,
+        subjectId: rev.subject_id,
+        topicId: rev.topic_id,
+        subject: rev.subject_name || (window.M2Data.subjects || []).find(s => s.id === rev.subject_id)?.name || 'Disciplina',
+        topic: rev.topic_name || (window.M2Data.topics || []).find(t => t.id === rev.topic_id)?.name || 'Conteúdo do Edital',
+        cycle: Number(rev.current_cycle) || 1,
+        intervalDays: intervalDays,
+        stage: `D-${intervalDays} (Ciclo ${rev.current_cycle || 1})`,
+        targetDate: formattedDate,
+        rawTargetDate: targetDateStr,
+        duration: '30 min',
+        completed: Boolean(rev.completed),
+        status: status
+      };
+    });
+  } else {
+    window.M2Data.reviews = [];
+  }
+
   // Cada registro é uma página independente, agrupada por pasta no caderno.
   if (Array.isArray(payload.notebooks)) {
     window.M2Data.notebooks = payload.notebooks.map(notebook => ({
@@ -736,7 +911,7 @@ function hydrateDataFromPayload(payload) {
       status: item.status || 'pendente',
       cyclePosition: item.cycle_position || null,
       durationMinutes: durMin,
-      subject: subjectsMap[item.subject_id] || 'Estudo Dirigido',
+      subject: item.label || subjectsMap[item.subject_id] || 'Estudo Dirigido',
       topic: topicsMap[item.topic_id] || 'Revisão e Questões',
       duration: durMin >= 60 ? `${(durMin / 60).toFixed(1)}h` : `${durMin}min`,
       time: '08:00',
@@ -789,14 +964,59 @@ export function setRenderer(fn) {
 }
 
 export function render() {
+  if (typeof window !== 'undefined') {
+    window.M2Render = render;
+    window.M2State = state;
+  }
   if (activeRenderer) activeRenderer();
+  applyTheme();
 }
 
 export function applyTheme() {
-  if (state.theme === 'light') {
-    document.documentElement.setAttribute('data-theme', 'light');
-  } else {
-    document.documentElement.removeAttribute('data-theme');
+  const root = getAppRoot();
+  document.documentElement.setAttribute('data-theme', state.theme);
+  if (root) {
+    const targets = [root, ...root.querySelectorAll('.m2-wrapper')];
+    const rawColors = window.M2Data?.mentorship?.platform_colors || {};
+    const isLight = state.theme === 'light';
+    const activePalette = isLight
+      ? (rawColors.light || rawColors)
+      : (rawColors.dark || rawColors);
+
+    const variables = {
+      primary: '--accent-teal',
+      secondary: '--accent-violet',
+      sidebar: '--bg-sidebar',
+      sidebar_text: '--text-sidebar',
+      sidebar_active: '--accent-teal-soft',
+      bg_app: '--bg-app',
+      bg_card: '--bg-card',
+      border_color: '--border-color',
+      text_main: '--text-main',
+      text_muted: '--text-muted',
+      accent_green: '--accent-green',
+      accent_amber: '--accent-amber',
+      accent_rose: '--accent-rose'
+    };
+    targets.forEach(target => {
+      target.setAttribute('data-theme', state.theme);
+      target.classList.toggle('mentoria2-app--theme-light', isLight);
+      target.classList.toggle('mentoria2-app--theme-dark', !isLight);
+      Object.entries(variables).forEach(([key, variable]) => {
+        const value = activePalette[key];
+        if (typeof value === 'string' && /^#[0-9a-f]{6}$/i.test(value)) {
+          target.style.setProperty(variable, value);
+          if (key === 'primary') {
+            target.style.setProperty('--accent-teal-soft', `${value}26`);
+          }
+          if (key === 'secondary') {
+            target.style.setProperty('--accent-violet-soft', `${value}26`);
+          }
+        } else {
+          target.style.removeProperty(variable);
+        }
+      });
+    });
   }
 }
 
@@ -832,9 +1052,200 @@ export function navigate(screenName, newMode = null) {
   render();
 }
 
+function getSubjectTheme(subjectName = '') {
+  const norm = String(subjectName).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+  if (norm.includes('constitucional')) {
+    return {
+      name: 'Constitucional',
+      color: '#10b981', // emerald
+      bgColor: 'rgba(16, 185, 129, 0.12)',
+      borderColor: 'rgba(16, 185, 129, 0.35)',
+      icon: 'shield',
+      badgeClass: 'm2-theme-emerald'
+    };
+  }
+  if (norm.includes('administrativ')) {
+    return {
+      name: 'Administrativo',
+      color: '#3b82f6', // blue
+      bgColor: 'rgba(59, 130, 246, 0.12)',
+      borderColor: 'rgba(59, 130, 246, 0.35)',
+      icon: 'file-text',
+      badgeClass: 'm2-theme-blue'
+    };
+  }
+  if (norm.includes('portug') || norm.includes('redacao oficial') || norm.includes('gramatica')) {
+    return {
+      name: 'Português',
+      color: '#06b6d4', // cyan / teal
+      bgColor: 'rgba(6, 182, 212, 0.12)',
+      borderColor: 'rgba(6, 182, 212, 0.35)',
+      icon: 'book-open',
+      badgeClass: 'm2-theme-cyan'
+    };
+  }
+  if (norm.includes('penal') || norm.includes('processual penal') || norm.includes('criminolog')) {
+    return {
+      name: 'Penal',
+      color: '#f97316', // orange
+      bgColor: 'rgba(249, 115, 22, 0.12)',
+      borderColor: 'rgba(249, 115, 22, 0.35)',
+      icon: 'scale',
+      badgeClass: 'm2-theme-orange'
+    };
+  }
+  if (norm.includes('civil') || norm.includes('processual civil')) {
+    return {
+      name: 'Civil',
+      color: '#14b8a6', // teal
+      bgColor: 'rgba(20, 184, 166, 0.12)',
+      borderColor: 'rgba(20, 184, 166, 0.35)',
+      icon: 'briefcase',
+      badgeClass: 'm2-theme-teal'
+    };
+  }
+  if (norm.includes('informatic') || norm.includes('computac') || norm.includes('tecnologia') || norm.includes('dados')) {
+    return {
+      name: 'Informática',
+      color: '#8b5cf6', // purple
+      bgColor: 'rgba(139, 92, 246, 0.12)',
+      borderColor: 'rgba(139, 92, 246, 0.35)',
+      icon: 'laptop',
+      badgeClass: 'm2-theme-purple'
+    };
+  }
+  if (norm.includes('logic') || norm.includes('matemat') || norm.includes('estatistic') || norm.includes('quantitativ')) {
+    return {
+      name: 'Raciocínio Lógico',
+      color: '#f59e0b', // amber
+      bgColor: 'rgba(245, 158, 11, 0.12)',
+      borderColor: 'rgba(245, 158, 11, 0.35)',
+      icon: 'calculator',
+      badgeClass: 'm2-theme-amber'
+    };
+  }
+  if (norm.includes('legislac') || norm.includes('regime') || norm.includes('estatuto') || norm.includes('especial')) {
+    return {
+      name: 'Legislação',
+      color: '#ec4899', // pink
+      bgColor: 'rgba(236, 72, 153, 0.12)',
+      borderColor: 'rgba(236, 72, 153, 0.35)',
+      icon: 'file-check',
+      badgeClass: 'm2-theme-pink'
+    };
+  }
+  if (norm.includes('tributar') || norm.includes('financeir') || norm.includes('contabil')) {
+    return {
+      name: 'Financeiro',
+      color: '#eab308', // gold / yellow
+      bgColor: 'rgba(234, 179, 8, 0.12)',
+      borderColor: 'rgba(234, 179, 8, 0.35)',
+      icon: 'coins',
+      badgeClass: 'm2-theme-yellow'
+    };
+  }
+  if (norm.includes('direitos humanos') || norm.includes('etica')) {
+    return {
+      name: 'Humanos / Ética',
+      color: '#22c55e', // green
+      bgColor: 'rgba(34, 197, 94, 0.12)',
+      borderColor: 'rgba(34, 197, 94, 0.35)',
+      icon: 'users',
+      badgeClass: 'm2-theme-green'
+    };
+  }
+  if (norm.includes('redac') || norm.includes('discursiv')) {
+    return {
+      name: 'Redação',
+      color: '#e11d48', // rose
+      bgColor: 'rgba(225, 29, 72, 0.12)',
+      borderColor: 'rgba(225, 29, 72, 0.35)',
+      icon: 'pen-tool',
+      badgeClass: 'm2-theme-rose'
+    };
+  }
+  return {
+    name: 'Geral',
+    color: '#64748b', // slate
+    bgColor: 'rgba(100, 116, 139, 0.12)',
+    borderColor: 'rgba(100, 116, 139, 0.35)',
+    icon: 'layers',
+    badgeClass: 'm2-theme-slate'
+  };
+}
+
+export function getAnnouncements() {
+  if (!Array.isArray(window.M2Data?.announcements)) {
+    try {
+      const stored = localStorage.getItem('m2_announcements');
+      if (stored) {
+        window.M2Data.announcements = JSON.parse(stored);
+      }
+    } catch (e) {
+      // fallback
+    }
+  }
+  if (!Array.isArray(window.M2Data?.announcements) || window.M2Data.announcements.length === 0) {
+    const contests = window.M2Data?.contests || [];
+    const contest = contests[0] || { id: '1', name: 'Polícia Federal - Agente' };
+    const student = window.M2Data?.student || { id: 1, name: 'Aluno' };
+    const mentor = window.M2Data?.mentor || { name: 'Coordenação Pedagógica' };
+
+    window.M2Data.announcements = [
+      {
+        id: 'ann-1',
+        title: '🎯 Simulado Geral neste Sábado com Correção Comentada',
+        content: 'O simulado oficial com correção estilo Cebraspe ficará disponível no sistema a partir das 08:00h da manhã. O tempo de prova é regressivo e aplicará a pontuação líquida. Prepare seu ambiente!',
+        target_type: 'all',
+        target_id: null,
+        target_label: 'Todos os Alunos',
+        priority: 'urgent',
+        mentor_name: mentor.name || 'Coordenação Pedagógica',
+        created_at: 'Hoje às 08:30'
+      },
+      {
+        id: 'ann-2',
+        title: '📜 Edital Verticalizado Atualizado: Lei 14.133 e Súmulas STF',
+        content: 'Adicionamos novas ramificações e pontos quentes de Direito Administrativo e Constitucional. Os novos tópicos já foram sincronizados com seu Edital Verticalizado.',
+        target_type: 'contest',
+        target_id: String(contest.id),
+        target_label: contest.name,
+        priority: 'important',
+        mentor_name: mentor.name || 'Coordenação Pedagógica',
+        created_at: 'Ontem às 15:40'
+      },
+      {
+        id: 'ann-3',
+        title: '💡 Feedback Individual: Ajuste na Estratégia de Revisões',
+        content: 'Analisei sua curva de retenção nos últimos 14 dias e recomendo priorizar a resolução de questões comentadas nas disciplinas com aproveitamento abaixo de 70%. Conte comigo na mentoria!',
+        target_type: 'student',
+        target_id: String(student.id || 1),
+        target_label: 'Exclusivo para Você',
+        priority: 'normal',
+        mentor_name: mentor.name || 'Coordenação Pedagógica',
+        created_at: 'Há 2 dias'
+      }
+    ];
+  }
+  return window.M2Data.announcements;
+}
+
+export function saveAnnouncements(list) {
+  window.M2Data.announcements = list;
+  try {
+    localStorage.setItem('m2_announcements', JSON.stringify(list));
+  } catch (e) {
+    // ignore
+  }
+}
+
 export {
   state,
   api,
+  http,
+  buildQuery,
+  unwrap,
   escapeHtml,
   escapeRegExp,
   plainTextWithBreaks,
@@ -842,7 +1253,8 @@ export {
   getAppRoot,
   showToast,
   formatTimer,
-  hydrateDataFromPayload
+  hydrateDataFromPayload,
+  getSubjectTheme
 };
 
 

@@ -18,7 +18,7 @@ export function escapeRegExp(value) {
     return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-const blockedTags = new Set(['base', 'embed', 'frame', 'frameset', 'iframe', 'link', 'meta', 'object', 'script']);
+const blockedTags = new Set(['base', 'embed', 'frame', 'frameset', 'link', 'meta', 'object', 'script']);
 const urlAttributes = new Set(['action', 'formaction', 'href', 'src', 'xlink:href']);
 
 /**
@@ -42,6 +42,14 @@ export function sanitizeRenderedHtml(markup) {
 
     const documentFragment = new DOMParser().parseFromString(html, 'text/html');
     documentFragment.querySelectorAll([...blockedTags].join(',')).forEach((element) => element.remove());
+
+    // Permite apenas iframes com URLs seguras (ex: player integrado da área de membros /m/)
+    documentFragment.querySelectorAll('iframe').forEach((element) => {
+        const src = element.getAttribute('src') || '';
+        if (!isSafeHtmlUrl(src) || /^(?:javascript|data|vbscript):/i.test(src.trim())) {
+            element.remove();
+        }
+    });
 
     documentFragment.querySelectorAll('*').forEach((element) => {
         [...element.attributes].forEach((attribute) => {

@@ -22,12 +22,14 @@ class ScheduleEngineService
 
         [$subjects, $units] = $this->diagnostic($student->id, $tenantId, $contestId, $configuration);
         $mode = (string) ($configuration['tipo'] ?? $configuration['type'] ?? 'agendado');
+        $hours = $this->hours($configuration);
+        $hasWeeklyHours = array_sum($hours) > 0;
 
-        if ($mode === 'ciclo' || $mode === 'ciclo_inteligente') {
-            return $this->generateCycle($subjects);
+        if ($mode === 'ciclo' && ! $hasWeeklyHours) {
+            return $this->generateCycle($subjects, $units, $configuration);
         }
 
-        return $this->generateAgenda($subjects, $units, $configuration);
+        return $this->generateAgenda($subjects, $units, $configuration, $this->fixedPlanItems($tenantId, $contestId));
     }
 
     public function reprogram(int $tenantId, int $studentId, string $scheduleId, ?string $fromDate = null): int
@@ -54,6 +56,7 @@ class ScheduleEngineService
             ->where('schedule_id', $scheduleId)
             ->where('status', 'pendente')
             ->whereNull('scheduled_review_id')
+            ->where(function ($query): void { $query->whereNull('is_fixed')->orWhere('is_fixed', false); })
             ->orderByDesc('priority')
             ->orderByRaw('planned_date IS NULL, planned_date')
             ->orderBy('position')
@@ -265,25 +268,55 @@ class ScheduleEngineService
 
     /**
      * @param  array<int, array<string, mixed>>  $subjects
+     * @param  array<string, array<int, array<string, mixed>>>  $unitsBySubject
      * @return array<int, array<string, mixed>>
      */
-    private function generateCycle(array $subjects): array
+    private function generateCycle(array $subjects, array $unitsBySubject, array $configuration): array
     {
         $items = [];
-        foreach ($subjects as $index => $subject) {
-            $priority = (int) $subject['priority'];
-            $duration = $priority >= 70 ? 90 : ($priority >= 55 ? 70 : ($priority >= 40 ? 50 : 30));
-            $items[] = [
-                'planned_date' => null,
-                'cycle_position' => $index + 1,
-                'subject_id' => $subject['id'],
-                'topic_id' => null,
-                'subtopic_id' => null,
-                'duration_minutes' => $duration,
-                'priority' => $priority,
-                'position' => $index + 1,
-                'status' => 'pendente',
-            ];
+        $minutes = max(1, (int) ($configuration['minutosTopico'] ?? $configuration['minutes_per_topic'] ?? 60));
+        $repetitions = max(1, (int) ($configuration['repeticoesEdital'] ?? $configuration['edict_repetitions'] ?? 3));
+        $targetCount = max(60, $repetitions * 20);
+
+        $pointers = [];
+        foreach ($subjects as $subject) {
+            $pointers[$subject['id']] = 0;
+        }
+
+        $subjectIndex = 0;
+        while (count($items) < $targetCount) {
+            $candidate = $subjects[$subjectIndex % count($subjects)];
+            $subjectId = $candidate['id'];
+            $units = $unitsBySubject[$subjectId] ?? [];
+
+            if (! empty($units)) {
+                $unit = $units[$pointers[$subjectId] % count($units)];
+                $pointers[$subjectId]++;
+                $priority = (int) ($unit['priority'] ?? $candidate['priority']);
+                $duration = $priority >= 70 ? 90 : ($priority >= 55 ? 70 : ($priority >= 40 ? 50 : 30));
+                if (isset($configuration['minutosTopico'])) {
+                    $duration = $minutes;
+                }
+                $pos = count($items) + 1;
+                $items[] = [
+                    'planned_date' => null,
+                    'cycle_position' => $pos,
+                    'subject_id' => $unit['subject_id'],
+                    'topic_id' => $unit['topic_id'],
+                    'subtopic_id' => $unit['subtopic_id'],
+                    'label' => $unit['name'],
+                    'description' => $candidate['name'] . ' · ' . $unit['name'],
+                    'duration_minutes' => $duration,
+                    'priority' => $priority,
+                    'position' => $pos,
+                    'status' => 'pendente',
+                ];
+            }
+
+            $subjectIndex++;
+            if ($subjectIndex > $targetCount * 5 && empty($items)) {
+                break;
+            }
         }
 
         return $items;
@@ -294,9 +327,9 @@ class ScheduleEngineService
      * @param  array<string, array<int, array<string, mixed>>>  $unitsBySubject
      * @return array<int, array<string, mixed>>
      */
-    private function generateAgenda(array $subjects, array $unitsBySubject, array $configuration): array
+    private function generateAgenda(array $subjects, array $unitsBySubject, array $configuration, array $fixedPlanItems = []): array
     {
-        if ($subjects === []) {
+        if ($subjects === [] && $fixedPlanItems === []) {
             return [];
         }
 
@@ -313,16 +346,35 @@ class ScheduleEngineService
 
         $subjectIndex = 0;
         $items = [];
+        $targetDays = max(60, $repetitions * 30);
 
-        for ($day = 0; $day < 1095; $day++) {
+        for ($day = 0; $day < $targetDays; $day++) {
             $date = $today->addDays($day);
             $available = (float) ($hours[$this->weekdayKey($date)] ?? 0);
-            $capacity = (int) floor(($available * 60) / $minutes);
-            if ($available > 0 && $capacity < 1) {
-                $capacity = 1;
+            $dayKey = $this->weekdayKey($date);
+            $dayFixedItems = array_values(array_filter($fixedPlanItems, fn (array $item): bool => in_array($dayKey, $item['days'], true)));
+            $fixedMinutes = array_sum(array_map(fn (array $item): int => (int) $item['duration_minutes'], $dayFixedItems));
+            $positionOffset = 0;
+            foreach ($dayFixedItems as $fixed) {
+                $positionOffset++;
+                $items[] = [
+                    'planned_date' => $date->toDateString(),
+                    'cycle_position' => count($items) + 1,
+                    'subject_id' => null,
+                    'topic_id' => null,
+                    'subtopic_id' => null,
+                    'label' => $fixed['label'],
+                    'description' => $fixed['description'] ?? null,
+                    'is_fixed' => true,
+                    'duration_minutes' => $fixed['duration_minutes'],
+                    'priority' => 100,
+                    'position' => $positionOffset,
+                    'status' => 'pendente',
+                ];
             }
+            $capacity = (int) floor(max(0, ($available * 60) - $fixedMinutes) / $minutes);
             if ($maxPerDay > 0) {
-                $capacity = min($capacity, $maxPerDay);
+                $capacity = min($capacity, max(0, $maxPerDay - $positionOffset));
             }
             if ($capacity <= 0) {
                 continue;
@@ -337,8 +389,8 @@ class ScheduleEngineService
                     $candidateIndex = ($subjectIndex + $attempt) % count($subjects);
                     $candidate = $subjects[$candidateIndex];
                     $subjectId = $candidate['id'];
-                    $max = count($unitsBySubject[$subjectId] ?? []) * $repetitions;
-                    if (($pointers[$subjectId] ?? 0) < $max && ! isset($usedSubjects[$subjectId])) {
+                    $units = $unitsBySubject[$subjectId] ?? [];
+                    if (! empty($units) && ! isset($usedSubjects[$subjectId])) {
                         $chosen = $candidate;
                         $chosenIndex = $candidateIndex;
                         break;
@@ -346,10 +398,12 @@ class ScheduleEngineService
                 }
 
                 if ($chosen === null) {
-                    foreach ($subjects as $candidateIndex => $candidate) {
+                    for ($attempt = 0; $attempt < count($subjects); $attempt++) {
+                        $candidateIndex = ($subjectIndex + $attempt) % count($subjects);
+                        $candidate = $subjects[$candidateIndex];
                         $subjectId = $candidate['id'];
-                        $max = count($unitsBySubject[$subjectId] ?? []) * $repetitions;
-                        if (($pointers[$subjectId] ?? 0) < $max) {
+                        $units = $unitsBySubject[$subjectId] ?? [];
+                        if (! empty($units)) {
                             $chosen = $candidate;
                             $chosenIndex = $candidateIndex;
                             break;
@@ -358,7 +412,7 @@ class ScheduleEngineService
                 }
 
                 if ($chosen === null) {
-                    return $items;
+                    break;
                 }
 
                 $subjectId = $chosen['id'];
@@ -370,13 +424,15 @@ class ScheduleEngineService
 
                 $items[] = [
                     'planned_date' => $date->toDateString(),
-                    'cycle_position' => null,
+                    'cycle_position' => count($items) + 1,
                     'subject_id' => $unit['subject_id'],
                     'topic_id' => $unit['topic_id'],
                     'subtopic_id' => $unit['subtopic_id'],
+                    'label' => $unit['name'],
+                    'description' => $chosen['name'] . ' · ' . $unit['name'],
                     'duration_minutes' => $minutes,
                     'priority' => max((int) $chosen['priority'], (int) $unit['priority']),
-                    'position' => $position,
+                    'position' => $position + $positionOffset,
                     'status' => 'pendente',
                 ];
             }
@@ -401,7 +457,7 @@ class ScheduleEngineService
                 $query->where(function ($reviewItems): void {
                     $reviewItems->whereNotNull('scheduled_review_id')
                         ->where('status', 'pendente');
-                })->orWhere(function ($studyItems): void {
+                })->orWhere('is_fixed', true)->orWhere(function ($studyItems): void {
                     $studyItems->whereNull('scheduled_review_id')
                         ->whereIn('status', ['concluido', 'ignorado']);
                 });
@@ -416,6 +472,25 @@ class ScheduleEngineService
         }
 
         return $occupied;
+    }
+
+    /** @return array<int, array{days: array<int, string>, label: string, description: ?string, duration_minutes: int}> */
+    private function fixedPlanItems(int $tenantId, string $contestId): array
+    {
+        $value = DB::table('mentoria2_contests')->where('tenant_id', $tenantId)->where('id', $contestId)->value('fixed_plan_items');
+        $items = is_string($value) ? json_decode($value, true) : $value;
+        if (! is_array($items)) return [];
+
+        $validDays = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sab'];
+        return collect($items)->map(function ($item) use ($validDays): ?array {
+            if (! is_array($item)) return null;
+            $days = array_values(array_filter((array) ($item['days'] ?? []), fn ($day): bool => is_string($day) && in_array($day, $validDays, true)));
+            $label = trim((string) ($item['label'] ?? ''));
+            $duration = (int) ($item['duration_minutes'] ?? 0);
+            return $days !== [] && $label !== '' && $duration > 0 && $duration <= 1440
+                ? ['days' => $days, 'label' => mb_substr($label, 0, 255), 'description' => ($description = trim((string) ($item['description'] ?? ''))) !== '' ? mb_substr($description, 0, 1000) : null, 'duration_minutes' => $duration]
+                : null;
+        })->filter()->values()->all();
     }
 
     /**

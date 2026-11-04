@@ -1,5 +1,5 @@
 const resources = {
-  'mentor-questions': { url: '/mentoria2/questions', key: 'questions', map: q => ({ ...q, subjectName: q.subject || 'Geral', topicName: q.topic || '', statement: q.prompt || '', answer: q.correct_answer || 'A' }) },
+  'mentor-questions': { url: '/mentoria2/questions', key: 'questions', map: q => ({ ...q, subjectName: q.subject || 'Geral', topicName: q.topic || '', statement: q.prompt || '', answer: q.correct_answer || 'A', board: q.board || '' }) },
   'mentor-flashcards': {
     url: '/mentoria2/flashcard-decks',
     key: 'flashcardDecks',
@@ -18,7 +18,26 @@ const resources = {
     }
   },
   'mentor-materials': { url: '/mentoria2/materials', key: 'materials', map: m => ({ ...m, topic: m.folder || '', size: m.file_name || '' }) },
-  'mentor-contests': { url: '/mentoria2/contests', key: 'contests', map: c => c },
+  'mentor-contests': {
+    url: '/mentoria2/contests',
+    key: 'contests',
+    map: c => {
+      let fixedPlanItems = c.fixedPlanItems;
+      if (!Array.isArray(fixedPlanItems)) {
+        try {
+          const parsed = Array.isArray(c.fixed_plan_items) ? c.fixed_plan_items : JSON.parse(c.fixed_plan_items || '[]');
+          fixedPlanItems = Array.isArray(parsed) ? parsed : [];
+        } catch {
+          fixedPlanItems = [];
+        }
+      }
+      return {
+        ...c,
+        reviewIntervals: c.review_intervals || c.reviewIntervals || '1,7,30',
+        fixedPlanItems,
+      };
+    }
+  },
 };
 
 export async function loadMentorResource(screen, request, page = 1, filters = null) {

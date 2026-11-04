@@ -28,8 +28,10 @@ class ContentController extends Controller
             ->where('c.is_active', true)
             ->select(
                 'c.*',
-                DB::raw('(select count(*) from mentoria2_student_contests where contest_id = c.id and is_active = 1) as students_count'),
-                DB::raw('(select count(*) from mentoria2_edicts where contest_id = c.id and is_active = 1) as edicts_count')
+                DB::raw('(select count(*) from mentoria2_student_contests sc where sc.tenant_id = c.tenant_id and sc.contest_id = c.id and sc.is_active = 1) as students_count'),
+                DB::raw('(select count(*) from mentoria2_edicts e where e.tenant_id = c.tenant_id and e.contest_id = c.id and e.is_active = 1) as edicts_count'),
+                DB::raw('(select count(*) from mentoria2_topics t inner join mentoria2_subjects s on s.id = t.subject_id inner join mentoria2_edicts e on e.id = s.edict_id where t.tenant_id = c.tenant_id and t.is_active = 1 and s.is_active = 1 and e.tenant_id = c.tenant_id and e.contest_id = c.id and e.is_active = 1) as topics_count'),
+                DB::raw('(select count(*) from mentoria2_question_bank q where q.tenant_id = c.tenant_id and q.is_active = 1 and (q.contest_id = c.id or (q.contest_id is null and q.scope = \'global\'))) as questions_count')
             );
 
         if ($request->filled('search')) {
@@ -47,58 +49,70 @@ class ContentController extends Controller
     {
         $actor = $request->user();
         $tenantId = $this->access->tenantId($actor);
+        $cache = app(\Plugins\Mentoria2\Services\MentoriaCacheService::class);
 
-        $contestRow = DB::table('mentoria2_contests')
-            ->where('tenant_id', $tenantId)
-            ->where('id', $contest)
-            ->where('is_active', true)
-            ->first();
+        $payload = $cache->rememberSyllabus($tenantId, $contest, function () use ($tenantId, $contest) {
+            $contestRow = DB::table('mentoria2_contests')
+                ->where('tenant_id', $tenantId)
+                ->where('id', $contest)
+                ->where('is_active', true)
+                ->first();
 
-        if (! $contestRow) {
+            if (! $contestRow) {
+                return null;
+            }
+
+            $edicts = DB::table('mentoria2_edicts')
+                ->where('tenant_id', $tenantId)
+                ->where('contest_id', $contest)
+                ->where('is_active', true)
+                ->orderBy('name')
+                ->get();
+
+            $edictIds = $edicts->pluck('id');
+
+            $subjects = DB::table('mentoria2_subjects')
+                ->where('tenant_id', $tenantId)
+                ->whereIn('edict_id', $edictIds)
+                ->where('is_active', true)
+                ->orderBy('position')->orderBy('name')
+                ->get();
+
+            $subjectIds = $subjects->pluck('id');
+
+            $topics = DB::table('mentoria2_topics')
+                ->where('tenant_id', $tenantId)
+                ->whereIn('subject_id', $subjectIds)
+                ->where('is_active', true)
+                ->orderBy('position')->orderBy('name')
+                ->get();
+
+            $topicIds = $topics->pluck('id');
+
+            $subtopics = DB::table('mentoria2_subtopics')
+                ->where('tenant_id', $tenantId)
+                ->whereIn('topic_id', $topicIds)
+                ->where('is_active', true)
+                ->orderBy('position')->orderBy('name')
+                ->get();
+
+            return [
+                'contest' => $contestRow,
+                'edicts' => $edicts,
+                'subjects' => $subjects,
+                'topics' => $topics,
+                'subtopics' => $subtopics,
+            ];
+        });
+
+        if (! $payload) {
             return response()->json(['message' => 'Concurso não encontrado.'], 404);
         }
 
-        $edicts = DB::table('mentoria2_edicts')
-            ->where('tenant_id', $tenantId)
-            ->where('contest_id', $contest)
-            ->where('is_active', true)
-            ->orderBy('name')
-            ->get();
+        return response()->json($payload);
+    }
 
-        $edictIds = $edicts->pluck('id');
-
-        $subjects = DB::table('mentoria2_subjects')
-            ->where('tenant_id', $tenantId)
-            ->whereIn('edict_id', $edictIds)
-            ->where('is_active', true)
-            ->orderBy('position')->orderBy('name')
-            ->get();
-
-        $subjectIds = $subjects->pluck('id');
-
-        $topics = DB::table('mentoria2_topics')
-            ->where('tenant_id', $tenantId)
-            ->whereIn('subject_id', $subjectIds)
-            ->where('is_active', true)
-            ->orderBy('position')->orderBy('name')
-            ->get();
-
-        $topicIds = $topics->pluck('id');
-
-        $subtopics = DB::table('mentoria2_subtopics')
-            ->where('tenant_id', $tenantId)
-            ->whereIn('topic_id', $topicIds)
-            ->where('is_active', true)
-            ->orderBy('position')->orderBy('name')
-            ->get();
-
-        return response()->json([
-            'contest' => $contestRow,
-            'edicts' => $edicts,
-            'subjects' => $subjects,
-            'topics' => $topics,
-            'subtopics' => $subtopics,
-        ]);
+    private function legacySyllabusSkipped() {
     }
 
     public function storeContest(Request $request): JsonResponse
@@ -122,12 +136,22 @@ class ContentController extends Controller
             'exam_date' => ['sometimes', 'nullable', 'date'],
             'pre_notice' => ['sometimes', 'boolean'],
             'review_intervals' => ['sometimes', 'string', 'max:255'],
+            'fixed_plan_items' => ['sometimes', 'array', 'max:50'],
+            'fixed_plan_items.*.key' => ['nullable', 'string', 'max:80'],
+            'fixed_plan_items.*.days' => ['required_with:fixed_plan_items', 'array', 'min:1'],
+            'fixed_plan_items.*.days.*' => ['in:dom,seg,ter,qua,qui,sex,sab'],
+            'fixed_plan_items.*.label' => ['required_with:fixed_plan_items', 'string', 'max:255'],
+            'fixed_plan_items.*.description' => ['nullable', 'string', 'max:1000'],
+            'fixed_plan_items.*.duration_minutes' => ['required_with:fixed_plan_items', 'integer', 'min:1', 'max:1440'],
             'logo' => ['sometimes', 'nullable', 'string'],
         ]);
         $actor = $request->user();
         $tenantId = $this->access->tenantId($actor);
         $this->requireRow('mentoria2_contests', $contest, $tenantId);
 
+        if (array_key_exists('fixed_plan_items', $data)) {
+            $data['fixed_plan_items'] = json_encode($data['fixed_plan_items'], JSON_UNESCAPED_UNICODE);
+        }
         $data['updated_at'] = now();
         DB::table('mentoria2_contests')->where('tenant_id', $tenantId)->where('id', $contest)->update($data);
         $this->audit->record($tenantId, $actor, 'contest.updated', 'contest', $contest, null, $data);
@@ -156,6 +180,7 @@ class ContentController extends Controller
                 'exam_date' => $source->exam_date,
                 'pre_notice' => $source->pre_notice,
                 'review_intervals' => $source->review_intervals,
+                'fixed_plan_items' => $source->fixed_plan_items,
                 'logo' => $source->logo,
                 'is_active' => true,
                 'created_at' => now(),
@@ -695,6 +720,13 @@ class ContentController extends Controller
             'exam_date' => ['nullable', 'date'],
             'pre_notice' => ['sometimes', 'boolean'],
             'review_intervals' => ['nullable', 'string', 'max:255'],
+            'fixed_plan_items' => ['nullable', 'array', 'max:50'],
+            'fixed_plan_items.*.key' => ['nullable', 'string', 'max:80'],
+            'fixed_plan_items.*.days' => ['required_with:fixed_plan_items', 'array', 'min:1'],
+            'fixed_plan_items.*.days.*' => ['in:dom,seg,ter,qua,qui,sex,sab'],
+            'fixed_plan_items.*.label' => ['required_with:fixed_plan_items', 'string', 'max:255'],
+            'fixed_plan_items.*.description' => ['nullable', 'string', 'max:1000'],
+            'fixed_plan_items.*.duration_minutes' => ['required_with:fixed_plan_items', 'integer', 'min:1', 'max:1440'],
             'logo' => ['nullable', 'string'],
         ]);
     }
@@ -713,6 +745,7 @@ class ContentController extends Controller
             'pre_notice' => (bool) ($data['pre_notice'] ?? false),
             'logo' => $data['logo'] ?? null,
             'review_intervals' => $data['review_intervals'] ?? '1,7,30',
+            'fixed_plan_items' => json_encode($data['fixed_plan_items'] ?? [], JSON_UNESCAPED_UNICODE),
             'created_by' => $actorId,
             'is_active' => true,
             'created_at' => now(),

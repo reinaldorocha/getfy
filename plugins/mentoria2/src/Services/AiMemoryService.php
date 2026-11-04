@@ -188,5 +188,112 @@ CTX;
             'weaknesses' => $remainingWeaknesses,
         ];
     }
+
+    public function generateAiPrescription(int $tenantId, int $studentId): array
+    {
+        // 1. Atualiza métricas base
+        $base = $this->analyzeAndRefresh($tenantId, $studentId);
+        $cog = $base['cognitive_profile'] ?? [];
+
+        $essayService = app(\Plugins\Mentoria2\Services\EssayService::class);
+        if (! $essayService->isAiConfigured($tenantId)) {
+            throw new \RuntimeException('Member IA não configurado para geração de prescrição cognitiva.');
+        }
+
+        $memoryRow = \Illuminate\Support\Facades\DB::table('mentoria2_ai_memory')
+            ->where('tenant_id', $tenantId)
+            ->where('student_id', $studentId)
+            ->first();
+        $guidance = $memoryRow?->mentor_guidance ?: 'Manter ritmo consistente e focar nas disciplinas de maior peso.';
+
+        $weaknessesStr = ! empty($cog['chronic_weaknesses'])
+            ? implode(', ', array_map(fn ($w) => $w['subject'] . ' (' . $w['accuracy'] . '%)', $cog['chronic_weaknesses']))
+            : 'Nenhuma vulnerabilidade crítica (desempenho homogêneo acima de 70%)';
+
+        $strengthsStr = ! empty($cog['mastered_topics'])
+            ? implode(', ', array_map(fn ($s) => $s['subject'] . ' (' . $s['accuracy'] . '%)', $cog['mastered_topics']))
+            : 'Base em consolidação';
+
+        $prompt = "Você é o Águia IA, o mentor pedagógico de alto desempenho especializado em neurociência da aprendizagem e concursos públicos.
+Analise os dados do estudante e gere um diagnóstico analítico e uma prescrição de estudos estratégica para os próximos 7 dias.
+
+Dados reais do estudante:
+- Vulnerabilidades Crônicas: {$weaknessesStr}
+- Disciplinas Consolidadas: {$strengthsStr}
+- Ritmo de Estudo: {$cog['learning_pace']} (sessões médias de {$cog['average_block_minutes']} min)
+- Diretrizes do Mentor: {$guidance}
+
+Retorne ESTRITAMENTE um objeto JSON no formato:
+{
+  \"cognitive_analysis\": \"Diagnóstico aprofundado dos padrões de erro, retenção e fadiga cognitiva do estudante.\",
+  \"priority_focus\": \"Disciplina ou tópico mais crítico para a semana.\",
+  \"weekly_prescription\": [
+    {\"day\": \"Segunda\", \"subject\": \"...\", \"action\": \"...\", \"target_minutes\": 60, \"badge\": \"Prioridade Alta\"},
+    {\"day\": \"Terça\", \"subject\": \"...\", \"action\": \"...\", \"target_minutes\": 60, \"badge\": \"Fixação\"},
+    {\"day\": \"Quarta\", \"subject\": \"...\", \"action\": \"...\", \"target_minutes\": 60, \"badge\": \"Questões Focadas\"},
+    {\"day\": \"Quinta\", \"subject\": \"...\", \"action\": \"...\", \"target_minutes\": 60, \"badge\": \"Revisão Espaçada\"},
+    {\"day\": \"Sexta\", \"subject\": \"...\", \"action\": \"...\", \"target_minutes\": 60, \"badge\": \"Consolidação\"},
+    {\"day\": \"Sábado\", \"subject\": \"...\", \"action\": \"...\", \"target_minutes\": 90, \"badge\": \"Simulado/Discursiva\"},
+    {\"day\": \"Domingo\", \"subject\": \"Recuperação & Análise de Erros\", \"action\": \"Descanso ativo e análise do caderno de erros da semana.\", \"target_minutes\": 45, \"badge\": \"Descanso Ativo\"}
+  ],
+  \"traps_to_avoid\": [
+    \"Armadilha 1...\",
+    \"Armadilha 2...\"
+  ],
+  \"tutor_directive\": \"Instrução concisa de como o Tutor 24h deve abordar este estudante durante a semana.\"
+}";
+
+        $client = new \Plugins\AiMember\Services\OpenRouterClient($tenantId);
+        $response = $client->chatCompletions([
+            'model' => 'openai/gpt-4o-mini',
+            'messages' => [
+                ['role' => 'system', 'content' => 'Você é o Águia IA. Responda única e estritamente com JSON válido.'],
+                ['role' => 'user', 'content' => $prompt],
+            ],
+            'response_format' => ['type' => 'json_object'],
+            'temperature' => 0.5,
+            'max_tokens' => 1800,
+        ]);
+
+        $promptTokens = (int) ($response['usage']['prompt_tokens'] ?? 0);
+        $completionTokens = (int) ($response['usage']['completion_tokens'] ?? 0);
+        try {
+            app(\Plugins\Mentoria2\Services\AiUsageService::class)->log(
+                $tenantId,
+                $studentId,
+                null,
+                'ai_memory',
+                'openai/gpt-4o-mini',
+                $promptTokens,
+                $completionTokens,
+                ['student_id' => $studentId, 'feature' => 'prescricao_aguia']
+            );
+        } catch (\Throwable $e) {}
+
+        $respContent = $response['choices'][0]['message']['content'] ?? '{}';
+        $decoded = json_decode($respContent, true) ?: [];
+
+        $cog['ai_prescription'] = $decoded;
+        $cog['summary'] = $decoded['cognitive_analysis'] ?? $cog['summary'];
+
+        \Illuminate\Support\Facades\DB::table('mentoria2_ai_memory')->updateOrInsert(
+            ['tenant_id' => $tenantId, 'student_id' => $studentId],
+            [
+                'cognitive_profile' => json_encode($cog, JSON_UNESCAPED_UNICODE),
+                'last_analyzed_at' => now(),
+                'updated_at' => now(),
+            ]
+        );
+
+        return [
+            'ok' => true,
+            'student_id' => $studentId,
+            'cognitive_profile' => $cog,
+            'ai_prescription' => $decoded,
+            'mentor_guidance' => $guidance,
+            'last_analyzed_at' => now()->toIso8601String(),
+        ];
+    }
 }
+
 

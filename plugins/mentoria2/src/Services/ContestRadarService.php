@@ -41,7 +41,7 @@ class ContestRadarService
             ->get();
 
         if ($results->isEmpty()) {
-            return $this->seedDefaultRadarFeed();
+            return [];
         }
 
         return $results->map(function ($row) {
@@ -66,65 +66,5 @@ class ContestRadarService
         })->toArray();
     }
 
-    public function seedDefaultRadarFeed(): array
-    {
-        $defaults = [
-            [
-                'id' => (string) Str::uuid(),
-                'title' => 'Polícia Rodoviária Federal - Policial Rodoviário',
-                'organization' => 'PRF',
-                'board' => 'Cebraspe',
-                'role' => 'Policial Rodoviário Federal',
-                'salary' => 11200.00,
-                'vacancies' => 1500,
-                'sphere' => 'federal',
-                'state' => 'BR',
-                'status' => 'previsto',
-                'gazette_extract' => 'Portaria autorizativa prevista para publicação no DOU até o fim do semestre.',
-                'is_featured' => true,
-                'is_active' => true,
-                'created_at' => now(),
-                'updated_at' => now(),
-            ],
-            [
-                'id' => (string) Str::uuid(),
-                'title' => 'Tribunal de Justiça - Analista e Técnico Judiciário',
-                'organization' => 'TJ',
-                'board' => 'FGV',
-                'role' => 'Analista / Técnico Judiciário',
-                'salary' => 9850.00,
-                'vacancies' => 240,
-                'sphere' => 'estadual',
-                'state' => 'SP',
-                'status' => 'edital_aberto',
-                'gazette_extract' => 'Edital 01/2026 publicado no Diário da Justiça. Inscrições abertas até o próximo mês.',
-                'is_featured' => true,
-                'is_active' => true,
-                'created_at' => now(),
-                'updated_at' => now(),
-            ],
-            [
-                'id' => (string) Str::uuid(),
-                'title' => 'Receita Federal do Brasil - Auditor Fiscal',
-                'organization' => 'RFB',
-                'board' => 'FGV',
-                'role' => 'Auditor-Fiscal da Receita Federal',
-                'salary' => 22921.71,
-                'vacancies' => 450,
-                'sphere' => 'federal',
-                'state' => 'BR',
-                'status' => 'comissao_formada',
-                'gazette_extract' => 'Comissão instituída em Diário Oficial da União. Processo de escolha da banca em andamento.',
-                'is_featured' => false,
-                'is_active' => true,
-                'created_at' => now(),
-                'updated_at' => now(),
-            ],
-        ];
-
-        DB::table('mentoria2_radar_contests')->insert($defaults);
-
-        return $defaults;
-    }
 }
 

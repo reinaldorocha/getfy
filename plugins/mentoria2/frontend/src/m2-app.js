@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Mentoria 2.0 - Motor da Aplicação (Arquitetura Modular)
  * Coordenador central que orquestra módulos por domínio:
  * - core: estado reativo, contextos, utilitários, temas e navegação
@@ -29,6 +29,8 @@ import {
 
 import {
   renderSidebar,
+  renderStudentProfileCorner,
+  renderDesktopNotification,
   renderTopbar,
   renderFloatingMiniTimer,
   renderFloatingAiChat,
@@ -93,7 +95,9 @@ import {
   viewMentorProducts,
   viewMentorSettings,
   viewMentorAudit,
-  viewMentorPrompts
+  viewMentorPrompts,
+  viewMentorAiCosts,
+  viewMentorRadarEditais
 } from './modules/mentor.js';
 
 import {
@@ -126,6 +130,7 @@ export function renderScreen() {
       case 'mentor-contests': return viewMentorContests();
       case 'mentor-contest-detail': return viewMentorContestDetail();
       case 'mentor-import-review': return viewMentorImportReview();
+      case 'mentor-radar-editais': return viewMentorRadarEditais();
       case 'mentor-contents': return viewMentorContents();
       case 'mentor-questions': return viewMentorQuestions();
       case 'mentor-flashcards': return viewMentorFlashcards();
@@ -139,6 +144,7 @@ export function renderScreen() {
       case 'mentor-settings': return viewMentorSettings();
       case 'mentor-audit': return viewMentorAudit();
       case 'mentor-prompts': return viewMentorPrompts();
+      case 'mentor-ai-costs': return viewMentorAiCosts();
       case 'mentor-help': return viewHelp();
       default: return viewMentorOverview();
     }
@@ -198,6 +204,8 @@ export function render() {
     <div class="m2-wrapper ${state.sidebarCollapsed ? 'sidebar-collapsed' : ''}">
       ${renderSidebar()}
       <main class="m2-main">
+        ${renderDesktopNotification()}
+        ${renderStudentProfileCorner()}
         ${renderTopbar()}
         <div id="m2-screen-container">
           ${renderScreen()}
@@ -215,6 +223,31 @@ export function render() {
     ${renderModals()}
   `;
   appRoot.innerHTML = sanitizeRenderedHtml(markup);
+  applyTheme();
+
+  const openProfileMenu = event => {
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    const isMentor = state.mode === 'mentor' || (state.screen && state.screen.startsWith('mentor-'));
+    state.modal = isMentor ? 'mentor-profile-menu' : 'student-profile-menu';
+    render();
+  };
+  const profileMenuButton = appRoot.querySelector('[data-action="open-student-profile-menu"], [data-action="open-mentor-profile-menu"]');
+  if (profileMenuButton) profileMenuButton.onclick = openProfileMenu;
+  appRoot.querySelectorAll('[data-action="close-modal"]').forEach(button => {
+    button.onclick = event => { event.preventDefault(); event.stopImmediatePropagation(); state.modal = null; render(); };
+  });
+  appRoot.querySelectorAll('[data-action="open-profile-goals"], [data-action="open-profile-courses"], [data-action="open-profile-settings"]').forEach(button => {
+    button.onclick = event => {
+      event.preventDefault(); event.stopImmediatePropagation(); state.modal = null;
+      const isMentor = state.mode === 'mentor' || (state.screen && state.screen.startsWith('mentor-'));
+      if (isMentor) {
+        navigate(button.dataset.action === 'open-profile-goals' ? 'mentor-reports' : (button.dataset.action === 'open-profile-settings' ? 'mentor-settings' : 'mentor-students'));
+      } else {
+        navigate(button.dataset.action === 'open-profile-goals' ? 'goals' : (button.dataset.action === 'open-profile-settings' ? 'settings' : 'courses'));
+      }
+    };
+  });
 
   const mobileBtn = document.getElementById('m2-mobile-menu-btn');
   if (mobileBtn && typeof window !== 'undefined' && window.innerWidth <= 768) {

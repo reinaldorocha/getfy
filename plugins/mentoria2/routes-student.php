@@ -19,6 +19,9 @@ use Plugins\Mentoria2\Http\Controllers\TimerLogController;
 
 Route::get('/{tenant}', [StudentController::class, 'index'])->whereNumber('tenant')->name('index');
 Route::get('/{tenant}/data', [StudentController::class, 'data'])->whereNumber('tenant')->name('data');
+Route::post('/{tenant}/active-contest', [StudentController::class, 'setActiveContest'])->whereNumber('tenant')->name('contest.set-active');
+Route::get('/{tenant}/today-summary', [StudentController::class, 'todaySummary'])->whereNumber('tenant')->name('today-summary');
+Route::get('/{tenant}/syllabus-tree', [StudentController::class, 'syllabusTree'])->whereNumber('tenant')->name('syllabus-tree');
 Route::get('/{tenant}/goals', [GoalController::class, 'index'])->whereNumber('tenant')->name('goals.index');
 Route::get('/{tenant}/gamification', [GamificationController::class, 'studentSummary'])->whereNumber('tenant')->name('gamification.summary');
 Route::get('/{tenant}/notifications', [NotificationController::class, 'index'])->whereNumber('tenant')->name('notifications.index');
@@ -50,11 +53,14 @@ Route::patch('/{tenant}/question-logs/{log}', [StudyController::class, 'updateSt
 Route::delete('/{tenant}/question-logs/{log}', [StudyController::class, 'deleteStudentQuestionLog'])->whereNumber('tenant')->name('question-logs.destroy');
 
 /* RevisÃµes */
+Route::get('/{tenant}/reviews', [StudyController::class, 'studentReviews'])->whereNumber('tenant')->name('reviews.index');
 Route::post('/{tenant}/reviews', [StudyController::class, 'saveStudentReview'])->whereNumber('tenant')->name('reviews.store');
 Route::patch('/{tenant}/reviews/{review}', [StudyController::class, 'updateStudentReview'])->whereNumber('tenant')->name('reviews.update');
 Route::delete('/{tenant}/reviews/{review}', [StudyController::class, 'deleteStudentReview'])->whereNumber('tenant')->name('reviews.destroy');
 
 /* Flashcards */
+Route::get('/{tenant}/flashcard-decks', [FlashcardController::class, 'studentDecks'])->whereNumber('tenant')->name('flashcard-decks.index');
+Route::get('/{tenant}/flashcard-decks/{deck}/cards', [FlashcardController::class, 'studentDeckCards'])->whereNumber('tenant')->name('flashcard-decks.cards');
 Route::post('/{tenant}/flashcard-decks', [FlashcardController::class, 'storeStudentDeck'])->whereNumber('tenant')->name('flashcard-decks.store');
 Route::patch('/{tenant}/flashcard-decks/{deck}', [FlashcardController::class, 'updateStudentDeck'])->whereNumber('tenant')->name('flashcard-decks.update');
 Route::delete('/{tenant}/flashcard-decks/{deck}', [FlashcardController::class, 'destroyStudentDeck'])->whereNumber('tenant')->name('flashcard-decks.destroy');
@@ -67,11 +73,13 @@ Route::get('/{tenant}/flashcards/history', [FlashcardController::class, 'student
 
 /* Banco de questÃµes */
 Route::get('/{tenant}/questions', [QuestionController::class, 'studentIndex'])->whereNumber('tenant')->name('questions.index');
+Route::get('/{tenant}/error-notebook', [QuestionController::class, 'studentErrorNotebook'])->whereNumber('tenant')->name('questions.error-notebook');
 Route::post('/{tenant}/questions/{question}/answer', [QuestionController::class, 'answerStudentQuestion'])->whereNumber('tenant')->name('questions.answer');
 Route::get('/{tenant}/questions/{question}/history', [QuestionController::class, 'studentHistory'])->whereNumber('tenant')->name('questions.history');
 Route::get('/{tenant}/questions/statistics', [QuestionController::class, 'studentStatistics'])->whereNumber('tenant')->name('questions.statistics');
 
 /* Simulados e configuraÃ§Ã£o de prova */
+Route::get('/{tenant}/mock-exams', [StudyController::class, 'studentMockExams'])->whereNumber('tenant')->name('mock-exams.index');
 Route::post('/{tenant}/mock-exams', [StudyController::class, 'storeStudentMockExam'])->whereNumber('tenant')->name('mock-exams.store');
 Route::patch('/{tenant}/mock-exams/{mock}', [StudyController::class, 'updateStudentMockExam'])->whereNumber('tenant')->name('mock-exams.update');
 Route::delete('/{tenant}/mock-exams/{mock}', [StudyController::class, 'deleteStudentMockExam'])->whereNumber('tenant')->name('mock-exams.destroy');
@@ -82,6 +90,7 @@ Route::get('/{tenant}/exam-config/{contest}', [StudyController::class, 'studentE
 Route::put('/{tenant}/exam-config/{contest}', [StudyController::class, 'saveStudentExamConfiguration'])->whereNumber('tenant')->name('exam-config.update');
 
 /* Cadernos */
+Route::get('/{tenant}/notebooks', [StudyController::class, 'studentNotebooks'])->whereNumber('tenant')->name('notebooks.index');
 Route::post('/{tenant}/notebooks', [StudyController::class, 'storeStudentNotebook'])->whereNumber('tenant')->name('notebooks.store');
 Route::patch('/{tenant}/notebooks/{notebook}', [StudyController::class, 'updateStudentNotebook'])->whereNumber('tenant')->name('notebooks.update');
 Route::delete('/{tenant}/notebooks/{notebook}', [StudyController::class, 'destroyStudentNotebook'])->whereNumber('tenant')->name('notebooks.destroy');
@@ -96,8 +105,12 @@ Route::get('/{tenant}/metrics/summary', [MetricsController::class, 'summary'])->
 Route::get('/{tenant}/metrics/timeline', [MetricsController::class, 'timeline'])->whereNumber('tenant')->name('metrics.timeline');
 Route::get('/{tenant}/metrics/subjects', [MetricsController::class, 'subjects'])->whereNumber('tenant')->name('metrics.subjects');
 
-/* RedaÃ§Ãµes e Oficina de Discursivas (Aluno) */
+/* Redações e Oficina de Discursivas (Aluno) */
 Route::get('/{tenant}/essays', [EssayController::class, 'index'])->whereNumber('tenant')->name('essays.index');
+Route::get('/{tenant}/essays/ai-status', [EssayController::class, 'aiStatus'])->whereNumber('tenant')->name('essays.ai-status');
+Route::post('/{tenant}/essays/generate-theme', [EssayController::class, 'generateTheme'])->whereNumber('tenant')->name('essays.generate-theme');
+Route::post('/{tenant}/essays/ai-correction', [EssayController::class, 'aiCorrection'])->whereNumber('tenant')->name('essays.ai-correction');
+Route::post('/{tenant}/essays/ocr-transcribe', [EssayController::class, 'ocrTranscribe'])->whereNumber('tenant')->name('essays.ocr-transcribe');
 Route::get('/{tenant}/essays/submissions', [EssayController::class, 'submissions'])->whereNumber('tenant')->name('essays.submissions');
 Route::get('/{tenant}/essays/{essay}', [EssayController::class, 'show'])->whereNumber('tenant')->name('essays.show');
 Route::post('/{tenant}/essays/{essay}/submit', [EssayController::class, 'submit'])->whereNumber('tenant')->name('essays.submit');
@@ -105,12 +118,16 @@ Route::post('/{tenant}/essays/{essay}/submit', [EssayController::class, 'submit'
 /* MemÃ³ria Cognitiva de Longo Prazo (Aluno) */
 Route::get('/{tenant}/ai-memory', [AiMemoryController::class, 'profile'])->whereNumber('tenant')->name('ai-memory.profile');
 Route::post('/{tenant}/ai-memory/mastered', [AiMemoryController::class, 'markWeakness'])->whereNumber('tenant')->name('ai-memory.mastered');
+Route::post('/{tenant}/ai-memory/generate-prescription', [AiMemoryController::class, 'generatePrescription'])->whereNumber('tenant')->name('ai-memory.generate-prescription');
 
 /* Reporte de QuestÃµes (Aluno) */
 Route::post('/{tenant}/questions/{question}/report', [QuestionReportController::class, 'report'])->whereNumber('tenant')->name('questions.report');
 
 /* Radar de Editais em Aberto (Aluno) */
 Route::get('/{tenant}/radar/contests', [ContestRadarController::class, 'studentIndex'])->whereNumber('tenant')->name('radar.index');
+Route::get('/{tenant}/radar/contests/{contest}', [ContestRadarController::class, 'studentShow'])->whereNumber('tenant')->name('radar.show');
+Route::put('/{tenant}/radar/contests/{contest}/follow', [ContestRadarController::class, 'follow'])->whereNumber('tenant')->name('radar.follow');
+Route::delete('/{tenant}/radar/contests/{contest}/follow', [ContestRadarController::class, 'unfollow'])->whereNumber('tenant')->name('radar.unfollow');
 
 /* Mini-Timer Flutuante e Registro de SessÃµes (Aluno) */
 Route::post('/{tenant}/timer-logs', [TimerLogController::class, 'store'])->whereNumber('tenant')->name('timer-logs.store');

@@ -62,5 +62,31 @@ class AiMemoryController extends Controller
 
         return response()->json($res);
     }
+
+    public function generatePrescription(Request $request, int $tenant): JsonResponse
+    {
+        $this->access->assertStudentAccess($request->user(), $tenant);
+
+        if (! $this->access->hasAiAccess($request->user(), $tenant)) {
+            return response()->json([
+                'ok' => false,
+                'has_ai_access' => false,
+                'error' => 'ai_access_denied',
+                'message' => 'Este recurso de Inteligência Artificial não está incluso no seu plano. Solicite ao administrador a liberação do módulo de IA ou faça upgrade do seu curso.',
+            ], 403);
+        }
+
+        try {
+            $result = $this->aiMemory->generateAiPrescription($tenant, (int) $request->user()->id);
+
+            return response()->json($result);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'ok' => false,
+                'message' => $e->getMessage(),
+            ], 500);
+        }
+    }
 }
+
 

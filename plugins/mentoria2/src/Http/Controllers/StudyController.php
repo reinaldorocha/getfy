@@ -14,6 +14,7 @@ use Plugins\Mentoria2\Services\AuditService;
 use Plugins\Mentoria2\Services\ContentAudienceService;
 use Plugins\Mentoria2\Services\QuestionAnswerService;
 use Plugins\Mentoria2\Services\ReviewScheduleService;
+use Plugins\Mentoria2\Services\EdictProgressService;
 use Plugins\Mentoria2\Services\ScheduleEngineService;
 use Plugins\Mentoria2\Services\GamificationService;
 use Plugins\Mentoria2\Services\NotificationService;
@@ -30,6 +31,7 @@ class StudyController extends Controller
         private readonly QuestionAnswerService $answers,
         private readonly ScheduleEngineService $engine,
         private readonly ReviewScheduleService $reviewSchedule,
+        private readonly EdictProgressService $edictProgress,
         private readonly GamificationService $gamification,
         private readonly NotificationService $notifications,
     ) {}
@@ -189,7 +191,10 @@ class StudyController extends Controller
         }
 
         $items = $query
-            ->select('i.*', 's.contest_id', 's.type as schedule_type', 's.state as schedule_state')
+            ->leftJoin('mentoria2_subjects as sub', 'sub.id', '=', 'i.subject_id')
+            ->leftJoin('mentoria2_topics as top', 'top.id', '=', 'i.topic_id')
+            ->leftJoin('mentoria2_subtopics as subtop', 'subtop.id', '=', 'i.subtopic_id')
+            ->select('i.*', 'sub.name as subject_name', 'top.name as topic_name', 'subtop.name as subtopic_name', 's.contest_id', 's.type as schedule_type', 's.state as schedule_state')
             ->orderByRaw('i.planned_date IS NULL, i.planned_date')
             ->orderBy('i.position')
             ->get();
@@ -673,6 +678,150 @@ class StudyController extends Controller
         return $this->disableNotebook($tenant, $student->id, $notebook);
     }
 
+    public function studentReviews(Request $request, int $tenant): JsonResponse
+    {
+        $student = $request->user();
+        $this->access->assertCapability($student, $tenant, 'revisoes');
+        $perPage = min(max((int) $request->query('per_page', 50), 10), 200);
+
+        $query = DB::table('mentoria2_scheduled_reviews as r')
+            ->leftJoin('mentoria2_subjects as s', 's.id', '=', 'r.subject_id')
+            ->leftJoin('mentoria2_topics as t', 't.id', '=', 'r.topic_id')
+            ->where('r.tenant_id', $tenant)
+            ->where('r.student_id', $student->id)
+            ->where('r.is_active', true)
+            ->select(
+                'r.id',
+                'r.tenant_id',
+                'r.student_id',
+                'r.contest_id',
+                'r.subject_id',
+                'r.topic_id',
+                'r.subtopic_id',
+                'r.current_cycle',
+                'r.next_date',
+                'r.completed',
+                'r.completed_at',
+                'r.is_active',
+                's.name as subject_name',
+                't.name as topic_name'
+            );
+
+        if ($request->has('completed')) {
+            $query->where('r.completed', filter_var($request->query('completed'), FILTER_VALIDATE_BOOLEAN));
+        }
+        if ($request->has('due') && filter_var($request->query('due'), FILTER_VALIDATE_BOOLEAN)) {
+            $query->where('r.completed', false)->where('r.next_date', '<=', today()->toDateString());
+        }
+        if ($request->filled('contest_id')) {
+            $query->where('r.contest_id', $request->query('contest_id'));
+        }
+
+        $paginated = $query->orderByRaw('r.completed ASC, r.next_date IS NULL, r.next_date ASC')->paginate($perPage);
+
+        return response()->json([
+            'data' => $paginated->items(),
+            'meta' => [
+                'current_page' => $paginated->currentPage(),
+                'last_page' => $paginated->lastPage(),
+                'per_page' => $paginated->perPage(),
+                'total' => $paginated->total(),
+            ],
+            'links' => [
+                'first' => $paginated->url(1),
+                'last' => $paginated->url($paginated->lastPage()),
+                'prev' => $paginated->previousPageUrl(),
+                'next' => $paginated->nextPageUrl(),
+            ],
+        ]);
+    }
+
+    public function studentMockExams(Request $request, int $tenant): JsonResponse
+    {
+        $student = $request->user();
+        $this->access->assertCapability($student, $tenant, 'simulados');
+        $perPage = min(max((int) $request->query('per_page', 25), 5), 100);
+
+        $query = DB::table('mentoria2_mock_exams')
+            ->where('tenant_id', $tenant)
+            ->where('student_id', $student->id)
+            ->where('is_active', true);
+
+        if ($request->filled('contest_id')) {
+            $query->where('contest_id', $request->query('contest_id'));
+        }
+        if ($request->filled('type')) {
+            $query->where('type', $request->query('type'));
+        }
+
+        $paginated = $query->orderByRaw('performed_at IS NULL, performed_at DESC')->latest('created_at')->paginate($perPage);
+
+        $mockIds = collect($paginated->items())->pluck('id')->all();
+        $subjectResults = DB::table('mentoria2_mock_exam_subject_results')
+            ->where('tenant_id', $tenant)
+            ->whereIn('mock_exam_id', $mockIds)
+            ->where('is_active', true)
+            ->get()
+            ->groupBy('mock_exam_id');
+
+        $items = collect($paginated->items())->map(function ($mock) use ($subjectResults) {
+            $mock->result = is_string($mock->result) ? json_decode($mock->result, true) : (array) $mock->result;
+            $mock->configuration_used = is_string($mock->configuration_used) ? json_decode($mock->configuration_used, true) : (array) $mock->configuration_used;
+            $mock->subject_results = $subjectResults->get($mock->id, collect())->values();
+            return $mock;
+        });
+
+        return response()->json([
+            'data' => $items,
+            'meta' => [
+                'current_page' => $paginated->currentPage(),
+                'last_page' => $paginated->lastPage(),
+                'per_page' => $paginated->perPage(),
+                'total' => $paginated->total(),
+            ],
+            'links' => [
+                'first' => $paginated->url(1),
+                'last' => $paginated->url($paginated->lastPage()),
+                'prev' => $paginated->previousPageUrl(),
+                'next' => $paginated->nextPageUrl(),
+            ],
+        ]);
+    }
+
+    public function studentNotebooks(Request $request, int $tenant): JsonResponse
+    {
+        $student = $request->user();
+        $this->access->assertCapability($student, $tenant, 'cadernos');
+
+        $query = DB::table('mentoria2_notebooks as n')
+            ->leftJoin('mentoria2_edicts as e', 'e.id', '=', 'n.edict_id')
+            ->leftJoin('mentoria2_subjects as s', 's.id', '=', 'n.subject_id')
+            ->leftJoin('mentoria2_topics as t', 't.id', '=', 'n.topic_id')
+            ->where('n.tenant_id', $tenant)
+            ->where('n.student_id', $student->id)
+            ->where('n.is_active', true)
+            ->select('n.*', 'e.name as edict_name', 's.name as subject_name', 't.name as topic_name');
+
+        if ($request->filled('folder')) {
+            $query->where('n.folder', $request->query('folder'));
+        }
+        if ($request->filled('search')) {
+            $search = '%'.$request->query('search').'%';
+            $query->where(function ($sub) use ($search) {
+                $sub->where('n.title', 'like', $search)
+                    ->orWhere('n.content', 'like', $search)
+                    ->orWhere('n.folder', 'like', $search);
+            });
+        }
+
+        $notebooks = $query->orderBy('n.folder')->latest('n.updated_at')->get();
+
+        return response()->json([
+            'data' => $notebooks,
+            'folders' => $notebooks->pluck('folder')->unique()->filter()->values(),
+        ]);
+    }
+
     /* -----------------------------------------------------------------
      | Internals
      * ----------------------------------------------------------------- */
@@ -748,6 +897,7 @@ class StudyController extends Controller
             'contest_id' => ['required', 'uuid'],
             'mode' => ['nullable', 'in:agendado,ciclo,ciclo_inteligente'],
             'configuration' => ['nullable', 'array'],
+            'use_ai' => ['nullable', 'boolean'],
         ]);
 
         $configuration = $data['configuration'] ?? [];
@@ -761,7 +911,24 @@ class StudyController extends Controller
         }
 
         $configuration['tipo'] = $mode;
+        $useAi = ! empty($data['use_ai']) || ! empty($configuration['use_ai']);
+
+        if ($useAi && $studentRequest && ! $this->access->hasAiAccess($student, $tenant)) {
+            return response()->json([
+                'ok' => false,
+                'has_ai_access' => false,
+                'error' => 'ai_access_denied',
+                'message' => 'Este recurso de Inteligência Artificial não está incluso no seu plano. Solicite ao administrador a liberação do módulo de IA ou faça upgrade do seu curso.',
+            ], 403);
+        }
+
         $items = $this->safeEngineCall(fn () => $this->engine->generate($student, $tenant, $data['contest_id'], $configuration));
+
+        if ($useAi) {
+            $items = $this->enrichScheduleWithAi($tenant, (int) $student->id, $items, $configuration);
+        } else {
+            $configuration['generated_with_ai'] = false;
+        }
 
         $request->merge([
             'contest_id' => $data['contest_id'],
@@ -870,7 +1037,29 @@ class StudyController extends Controller
         if ($oldStatus !== 'concluido' && $newStatus === 'concluido' && $sessionId) {
             $gamification = $this->gamification->awardXp($tenant, $studentId, 'schedule_item_completed', 15, 'schedule_item_'.$row->id, 'schedule_item', $row->id);
         }
-        return response()->json(['ok' => true, 'gamification' => $gamification]);
+
+        $reviewSync = null;
+        if (
+            $oldStatus !== 'concluido'
+            && $newStatus === 'concluido'
+            && ! ((bool) ($row->is_fixed ?? false))
+            && empty($row->scheduled_review_id)
+            && ($row->subtopic_id || $row->topic_id)
+        ) {
+            try {
+                $reviewSync = $this->edictProgress->setStudied(
+                    $tenant,
+                    $studentId,
+                    $row->subtopic_id ? 'subtopico' : 'topico',
+                    (string) ($row->subtopic_id ?: $row->topic_id),
+                    true,
+                );
+            } catch (NotFoundHttpException) {
+                // Manual or stale schedule items may not belong to the student's current edict.
+            }
+        }
+
+        return response()->json(['ok' => true, 'gamification' => $gamification, 'review_sync' => $reviewSync]);
     }
 
     private function deleteItemAndLinkedSession(int $tenant, int $studentId, string $itemId): void
@@ -1395,6 +1584,9 @@ class StudyController extends Controller
             'id' => $id ?? (string) Str::uuid(),
             'tenant_id' => $tenant,
             'schedule_id' => $scheduleId,
+            'label' => $item['label'] ?? null,
+            'description' => $item['description'] ?? null,
+            'is_fixed' => (bool) ($item['is_fixed'] ?? false),
             'planned_date' => $item['planned_date'] ?? $item['dataPlanejada'] ?? null,
             'cycle_position' => $item['cycle_position'] ?? $item['posicaoCiclo'] ?? null,
             'subject_id' => $item['subject_id'] ?? $item['materiaId'] ?? null,
@@ -1773,7 +1965,57 @@ class StudyController extends Controller
 
         return $row;
     }
+
+    private function enrichScheduleWithAi(int $tenant, int $studentId, array $items, array &$configuration): array
+    {
+        $essayService = app(\Plugins\Mentoria2\Services\EssayService::class);
+        if (! $essayService->isAiConfigured($tenant) || empty($items)) {
+            return $items;
+        }
+
+        try {
+            $sampleItems = array_slice($items, 0, 10);
+            $titles = array_map(fn ($it) => ($it['subject'] ?? 'Matéria') . ' - ' . ($it['topic'] ?? 'Tópico'), $sampleItems);
+
+            $client = new \Plugins\AiMember\Services\OpenRouterClient($tenant);
+            $prompt = "Você é o Águia IA. Analise estes tópicos de estudo da rotina do aluno:\n"
+                . implode("\n", $titles) . "\n\n"
+                . "Retorne um JSON com recomendações pedagógicas sucintas:\n"
+                . "{\n  \"pedagogical_advice\": \"Dica mnemônica e estratégica para a rotina...\",\n  \"focus_alert\": \"Ponto de maior pegadinha nesta sequência...\"\n}";
+
+            $response = $client->chatCompletions([
+                'model' => 'openai/gpt-4o-mini',
+                'messages' => [
+                    ['role' => 'system', 'content' => 'Responda estritamente em JSON válido.'],
+                    ['role' => 'user', 'content' => $prompt],
+                ],
+                'response_format' => ['type' => 'json_object'],
+                'temperature' => 0.5,
+                'max_tokens' => 600,
+            ]);
+
+            $promptTokens = (int) ($response['usage']['prompt_tokens'] ?? 0);
+            $completionTokens = (int) ($response['usage']['completion_tokens'] ?? 0);
+            try {
+                app(\Plugins\Mentoria2\Services\AiUsageService::class)->log(
+                    $tenant,
+                    $studentId,
+                    null,
+                    'schedule_ai',
+                    'openai/gpt-4o-mini',
+                    $promptTokens,
+                    $completionTokens,
+                    ['topics_count' => count($items)]
+                );
+            } catch (\Throwable $e) {}
+
+            $resp = json_decode($response['choices'][0]['message']['content'] ?? '{}', true);
+            $configuration['ai_recommendations'] = $resp;
+            $configuration['generated_with_ai'] = true;
+        } catch (\Throwable $e) {
+            $configuration['ai_fallback'] = true;
+        }
+
+        return $items;
+    }
 }
-
-
-

@@ -320,58 +320,8 @@ class Mentoria2SeederService
                 'updated_at' => $now,
             ]);
 
-            // 7. Radar de Editais Abertos e Previstos
-            $radarItems = [
-                [
-                    'title' => 'Polícia Militar do Piauí - Soldado PM-PI',
-                    'organization' => 'Polícia Militar do Estado do Piauí',
-                    'board' => 'NUCEPE / FUESPI',
-                    'role' => 'Soldado da Polícia Militar',
-                    'salary' => 3850.00,
-                    'vacancies' => 1000,
-                    'sphere' => 'estadual',
-                    'state' => 'PI',
-                    'status' => 'edital_aberto',
-                    'registration_end' => '2026-10-25',
-                    'exam_date' => '2026-12-06',
-                    'is_featured' => true,
-                ],
-                [
-                    'title' => 'Polícia Civil do Piauí - Agente e Escrivão',
-                    'organization' => 'Polícia Civil do Estado do Piauí',
-                    'board' => 'Comissão Formada',
-                    'role' => 'Agente de Polícia e Escrivão',
-                    'salary' => 6800.00,
-                    'vacancies' => 400,
-                    'sphere' => 'estadual',
-                    'state' => 'PI',
-                    'status' => 'comissao_formada',
-                    'exam_date' => '2027-03-15',
-                    'is_featured' => true,
-                ],
-                [
-                    'title' => 'Polícia Rodoviária Federal - Policial Rodoviário Federal',
-                    'organization' => 'Departamento de Polícia Rodoviária Federal',
-                    'board' => 'Aguardando Autorização',
-                    'role' => 'Policial Rodoviário Federal',
-                    'salary' => 10500.00,
-                    'vacancies' => 1500,
-                    'sphere' => 'federal',
-                    'state' => null,
-                    'status' => 'previsto',
-                    'is_featured' => false,
-                ]
-            ];
+            // 7. O Radar não recebe dados demonstrativos; ele é preenchido somente por fontes auditáveis.
 
-            foreach ($radarItems as $r) {
-                DB::table('mentoria2_radar_contests')->insert(array_merge($r, [
-                    'id' => (string) Str::uuid(),
-                    'tenant_id' => $tenantId,
-                    'is_active' => true,
-                    'created_at' => $now,
-                    'updated_at' => $now,
-                ]));
-            }
 
             // 8. Turmas (Cohorts)
             $cohortId = (string) Str::uuid();

@@ -46,6 +46,150 @@ class PanelController extends Controller
         return response()->json($this->panelPayload($tenantId, $request->user()));
     }
 
+        public function students(Request $request): JsonResponse
+    {
+        $actor = $request->user();
+        $tenantId = $this->access->tenantId($actor);
+        $perPage = min(max((int) $request->query('per_page', 25), 5), 100);
+
+        $studentsList = $this->access->studentsForTenant($tenantId);
+
+        if ($request->filled('search')) {
+            $search = mb_strtolower(trim($request->query('search')));
+            $studentsList = $studentsList->filter(function ($s) use ($search) {
+                return str_contains(mb_strtolower($s->name), $search) || str_contains(mb_strtolower($s->email), $search);
+            });
+        }
+
+        $total = $studentsList->count();
+        $page = max((int) $request->query('page', 1), 1);
+        $paginatedStudents = $studentsList->slice(($page - 1) * $perPage, $perPage)->values();
+
+        $studentIds = $paginatedStudents->pluck('id')->all();
+
+        $sessionsStats = DB::table('mentoria2_study_sessions')
+            ->where('tenant_id', $tenantId)
+            ->where('is_active', true)
+            ->whereIn('student_id', $studentIds)
+            ->select(
+                'student_id',
+                DB::raw('COALESCE(SUM(CASE WHEN studied_at >= ' . DB::getPdo()->quote(now()->subDays(7)->toDateTimeString()) . ' THEN seconds ELSE 0 END), 0) as seconds_7d'),
+                DB::raw('MAX(studied_at) as last_study_at')
+            )
+            ->groupBy('student_id')
+            ->get()
+            ->keyBy('student_id');
+
+        $questionStats = DB::table('mentoria2_question_logs')
+            ->where('tenant_id', $tenantId)
+            ->where('is_active', true)
+            ->whereIn('student_id', $studentIds)
+            ->select(
+                'student_id',
+                DB::raw('COALESCE(SUM(solved), 0) as solved'),
+                DB::raw('COALESCE(SUM(correct), 0) as correct')
+            )
+            ->groupBy('student_id')
+            ->get()
+            ->keyBy('student_id');
+
+        $pendingReviews = DB::table('mentoria2_scheduled_reviews')
+            ->where('tenant_id', $tenantId)
+            ->where('is_active', true)
+            ->where('completed', false)
+            ->whereIn('student_id', $studentIds)
+            ->where(function ($query) {
+                $query->whereNull('next_date')->orWhere('next_date', '<=', today());
+            })
+            ->select('student_id', DB::raw('COUNT(*) as pending_count'))
+            ->groupBy('student_id')
+            ->get()
+            ->keyBy('student_id');
+
+        $cohortMap = Schema::hasTable('mentoria2_cohort_members')
+            ? DB::table('mentoria2_cohort_members as cm')
+                ->join('mentoria2_cohorts as ch', 'ch.id', '=', 'cm.cohort_id')
+                ->where('cm.tenant_id', $tenantId)
+                ->whereIn('cm.student_id', $studentIds)
+                ->select('cm.student_id', 'ch.name')
+                ->get()
+                ->groupBy('student_id')
+                ->map(fn ($rows) => $rows->pluck('name')->values())
+            : collect();
+
+        $contestMap = DB::table('mentoria2_student_contests as sc')
+            ->join('mentoria2_contests as c', 'c.id', '=', 'sc.contest_id')
+            ->where('sc.tenant_id', $tenantId)
+            ->whereIn('sc.student_id', $studentIds)
+            ->where('sc.is_active', true)
+            ->where('c.is_active', true)
+            ->orderBy('sc.position')
+            ->select('sc.student_id', 'c.name')
+            ->get()
+            ->groupBy('student_id')
+            ->map(fn ($rows) => $rows->pluck('name')->values());
+
+        $items = $paginatedStudents->map(function ($student) use ($sessionsStats, $questionStats, $pendingReviews, $cohortMap, $contestMap) {
+            $sess = $sessionsStats->get($student->id);
+            $qStat = $questionStats->get($student->id);
+            $rev = $pendingReviews->get($student->id);
+
+            $solved = (int) ($qStat?->solved ?? 0);
+            $correct = (int) ($qStat?->correct ?? 0);
+            $accuracy = $solved > 0 ? round(($correct / $solved) * 100, 1) : 0;
+            $studyHours7d = round(($sess?->seconds_7d ?? 0) / 3600, 1);
+            $lastStudy = $sess?->last_study_at;
+            $pendingCount = (int) ($rev?->pending_count ?? 0);
+
+            $daysWithoutStudy = $lastStudy
+                ? \Carbon\Carbon::parse($lastStudy)->startOfDay()->diffInDays(today())
+                : 999;
+
+            $riskLevel = 'verde';
+            $riskReason = 'Ritmo constante e em dia';
+            if ($daysWithoutStudy >= 2 || ($solved >= 10 && $accuracy < 50)) {
+                $riskLevel = 'vermelho';
+                $riskReason = $daysWithoutStudy >= 999
+                    ? 'Nenhum estudo registrado'
+                    : ($daysWithoutStudy >= 2 ? "Sem estudar há {$daysWithoutStudy} dias" : "Baixo rendimento em questões ({$accuracy}%)");
+            } elseif ($daysWithoutStudy === 1 || ($solved >= 10 && $accuracy < 70) || $pendingCount >= 5) {
+                $riskLevel = 'amarelo';
+                $riskReason = $daysWithoutStudy === 1
+                    ? 'Sem estudar ontem'
+                    : ($pendingCount >= 5 ? "{$pendingCount} revisões pendentes" : "Atenção ao rendimento ({$accuracy}%)");
+            }
+
+            return [
+                'id' => (int) $student->id,
+                'name' => $student->name,
+                'email' => $student->email,
+                'metrics' => [
+                    'study_hours_7d' => $studyHours7d,
+                    'answers' => $solved,
+                    'correct' => $correct,
+                    'accuracy' => $accuracy,
+                    'pending_reviews' => $pendingCount,
+                    'last_study_at' => $lastStudy,
+                    'days_without_study' => $daysWithoutStudy,
+                    'risk_level' => $riskLevel,
+                    'risk_reason' => $riskReason,
+                ],
+                'cohort_names' => $cohortMap->get($student->id, collect()),
+                'contest_names' => $contestMap->get($student->id, collect()),
+            ];
+        });
+
+        return response()->json([
+            'data' => $items,
+            'meta' => [
+                'current_page' => $page,
+                'last_page' => (int) ceil($total / $perPage),
+                'per_page' => $perPage,
+                'total' => $total,
+            ],
+        ]);
+    }
+
     public function student(Request $request, int $student): JsonResponse
     {
         $actor = $request->user();
@@ -157,24 +301,47 @@ class PanelController extends Controller
     public function enableProduct(Request $request, Product $product): RedirectResponse|JsonResponse
     {
         $data = $request->validate([
+            'access_mode' => ['sometimes', 'string', 'in:full,questions_only,mock_only,custom'],
             'capabilities' => ['sometimes', 'array'],
             'capabilities.*' => ['string', 'max:80'],
             'settings' => ['sometimes', 'array'],
         ]);
 
         $actor = $request->user();
+        $accessMode = $data['access_mode'] ?? null;
+        $capabilities = $data['capabilities'] ?? null;
+        $settings = $data['settings'] ?? [];
+
+        if ($accessMode === 'questions_only') {
+            $capabilities = ['questoes', 'cadernos', 'metricas'];
+        } elseif ($accessMode === 'mock_only') {
+            $capabilities = ['simulados', 'metricas'];
+        } elseif ($accessMode === 'full') {
+            $capabilities = AccessService::DEFAULT_CAPABILITIES;
+        } elseif ($capabilities === null) {
+            $capabilities = AccessService::DEFAULT_CAPABILITIES;
+        }
+
+        if ($accessMode !== null) {
+            $settings['access_mode'] = $accessMode;
+        }
+
         $this->access->enableProduct(
             $actor,
             $product,
-            $data['capabilities'] ?? AccessService::DEFAULT_CAPABILITIES,
-            $data['settings'] ?? [],
+            $capabilities,
+            $settings,
         );
 
         $tenantId = $this->access->tenantId($actor);
         $this->audit->record($tenantId, $actor, 'product.enabled', 'product', (string) $product->id, null, $data);
 
         return $request->expectsJson()
-            ? response()->json(['ok' => true])
+            ? response()->json([
+                'ok' => true,
+                'capabilities' => $capabilities,
+                'settings' => $settings,
+            ])
             : back()->with('success', 'Produto habilitado para o Mentoria2.');
     }
 
@@ -192,7 +359,7 @@ class PanelController extends Controller
 
     private function panelPayload(int $tenantId, ?\App\Models\User $actor = null): array
     {
-        $studentsList = $this->access->studentsForTenant($tenantId)->take(500);
+        $studentsList = $this->access->studentsForTenant($tenantId)->take(100);
         $studentIds = $studentsList->pluck('id')->all();
 
         $sessionsStats = DB::table('mentoria2_study_sessions')
@@ -268,7 +435,13 @@ class PanelController extends Controller
             ->groupBy('user_id')
             ->map(fn ($rows) => $rows->pluck('product_id')->map(fn ($id) => (string) $id)->values());
 
-        $students = $studentsList->map(function ($student) use ($tenantId, $sessionsStats, $questionStats, $pendingReviews, $cohortMap, $contestMap, $productMap) {
+        $bonusMap = DB::table('mentoria2_preferences')
+            ->where('tenant_id', $tenantId)
+            ->whereIn('student_id', $studentIds)
+            ->whereNotNull('bonus_full_access_until')
+            ->pluck('bonus_full_access_until', 'student_id');
+
+        $students = $studentsList->map(function ($student) use ($tenantId, $sessionsStats, $questionStats, $pendingReviews, $cohortMap, $contestMap, $productMap, $bonusMap) {
             $sess = $sessionsStats->get($student->id);
             $qStat = $questionStats->get($student->id);
             $rev = $pendingReviews->get($student->id);
@@ -317,6 +490,9 @@ class PanelController extends Controller
                 'cohort_names' => $cohortMap->get($student->id, collect()),
                 'contest_names' => $contestMap->get($student->id, collect()),
                 'product_ids' => $productMap->get($student->id, collect()),
+                'bonus_active' => (bool) ($bonusMap->get($student->id) && \Carbon\Carbon::parse($bonusMap->get($student->id))->isFuture()),
+                'bonus_until' => $bonusMap->get($student->id) ? \Carbon\Carbon::parse($bonusMap->get($student->id))->format('d/m/Y H:i') : null,
+                'bonus_days_left' => ($bonusMap->get($student->id) && \Carbon\Carbon::parse($bonusMap->get($student->id))->isFuture()) ? max(1, (int) ceil(now()->floatDiffInDays(\Carbon\Carbon::parse($bonusMap->get($student->id)), false))) : 0,
             ];
         })->values();
 
@@ -350,7 +526,7 @@ class PanelController extends Controller
 
         $rawQuestions = DB::table('mentoria2_question_bank')
             ->where('tenant_id', $tenantId)->where('is_active', true)
-            ->latest('created_at')->limit(1000)->get();
+            ->latest('created_at')->limit(150)->get();
         $questionTargets = $this->audience->targetsForMany($tenantId, 'question', $rawQuestions->pluck('id')->all());
         $questions = $rawQuestions->map(function ($question) use ($questionTargets) {
             $question->alternatives = $this->decodeJson($question->alternatives);
@@ -360,7 +536,7 @@ class PanelController extends Controller
 
         $rawDecks = DB::table('mentoria2_flashcard_decks')
             ->where('tenant_id', $tenantId)->where('owner_type', 'mentor')->where('is_active', true)
-            ->orderBy('position')->orderBy('name')->limit(500)->get();
+            ->orderBy('position')->orderBy('name')->limit(50)->get();
         $deckTargets = $this->audience->targetsForMany($tenantId, 'flashcard_deck', $rawDecks->pluck('id')->all());
         $decks = $rawDecks->map(function ($deck) use ($deckTargets) {
             $deck->targets = $deckTargets[(string) $deck->id] ?? [];
@@ -369,12 +545,12 @@ class PanelController extends Controller
 
         $cards = DB::table('mentoria2_flashcards')
             ->where('tenant_id', $tenantId)->whereIn('deck_id', $decks->pluck('id'))->where('is_active', true)
-            ->orderBy('created_at')->limit(5000)->get();
+            ->orderBy('created_at')->limit(200)->get();
         $cards = $this->decodeJsonColumns($cards, ['alternatives', 'alternative_explanations', 'tags']);
 
         $rawMaterials = DB::table('mentoria2_support_materials')
             ->where('tenant_id', $tenantId)->where('is_active', true)
-            ->orderBy('folder')->orderBy('title')->limit(1000)->get();
+            ->orderBy('folder')->orderBy('title')->limit(100)->get();
         $materialTargets = $this->audience->targetsForMany($tenantId, 'material', $rawMaterials->pluck('id')->all());
         $materials = $rawMaterials->map(function ($material) use ($materialTargets) {
             $material->targets = $materialTargets[(string) $material->id] ?? [];
@@ -412,9 +588,8 @@ class PanelController extends Controller
                 ->get()
             : collect();
 
-        $radarContests = Schema::hasTable('mentoria2_radar_contests')
-            ? DB::table('mentoria2_radar_contests')->where('is_active', true)->latest()->limit(50)->get()
-            : collect();
+        // O Radar é carregado por endpoint próprio para preservar paginação, proveniência e curadoria.
+        $radarContests = collect();
 
         return [
             'tenant_id' => $tenantId,
@@ -425,7 +600,13 @@ class PanelController extends Controller
             ],
             'cohorts' => $cohorts,
             'summary' => $this->metrics->tenantSummary($tenantId),
-            'mentorship' => ['student_home_banner' => $this->banners->forTenant($tenantId)],
+            'mentorship' => [
+                'student_home_banner' => $this->banners->forTenant($tenantId),
+                'platform_logo' => $this->banners->logoForTenant($tenantId),
+                'platform_branding' => $this->banners->brandingForTenant($tenantId),
+                'platform_colors' => $this->banners->platformColorsForTenant($tenantId),
+                'promotional_banners' => $this->banners->promotionalBannersForTenant($tenantId),
+            ],
             'available_capabilities' => AccessService::DEFAULT_CAPABILITIES,
             'products' => $this->access->productsForTenant($tenantId)->values(),
             'students' => $students,
@@ -458,6 +639,7 @@ class PanelController extends Controller
                     ->select('f.*', 's.name as student_name')
                     ->latest('f.created_at')->limit(100)->get()
                 : collect(),
+            'ai_stats' => app(\Plugins\Mentoria2\Services\AiUsageService::class)->getStats($tenantId),
             'student_app_base' => url('/mentoria2-estudos/'.$tenantId),
         ];
     }

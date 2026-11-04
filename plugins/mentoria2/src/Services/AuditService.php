@@ -4,6 +4,7 @@ namespace Plugins\Mentoria2\Services;
 
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
 class AuditService
@@ -18,8 +19,10 @@ class AuditService
             $details = ['source' => 'mentor_workspace'] + $details;
         }
 
+        $id = (string) Str::uuid();
+
         DB::table('mentoria2_audit_events')->insert([
-            'id' => (string) Str::uuid(),
+            'id' => $id,
             'tenant_id' => $tenantId,
             'actor_id' => $actor->id,
             'student_id' => $studentId,
@@ -29,6 +32,16 @@ class AuditService
             'details' => $details === [] ? null : json_encode($details, JSON_UNESCAPED_UNICODE),
             'created_at' => now(),
             'updated_at' => now(),
+        ]);
+
+        Log::info("Mentoria2 Audit [{$action}]", [
+            'audit_id' => $id,
+            'tenant_id' => $tenantId,
+            'actor_id' => $actor->id,
+            'student_id' => $studentId,
+            'entity' => $entity,
+            'entity_id' => $entityId,
+            'ip' => $request->ip(),
         ]);
     }
 }

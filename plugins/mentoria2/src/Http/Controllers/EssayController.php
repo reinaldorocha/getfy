@@ -27,7 +27,123 @@ class EssayController extends Controller
 
         return response()->json([
             'essays' => $essays,
+            'ai_configured' => $this->essayService->isAiConfigured($tenant),
         ]);
+    }
+
+    public function aiStatus(Request $request, int $tenant): JsonResponse
+    {
+        $this->access->assertStudentAccess($request->user(), $tenant);
+        $configured = $this->essayService->isAiConfigured($tenant);
+
+        return response()->json([
+            'configured' => $configured,
+            'message' => $configured
+                ? 'Member IA configurado e disponível para geração de propostas e correções analíticas.'
+                : 'A Inteligência Artificial (Member IA) ainda não foi configurada pelo mentor.',
+        ]);
+    }
+
+    public function generateTheme(Request $request, int $tenant): JsonResponse
+    {
+        $this->access->assertStudentAccess($request->user(), $tenant);
+
+        if (! $this->access->hasAiAccess($request->user(), $tenant)) {
+            return response()->json([
+                'ok' => false,
+                'has_ai_access' => false,
+                'error' => 'ai_access_denied',
+                'message' => 'Este recurso de Inteligência Artificial não está incluso no seu plano. Solicite ao administrador a liberação do módulo de IA ou faça upgrade do seu curso.',
+            ], 403);
+        }
+
+        $tipo = $request->input('tipo', 'dissertacao');
+        $banca = $request->input('banca');
+        $contestId = $request->input('contest_id');
+
+        if (! $this->essayService->isAiConfigured($tenant)) {
+            return response()->json([
+                'configured' => false,
+                'ai_available' => false,
+                'error' => 'unconfigured_ai',
+                'message' => 'A Inteligência Artificial (Member IA) ainda não foi configurada pelo mentor neste ambiente. Solicite a configuração nas opções da plataforma.',
+                'temas' => [],
+            ], 422);
+        }
+
+        $result = $this->essayService->generateThemes($tenant, (string) $tipo, $banca ? (string) $banca : null, $contestId ? (string) $contestId : null);
+
+        if (empty($result['temas']) && ! empty($result['error'])) {
+            return response()->json($result, 503);
+        }
+
+        return response()->json($result);
+    }
+
+    public function aiCorrection(Request $request, int $tenant): JsonResponse
+    {
+        $this->access->assertStudentAccess($request->user(), $tenant);
+
+        if (! $this->access->hasAiAccess($request->user(), $tenant)) {
+            return response()->json([
+                'ok' => false,
+                'has_ai_access' => false,
+                'error' => 'ai_access_denied',
+                'message' => 'Este recurso de Inteligência Artificial não está incluso no seu plano. Solicite ao administrador a liberação do módulo de IA ou faça upgrade do seu curso.',
+            ], 403);
+        }
+
+        if (! $this->essayService->isAiConfigured($tenant)) {
+            return response()->json([
+                'configured' => false,
+                'ai_available' => false,
+                'error' => 'unconfigured_ai',
+                'message' => 'A correção por IA está indisponível porque o Member IA não foi configurado pelo mentor.',
+            ], 422);
+        }
+
+        $validated = $request->validate([
+            'tema' => 'nullable|string',
+            'texto' => 'nullable|string',
+            'tipo' => 'nullable|string',
+            'foto_base64' => 'nullable|string',
+            'submission_id' => 'nullable|string',
+        ]);
+
+        $tema = ! empty($validated['tema']) ? trim($validated['tema']) : 'Tema dissertativo da banca';
+        $texto = ! empty($validated['texto']) ? trim($validated['texto']) : '';
+        $tipo = ! empty($validated['tipo']) ? trim($validated['tipo']) : 'dissertacao';
+
+        if (empty($texto) && empty($validated['foto_base64'])) {
+            return response()->json(['message' => 'Texto da redação ou foto da folha é obrigatório.'], 422);
+        }
+
+        if (empty($texto) && ! empty($validated['foto_base64'])) {
+            try {
+                $texto = $this->essayService->transcribeHandwrittenPhoto($tenant, (int) $request->user()->id, $validated['foto_base64']);
+            } catch (\Throwable $e) {
+                return response()->json(['message' => 'Falha no OCR da folha de redação: ' . $e->getMessage()], 422);
+            }
+        }
+
+        try {
+            $result = $this->essayService->evaluateContentWithAi(
+                $tenant,
+                (int) $request->user()->id,
+                $tema,
+                $texto,
+                $tipo,
+                $validated['submission_id'] ?? null
+            );
+
+            return response()->json($result);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'configured' => true,
+                'ai_available' => false,
+                'message' => $e->getMessage(),
+            ], 500);
+        }
     }
 
     public function show(Request $request, int $tenant, string $essay): JsonResponse
@@ -117,5 +233,47 @@ class EssayController extends Controller
             'submissions' => $submissions,
         ]);
     }
+
+    public function ocrTranscribe(Request $request, int $tenant): JsonResponse
+    {
+        $this->access->assertStudentAccess($request->user(), $tenant);
+
+        if (! $this->access->hasAiAccess($request->user(), $tenant)) {
+            return response()->json([
+                'ok' => false,
+                'has_ai_access' => false,
+                'error' => 'ai_access_denied',
+                'message' => 'Este recurso de Inteligência Artificial não está incluso no seu plano. Solicite ao administrador a liberação do módulo de IA ou faça upgrade do seu curso.',
+            ], 403);
+        }
+
+        if (! $this->essayService->isAiConfigured($tenant)) {
+            return response()->json([
+                'configured' => false,
+                'ai_available' => false,
+                'error' => 'unconfigured_ai',
+                'message' => 'A transcrição OCR por IA está indisponível porque o Member IA não foi configurado pelo mentor.',
+            ], 422);
+        }
+
+        $validated = $request->validate([
+            'foto_base64' => 'required|string',
+        ]);
+
+        try {
+            $transcribed = $this->essayService->transcribeHandwrittenPhoto($tenant, (int) $request->user()->id, $validated['foto_base64']);
+
+            return response()->json([
+                'ok' => true,
+                'transcribed_text' => $transcribed,
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'ok' => false,
+                'message' => $e->getMessage(),
+            ], 422);
+        }
+    }
 }
+
 

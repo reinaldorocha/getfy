@@ -602,6 +602,115 @@ class FlashcardController extends Controller
         return response()->json(['history' => $history]);
     }
 
+    public function studentDecks(Request $request, int $tenant): JsonResponse
+    {
+        $student = $request->user();
+        $this->access->assertCapability($student, $tenant, 'flashcards');
+
+        $visibleDeckIds = $this->audience->visibleIds($student, $tenant, 'flashcard_deck');
+        $ownDeckIds = DB::table('mentoria2_flashcard_decks')
+            ->where('tenant_id', $tenant)
+            ->where('student_id', $student->id)
+            ->where('owner_type', 'aluno')
+            ->where('is_active', true)
+            ->pluck('id')
+            ->map(fn ($id) => (string) $id)
+            ->all();
+
+        $allDeckIds = array_values(array_unique(array_merge($visibleDeckIds, $ownDeckIds)));
+        if ($allDeckIds === []) {
+            return response()->json(['data' => []]);
+        }
+
+        $decks = DB::table('mentoria2_flashcard_decks as d')
+            ->where('d.tenant_id', $tenant)
+            ->whereIn('d.id', $allDeckIds)
+            ->where('d.is_active', true)
+            ->where(function ($query) use ($ownDeckIds): void {
+                $query->whereIn('d.id', $ownDeckIds)->orWhere('d.content_status', 'publicado');
+            })
+            ->select('d.*', DB::raw('(select count(*) from mentoria2_flashcards where deck_id = d.id and is_active = 1) as cards_count'))
+            ->orderBy('d.position')
+            ->orderBy('d.name')
+            ->get();
+
+        return response()->json(['data' => $decks]);
+    }
+
+    public function studentDeckCards(Request $request, int $tenant, string $deck): JsonResponse
+    {
+        $student = $request->user();
+        $this->access->assertCapability($student, $tenant, 'flashcards');
+        $perPage = min(max((int) $request->query('per_page', 50), 10), 200);
+
+        $deckRow = DB::table('mentoria2_flashcard_decks')
+            ->where('tenant_id', $tenant)
+            ->where('id', $deck)
+            ->where('is_active', true)
+            ->first();
+
+        if (! $deckRow) {
+            throw new NotFoundHttpException('Baralho não encontrado.');
+        }
+
+        $owned = $deckRow->owner_type === 'aluno' && (int) $deckRow->student_id === (int) $student->id;
+        $mentorVisible = $deckRow->owner_type === 'mentor'
+            && $deckRow->content_status === 'publicado'
+            && $this->audience->canStudentAccess($student, $tenant, 'flashcard_deck', $deck);
+
+        if (! $owned && ! $mentorVisible) {
+            throw new NotFoundHttpException('Baralho fora do seu escopo.');
+        }
+
+        $paginated = DB::table('mentoria2_flashcards')
+            ->where('tenant_id', $tenant)
+            ->where('deck_id', $deck)
+            ->where('is_active', true)
+            ->when(! $owned, fn ($q) => $q->where('content_status', 'publicado'))
+            ->orderBy('created_at')
+            ->paginate($perPage);
+
+        $cardIds = collect($paginated->items())->pluck('id')->all();
+        $latest = DB::table('mentoria2_flashcard_reviews')
+            ->where('tenant_id', $tenant)
+            ->where('student_id', $student->id)
+            ->whereIn('card_id', $cardIds)
+            ->orderByDesc('reviewed_at')
+            ->get()
+            ->unique('card_id')
+            ->keyBy('card_id');
+
+        $items = collect($paginated->items())->map(function ($card) use ($latest) {
+            $review = $latest->get($card->id);
+            $card->alternatives = is_string($card->alternatives) ? json_decode($card->alternatives, true) : (array) $card->alternatives;
+            $card->alternative_explanations = is_string($card->alternative_explanations) ? json_decode($card->alternative_explanations, true) : (array) $card->alternative_explanations;
+            $card->tags = is_string($card->tags) ? json_decode($card->tags, true) : (array) $card->tags;
+            $card->repetitions = (int) ($review?->repetitions ?? 0);
+            $card->interval_days = (int) ($review?->interval_days ?? 0);
+            $card->ease_factor = (float) ($review?->ease_factor ?? 2.5);
+            $card->next_review = $review?->next_review;
+            $card->last_review = $review?->reviewed_at;
+            $card->last_quality = $review?->quality;
+            return $card;
+        });
+
+        return response()->json([
+            'data' => $items,
+            'meta' => [
+                'current_page' => $paginated->currentPage(),
+                'last_page' => $paginated->lastPage(),
+                'per_page' => $paginated->perPage(),
+                'total' => $paginated->total(),
+            ],
+            'links' => [
+                'first' => $paginated->url(1),
+                'last' => $paginated->url($paginated->lastPage()),
+                'prev' => $paginated->previousPageUrl(),
+                'next' => $paginated->nextPageUrl(),
+            ],
+        ]);
+    }
+
     private function validateDeck(Request $request, bool $studentOwned): array
     {
         if (! $request->filled('name') && $request->filled('title')) {

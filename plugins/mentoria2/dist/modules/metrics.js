@@ -1,4 +1,4 @@
-import { state, icon, escapeHtml, formatTimer } from './core.js?v=d6fd58c3ef81';
+import { state, icon, escapeHtml, formatTimer } from './core.js?v=b93e67d2d013';
 
 export   function viewProgress() {
     const student = window.M2Data.student || {};
@@ -144,7 +144,7 @@ export   function viewProgress() {
         <!-- Topo da Tela com Ações de Relatório e Exportação -->
         <div class="m2-page-header">
           <div class="m2-page-title-group">
-            <span class="m2-eyebrow">A16 · Painel Analítico & Métricas de Desempenho</span>
+            <span class="m2-eyebrow">Painel Analítico & Métricas de Desempenho</span>
             <h1 class="m2-page-title">Métricas de Desempenho</h1>
             <p class="m2-page-subtitle">Acompanhamento consolidado de horas líquidas, aproveitamento por matéria, constância e cobertura de edital.</p>
           </div>
@@ -422,7 +422,7 @@ export function viewGoals() {
       <div class="m2-content">
         <div class="m2-page-header">
           <div class="m2-page-title-group">
-            <span class="m2-eyebrow">A17 · Gamificação & Reconhecimento</span>
+            <span class="m2-eyebrow">Gamificação & Reconhecimento</span>
             <h1 class="m2-page-title">Metas e Conquistas</h1>
             <p class="m2-page-subtitle">Gamificação séria para manter o ritmo e a disciplina até o dia da prova.</p>
           </div>
@@ -491,7 +491,7 @@ export function viewRanking() {
       <div class="m2-content">
         <div class="m2-page-header">
           <div class="m2-page-title-group">
-            <span class="m2-eyebrow">A18 · Ranking Opcional e Participativo</span>
+            <span class="m2-eyebrow">Ranking Opcional e Participativo</span>
             <h1 class="m2-page-title">Ranking da Turma ${contestName}</h1>
             <p class="m2-page-subtitle">Adesão voluntária. Seu progresso é computado para aprendizado mesmo se você optar por sair do ranking.</p>
           </div>

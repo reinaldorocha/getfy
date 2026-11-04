@@ -43,6 +43,24 @@ class QuestionController extends Controller
         if ($request->filled('difficulty')) {
             $query->where('difficulty', $request->query('difficulty'));
         }
+        if ($request->filled('board')) {
+            $query->where('board', $request->query('board'));
+        }
+        if ($request->filled('format')) {
+            $format = $request->query('format');
+            if ($format === 'certo_errado') {
+                $query->where(function ($sub) {
+                    $sub->where('type', 'certo_errado')
+                        ->orWhereRaw('JSON_LENGTH(alternatives) = 2');
+                });
+            } elseif ($format === '4_alternativas') {
+                $query->where('type', 'multipla_escolha')
+                    ->whereRaw('JSON_LENGTH(alternatives) = 4');
+            } elseif ($format === '5_alternativas') {
+                $query->where('type', 'multipla_escolha')
+                    ->whereRaw('JSON_LENGTH(alternatives) = 5');
+            }
+        }
         if ($request->filled('content_status')) {
             $query->where('content_status', $request->query('content_status'));
         }
@@ -51,13 +69,24 @@ class QuestionController extends Controller
             $query->where(function ($sub) use ($search) {
                 $sub->where('prompt', 'like', $search)
                     ->orWhere('subject', 'like', $search)
-                    ->orWhere('topic', 'like', $search);
+                    ->orWhere('topic', 'like', $search)
+                    ->orWhere('board', 'like', $search);
             });
         }
 
         $paginated = $query->latest('created_at')->paginate($perPage);
         $questionIds = collect($paginated->items())->pluck('id')->all();
         $targets = $this->audience->targetsForMany($tenantId, 'question', $questionIds);
+
+        $distinctBoards = DB::table('mentoria2_question_bank')
+            ->where('tenant_id', $tenantId)
+            ->where('is_active', true)
+            ->whereNotNull('board')
+            ->where('board', '<>', '')
+            ->distinct()
+            ->orderBy('board')
+            ->pluck('board')
+            ->all();
 
         $items = collect($paginated->items())->map(function ($q) use ($targets) {
             $q->alternatives = is_string($q->alternatives) ? json_decode($q->alternatives, true) : (array) $q->alternatives;
@@ -72,6 +101,7 @@ class QuestionController extends Controller
                 'last_page' => $paginated->lastPage(),
                 'per_page' => $paginated->perPage(),
                 'total' => $paginated->total(),
+                'boards' => $distinctBoards,
             ],
             'links' => [
                 'first' => $paginated->url(1),
@@ -85,7 +115,7 @@ class QuestionController extends Controller
     public function studentIndex(Request $request, int $tenant): JsonResponse
     {
         $student = $request->user();
-        $this->access->assertStudentInTenant($student, $tenant);
+        $this->access->assertCapability($student, $tenant, 'questoes');
         $perPage = min(max((int) $request->query('per_page', 25), 5), 100);
 
         $visibleIds = $this->audience->visibleIds($student, $tenant, 'question');
@@ -112,17 +142,46 @@ class QuestionController extends Controller
         if ($request->filled('difficulty')) {
             $query->where('difficulty', $request->query('difficulty'));
         }
+        if ($request->filled('board')) {
+            $query->where('board', $request->query('board'));
+        }
+        if ($request->filled('format')) {
+            $format = $request->query('format');
+            if ($format === 'certo_errado') {
+                $query->where(function ($sub) {
+                    $sub->where('type', 'certo_errado')
+                        ->orWhereRaw('JSON_LENGTH(alternatives) = 2');
+                });
+            } elseif ($format === '4_alternativas') {
+                $query->where('type', 'multipla_escolha')
+                    ->whereRaw('JSON_LENGTH(alternatives) = 4');
+            } elseif ($format === '5_alternativas') {
+                $query->where('type', 'multipla_escolha')
+                    ->whereRaw('JSON_LENGTH(alternatives) = 5');
+            }
+        }
         if ($request->filled('search')) {
             $search = '%'.$request->query('search').'%';
             $query->where(function ($sub) use ($search) {
                 $sub->where('prompt', 'like', $search)
                     ->orWhere('subject', 'like', $search)
-                    ->orWhere('topic', 'like', $search);
+                    ->orWhere('topic', 'like', $search)
+                    ->orWhere('board', 'like', $search);
             });
         }
 
         $paginated = $query->latest('created_at')->paginate($perPage);
         $pageIds = collect($paginated->items())->pluck('id')->all();
+
+        $distinctBoards = DB::table('mentoria2_question_bank')
+            ->where('tenant_id', $tenant)
+            ->where('is_active', true)
+            ->whereNotNull('board')
+            ->where('board', '<>', '')
+            ->distinct()
+            ->orderBy('board')
+            ->pluck('board')
+            ->all();
 
         $lastAnswers = DB::table('mentoria2_question_answers')
             ->where('tenant_id', $tenant)
@@ -139,6 +198,7 @@ class QuestionController extends Controller
                 'id' => $q->id,
                 'subject' => $q->subject,
                 'topic' => $q->topic,
+                'board' => $q->board ?? null,
                 'type' => $q->type,
                 'prompt' => $q->prompt,
                 'alternatives' => is_string($q->alternatives) ? json_decode($q->alternatives, true) : (array) $q->alternatives,
@@ -149,6 +209,96 @@ class QuestionController extends Controller
                 'last_answer' => $ans?->answer,
                 'last_correct' => $ans?->is_correct !== null ? (bool) $ans->is_correct : null,
                 'last_answered_at' => $ans?->answered_at,
+            ];
+        });
+
+        return response()->json([
+            'data' => $items,
+            'meta' => [
+                'current_page' => $paginated->currentPage(),
+                'last_page' => $paginated->lastPage(),
+                'per_page' => $paginated->perPage(),
+                'total' => $paginated->total(),
+                'boards' => $distinctBoards,
+            ],
+            'links' => [
+                'first' => $paginated->url(1),
+                'last' => $paginated->url($paginated->lastPage()),
+                'prev' => $paginated->previousPageUrl(),
+                'next' => $paginated->nextPageUrl(),
+            ],
+        ]);
+    }
+
+    public function studentErrorNotebook(Request $request, int $tenant): JsonResponse
+    {
+        $student = $request->user();
+        $this->access->assertCapability($student, $tenant, 'questoes');
+        $perPage = min(max((int) $request->query('per_page', 25), 5), 100);
+
+        $query = DB::table('mentoria2_question_answers as qa')
+            ->join('mentoria2_question_bank as qb', 'qb.id', '=', 'qa.question_id')
+            ->where('qa.tenant_id', $tenant)
+            ->where('qa.student_id', $student->id)
+            ->where('qa.is_correct', 0)
+            ->select(
+                'qa.id',
+                'qa.question_id',
+                'qa.contest_id',
+                'qa.answer as student_answer',
+                'qa.answered_at',
+                'qb.subject',
+                'qb.topic',
+                'qb.board',
+                'qb.difficulty',
+                'qb.type',
+                'qb.prompt',
+                'qb.alternatives',
+                'qb.correct_answer',
+                'qb.explanation'
+            );
+
+        if ($request->filled('subject')) {
+            $query->where('qb.subject', $request->query('subject'));
+        }
+        if ($request->filled('topic')) {
+            $query->where('qb.topic', $request->query('topic'));
+        }
+        if ($request->filled('difficulty')) {
+            $query->where('qb.difficulty', $request->query('difficulty'));
+        }
+        if ($request->filled('board')) {
+            $query->where('qb.board', $request->query('board'));
+        }
+        if ($request->filled('search')) {
+            $search = '%'.$request->query('search').'%';
+            $query->where(function ($sub) use ($search) {
+                $sub->where('qb.prompt', 'like', $search)
+                    ->orWhere('qb.subject', 'like', $search)
+                    ->orWhere('qb.topic', 'like', $search);
+            });
+        }
+
+        $paginated = $query->orderByDesc('qa.answered_at')->paginate($perPage);
+
+        $items = collect($paginated->items())->map(function ($row) {
+            return [
+                'id' => $row->id,
+                'question_id' => $row->question_id,
+                'contest_id' => $row->contest_id,
+                'subject' => $row->subject,
+                'topic' => $row->topic,
+                'board' => $row->board,
+                'difficulty' => $row->difficulty,
+                'type' => $row->type,
+                'prompt' => $row->prompt,
+                'alternatives' => is_string($row->alternatives) ? json_decode($row->alternatives, true) : (array) $row->alternatives,
+                'student_answer' => $row->student_answer,
+                'correct_answer' => $row->correct_answer,
+                'explanation' => $row->explanation,
+                'answered_at' => $row->answered_at,
+                'errorCause' => 'Erro de conteúdo / pegadinha',
+                'personalNote' => null,
             ];
         });
 
@@ -249,6 +399,8 @@ class QuestionController extends Controller
         $data = $request->validate([
             'subject' => ['sometimes', 'required', 'string', 'max:150'],
             'topic' => ['sometimes', 'nullable', 'string', 'max:150'],
+            'board' => ['sometimes', 'nullable', 'string', 'max:100'],
+            'banca' => ['sometimes', 'nullable', 'string', 'max:100'],
             'type' => ['sometimes', 'in:multipla_escolha,certo_errado'],
             'prompt' => ['sometimes', 'required', 'string'],
             'alternatives' => ['sometimes', 'nullable', 'array'],
@@ -259,6 +411,13 @@ class QuestionController extends Controller
             'contest_id' => ['sometimes', 'nullable', 'uuid'],
             'targets' => ['sometimes', 'array'],
         ]);
+
+        if (array_key_exists('banca', $data)) {
+            if (! array_key_exists('board', $data)) {
+                $data['board'] = $data['banca'];
+            }
+            unset($data['banca']);
+        }
 
         if (array_key_exists('contest_id', $data) && $data['contest_id']) {
             $this->requireContest($tenantId, $data['contest_id']);
@@ -564,6 +723,8 @@ class QuestionController extends Controller
         $data = $request->validate([
             'subject' => ['required', 'string', 'max:150'],
             'topic' => ['nullable', 'string', 'max:150'],
+            'board' => ['nullable', 'string', 'max:100'],
+            'banca' => ['nullable', 'string', 'max:100'],
             'type' => ['nullable', 'in:multipla_escolha,certo_errado'],
             'prompt' => ['required', 'string'],
             'alternatives' => ['nullable', 'array'],
@@ -575,6 +736,11 @@ class QuestionController extends Controller
             'content_source' => ['nullable', 'string', 'max:80'],
             'content_confidence' => ['nullable', 'integer', 'min:0', 'max:100'],
         ]);
+
+        if (! empty($data['banca']) && empty($data['board'])) {
+            $data['board'] = $data['banca'];
+        }
+        unset($data['banca']);
 
         if (! empty($data['contest_id'])) {
             $tenantId = $this->access->tenantId($request->user());
@@ -598,6 +764,7 @@ class QuestionController extends Controller
         return [
             'subject' => trim((string) ($raw['subject'] ?? $raw['disciplina'] ?? '')),
             'topic' => ($raw['topic'] ?? $raw['assunto'] ?? null) ?: null,
+            'board' => ($raw['board'] ?? $raw['banca'] ?? null) ? trim((string) ($raw['board'] ?? $raw['banca'])) : null,
             'type' => (string) ($raw['type'] ?? $raw['tipo'] ?? 'multipla_escolha'),
             'prompt' => trim((string) ($raw['prompt'] ?? $raw['enunciado'] ?? '')),
             'alternatives' => $this->normalizeAlternatives(is_array($alternatives) ? $alternatives : []),
@@ -649,6 +816,7 @@ class QuestionController extends Controller
             'tenant_id' => $tenantId,
             'subject' => trim((string) $data['subject']),
             'topic' => $data['topic'] ?? null,
+            'board' => $data['board'] ?? null,
             'type' => $data['type'] ?? 'multipla_escolha',
             'prompt' => $data['prompt'],
             'alternatives' => ! empty($data['alternatives']) ? json_encode(array_values($data['alternatives']), JSON_UNESCAPED_UNICODE) : null,

@@ -1,5 +1,5 @@
 import { ref } from 'vue';
-import { requestJson } from '../api/client.js?v=d6fd58c3ef81';
+import { requestJson } from '../api/client.js?v=b93e67d2d013';
 
 /**
  * Composable para mutações (POST, PATCH, PUT, DELETE) com

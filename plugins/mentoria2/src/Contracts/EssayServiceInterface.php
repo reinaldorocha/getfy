@@ -35,6 +35,26 @@ interface EssayServiceInterface
     public function gradeWithAi(int $tenantId, string $submissionId): array;
 
     /**
+     * Verifica se o Member IA está ativamente configurado para o tenant.
+     */
+    public function isAiConfigured(int $tenantId): bool;
+
+    /**
+     * Gera propostas de temas contextualizados via Member IA.
+     */
+    public function generateThemes(int $tenantId, ?string $tipo = null, ?string $banca = null, ?string $contestId = null): array;
+
+    /**
+     * Avaliação analítica com espelho oficial da banca via Member IA.
+     */
+    public function evaluateContentWithAi(int $tenantId, int $studentId, string $tema, string $texto, string $tipo = 'dissertacao', ?string $submissionId = null): array;
+
+    /**
+     * Transcreve foto de folha de redação manuscrita via OCR multimodal.
+     */
+    public function transcribeHandwrittenPhoto(int $tenantId, ?int $studentId, string $fotoBase64): string;
+
+    /**
      * Definitive mentor grading with custom criteria feedback.
      */
     public function gradeByMentor(int $tenantId, User $mentor, string $submissionId, float $totalScore, array $criteriaScores, string $feedback): array;

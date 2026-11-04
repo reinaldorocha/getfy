@@ -1,4 +1,4 @@
-﻿import { state, icon, escapeHtml, plainTextWithBreaks, formatTimer, render } from './core.js';
+import { state, icon, escapeHtml, plainTextWithBreaks, formatTimer, render } from './core.js';
 
 export function formatDateTime(isoString) {
   if (!isoString) return '';
@@ -149,8 +149,17 @@ export function getFilteredStudyQuestions(subject) {
       return qTopName === state.selectedTopicId.toLowerCase() || qTopId === state.selectedTopicId;
     });
   }
-  if (state.questionDifficultyFilter && state.questionDifficultyFilter !== 'all') {
-    questions = questions.filter(q => (q.difficulty || '').toLowerCase() === state.questionDifficultyFilter.toLowerCase() || (q.level || '').toLowerCase() === state.questionDifficultyFilter.toLowerCase());
+  if (state.questionBoardFilter && state.questionBoardFilter !== 'all') {
+    questions = questions.filter(q => (q.board || '').toLowerCase() === state.questionBoardFilter.toLowerCase());
+  }
+  if (state.questionFormatFilter && state.questionFormatFilter !== 'all') {
+    if (state.questionFormatFilter === 'certo_errado') {
+      questions = questions.filter(q => q.type === 'certo_errado' || (Array.isArray(q.alternatives) && q.alternatives.length === 2));
+    } else if (state.questionFormatFilter === '4') {
+      questions = questions.filter(q => Array.isArray(q.alternatives) && q.alternatives.length === 4);
+    } else if (state.questionFormatFilter === '5') {
+      questions = questions.filter(q => Array.isArray(q.alternatives) && q.alternatives.length === 5);
+    }
   }
   if (state.questionStatusFilter && state.questionStatusFilter !== 'all') {
     questions = questions.filter(q => q.userStatus === state.questionStatusFilter);
@@ -167,7 +176,7 @@ function renderSubjectCardsView(subjects = []) {
       <div class="m2-content">
         <div class="m2-page-header">
           <div class="m2-page-title-group">
-            <span class="m2-eyebrow">A06 · Prática e Fixação</span>
+            <span class="m2-eyebrow">Prática e Fixação</span>
             <h1 class="m2-page-title">Banco de Questões</h1>
             <p class="m2-page-subtitle">Selecione uma disciplina com questões cadastradas para resolver questões focadas e treinar por assunto.</p>
           </div>
@@ -264,6 +273,9 @@ function renderSubjectStudyView(subject, subjects = []) {
     const qSubId = q.subjectId || ('sub-' + encodeURIComponent(qSubName));
     return qSubName === subject.name.toLowerCase() || (qSubId && qSubId === subject.id);
   });
+  const availableBoards = [...new Set(
+    (window.M2Data.available_boards || []).concat(allSubjectQuestions.map(q => q.board).filter(Boolean))
+  )].filter(Boolean).sort();
   const filteredQuestions = getFilteredStudyQuestions(subject);
 
   // Se concluiu a sessão da matéria
@@ -347,9 +359,9 @@ function renderSubjectStudyView(subject, subjects = []) {
             </div>
           </div>
 
-          <!-- Centro: Filtros Compactos Inline (Assunto, Dificuldade, Situação) -->
+          <!-- Centro: Filtros Compactos Inline (Assunto, Banca, Formato, Situação) -->
           <div class="m2-study-toolbar__filters">
-            <select class="m2-study-select-sm" data-action="change-topic-filter" title="Filtrar por assunto" style="max-width:210px;">
+            <select class="m2-study-select-sm" data-action="change-topic-filter" title="Filtrar por assunto" style="max-width:200px;">
               <option value="all" ${state.selectedTopicId === 'all' ? 'selected' : ''}>
                 Todos os Assuntos (${allSubjectQuestions.length})
               </option>
@@ -360,11 +372,18 @@ function renderSubjectStudyView(subject, subjects = []) {
               `).join('')}
             </select>
 
-            <select class="m2-study-select-sm" data-action="change-difficulty-filter" title="Filtrar por dificuldade" style="max-width:140px;">
-              <option value="all" ${state.questionDifficultyFilter === 'all' ? 'selected' : ''}>Dificuldade: Todas</option>
-              <option value="facil" ${state.questionDifficultyFilter === 'facil' ? 'selected' : ''}>Fácil</option>
-              <option value="medio" ${state.questionDifficultyFilter === 'medio' ? 'selected' : ''}>Médio</option>
-              <option value="dificil" ${state.questionDifficultyFilter === 'dificil' ? 'selected' : ''}>Difícil</option>
+            <select class="m2-study-select-sm" data-action="change-board-filter" title="Filtrar por banca examinadora" style="max-width:140px;">
+              <option value="all" ${!state.questionBoardFilter || state.questionBoardFilter === 'all' ? 'selected' : ''}>Banca: Todas</option>
+              ${availableBoards.map(b => `
+                <option value="${escapeHtml(b)}" ${state.questionBoardFilter === b ? 'selected' : ''}>${escapeHtml(b)}</option>
+              `).join('')}
+            </select>
+
+            <select class="m2-study-select-sm" data-action="change-format-filter" title="Filtrar por formato de alternativas" style="max-width:140px;">
+              <option value="all" ${!state.questionFormatFilter || state.questionFormatFilter === 'all' ? 'selected' : ''}>Formato: Todos</option>
+              <option value="certo_errado" ${state.questionFormatFilter === 'certo_errado' ? 'selected' : ''}>Certo / Errado</option>
+              <option value="4" ${state.questionFormatFilter === '4' ? 'selected' : ''}>4 Alternativas</option>
+              <option value="5" ${state.questionFormatFilter === '5' ? 'selected' : ''}>5 Alternativas</option>
             </select>
 
             <select class="m2-study-select-sm" data-action="filter-question-status" title="Filtrar por situação" style="max-width:140px;">
@@ -375,15 +394,11 @@ function renderSubjectStudyView(subject, subjects = []) {
             </select>
           </div>
 
-          <!-- Direita: Contador e Cronômetro Discreto -->
+          <!-- Direita: Contador de Questões (Sem timer, foco total no conteúdo) -->
           <div class="m2-study-toolbar__group" style="margin-left:auto;">
-            <span style="font-size:11px; color:var(--text-muted); white-space:nowrap;">
+            <span style="font-size:12px; font-weight:600; color:var(--text-muted); white-space:nowrap;">
               ${filteredQuestions.length} questão(ões)
             </span>
-            <div style="display:flex; align-items:center; gap:5px; background:var(--bg-card); padding:3px 8px; border-radius:var(--radius-sm); border:1px solid var(--border-color); font-size:11px;" title="Tempo de estudo da sessão">
-              <span style="color:var(--accent-teal);">${icon('timer', 12)}</span>
-              <strong style="font-variant-numeric:tabular-nums;" id="m2-session-timer">${formatTimer(state.timerSeconds || 0)}</strong>
-            </div>
           </div>
         </div>
 
@@ -620,7 +635,7 @@ export function viewFlashcards() {
       <div class="m2-content">
         <div class="m2-page-header">
           <div class="m2-page-title-group">
-            <span class="m2-eyebrow">A08 · Repetição Espaçada Inteligente</span>
+            <span class="m2-eyebrow">Repetição Espaçada Inteligente</span>
             <h1 class="m2-page-title">Meus Baralhos de Flashcards</h1>
             <p class="m2-page-subtitle">Algoritmo FSRS/SM-2 calcula os intervalos exatos para fixação na memória de longo prazo.</p>
           </div>
@@ -695,7 +710,7 @@ export function viewDeck() {
         <div class="m2-content">
           <div class="m2-page-header">
             <div class="m2-page-title-group">
-              <span class="m2-eyebrow">A09 · Estudo de Flashcards</span>
+              <span class="m2-eyebrow">Estudo de Flashcards</span>
               <h1 class="m2-page-title">Baralho Vazio</h1>
               <p class="m2-page-subtitle">Não há cartões disponíveis para revisão neste baralho.</p>
             </div>
@@ -721,7 +736,7 @@ export function viewDeck() {
       <div class="m2-content">
         <div class="m2-page-header">
           <div class="m2-page-title-group">
-            <span class="m2-eyebrow">A09 · ${deck.title}</span>
+            <span class="m2-eyebrow">${deck.title}</span>
             <h1 class="m2-page-title">Cartão ${(state.currentCardIndex % deck.cards.length) + 1} de ${deck.cards.length}</h1>
             <p class="m2-page-subtitle">Pressione Barra de Espaço ou clique para revelar a resposta</p>
           </div>
@@ -776,14 +791,20 @@ export function viewDeck() {
 
 // A10: Revisões Periódicas
 export function viewReviews() {
-  const reviews = window.M2Data.reviews || [];
+  const allReviews = window.M2Data.reviews || [];
+  const reviews = allReviews.filter(r => !r.contestId || !state.contestId || String(r.contestId) === String(state.contestId));
+
+  const activeContest = (window.M2Data.contests || []).find(c => String(c.id) === String(state.contestId)) || window.M2Data.contests?.[0];
+  const rawIntervals = (activeContest?.reviewIntervals || '1,7,30').split(',').map(s => s.trim()).filter(Boolean);
+  const intervalsDesc = rawIntervals.map(days => `D-${days} (${days === '1' ? '24h' : `${days} dias`})`).join(', ').replace(/, ([^,]*)$/, ' e $1');
+
   return `
       <div class="m2-content">
         <div class="m2-page-header">
           <div class="m2-page-title-group">
-            <span class="m2-eyebrow">A10 · Curva de Esquecimento</span>
+            <span class="m2-eyebrow">Curva de Esquecimento</span>
             <h1 class="m2-page-title">Revisões Programadas</h1>
-            <p class="m2-page-subtitle">Sincronizadas com o calendário em intervalos de 24h (D-1), 7 dias (D-7) e 30 dias (D-30).</p>
+            <p class="m2-page-subtitle">Sincronizadas com o calendário conforme a política deste concurso: <strong>${escapeHtml(intervalsDesc || 'D-1, D-7 e D-30')}</strong>.</p>
           </div>
         </div>
 
@@ -793,8 +814,8 @@ export function viewReviews() {
               ${icon('calendar', 24)}
             </div>
             <h3 style="font-size:18px; font-weight:700;">Nenhuma revisão agendada no momento</h3>
-            <p style="font-size:13px; color:var(--text-muted); margin:6px auto 0; max-width:440px;">
-              Conforme você for estudando tópicos do edital e concluindo blocos, as revisões D-1, D-7 e D-30 serão agendadas automaticamente aqui.
+            <p style="font-size:13px; color:var(--text-muted); margin:6px auto 0; max-width:480px; line-height:1.5;">
+              Conforme você estuda tópicos do edital e conclui blocos, as revisões periódicas (${escapeHtml(intervalsDesc || 'D-1, D-7 e D-30')}) serão agendadas automaticamente aqui e no seu calendário de estudos.
             </p>
           </div>
         ` : `
@@ -815,19 +836,29 @@ export function viewReviews() {
                   ${reviews.map(rev => `
                     <tr>
                       <td>
-                        <strong>${rev.subject}</strong>
-                        <span style="display:block; font-size:11px; color:var(--text-muted);">${rev.topic}</span>
+                        <strong>${escapeHtml(rev.subject || 'Disciplina')}</strong>
+                        <span style="display:block; font-size:11px; color:var(--text-muted);">${escapeHtml(rev.topic || 'Tópico do Edital')}</span>
                       </td>
-                      <td><span class="m2-pill m2-pill-violet">${rev.stage}</span></td>
-                      <td>${rev.targetDate}</td>
-                      <td>${rev.duration}</td>
+                      <td><span class="m2-pill m2-pill-violet">${escapeHtml(rev.stage)}</span></td>
+                      <td>${escapeHtml(rev.targetDate)}</td>
+                      <td>${escapeHtml(rev.duration)}</td>
                       <td>
-                        ${rev.status === 'delayed' ? '<span class="m2-pill m2-pill-rose">Atrasada</span>' : rev.status === 'pending' ? '<span class="m2-pill m2-pill-amber">Para Hoje</span>' : '<span class="m2-pill m2-pill-gray">Agendada</span>'}
+                        ${rev.status === 'completed'
+                          ? '<span class="m2-pill m2-pill-teal">✓ Concluída</span>'
+                          : rev.status === 'delayed'
+                            ? '<span class="m2-pill m2-pill-rose">Atrasada</span>'
+                            : rev.status === 'pending'
+                              ? '<span class="m2-pill m2-pill-amber">Para Hoje</span>'
+                              : '<span class="m2-pill m2-pill-gray">Agendada</span>'}
                       </td>
                       <td>
                         <div style="display:flex; gap:6px;">
-                          <button type="button" class="m2-btn m2-btn-sm m2-btn-primary" data-action="execute-review" data-id="${rev.id}">Revisar</button>
-                          <button type="button" class="m2-btn m2-btn-sm m2-btn-secondary" data-action="complete-review" data-id="${rev.id}">Concluir</button>
+                          ${rev.status !== 'completed' ? `
+                            <button type="button" class="m2-btn m2-btn-sm m2-btn-primary" data-action="execute-review" data-id="${escapeHtml(rev.id)}">Revisar</button>
+                            <button type="button" class="m2-btn m2-btn-sm m2-btn-secondary" data-action="complete-review" data-id="${escapeHtml(rev.id)}">Concluir</button>
+                          ` : `
+                            <span style="font-size:12px; color:var(--text-muted);">Concluída</span>
+                          `}
                         </div>
                       </td>
                     </tr>
@@ -848,7 +879,7 @@ export function viewMockExams() {
       <div class="m2-content">
         <div class="m2-page-header">
           <div class="m2-page-title-group">
-            <span class="m2-eyebrow">A11 · Testes de Desempenho Real</span>
+            <span class="m2-eyebrow">Testes de Desempenho Real</span>
             <h1 class="m2-page-title">Simulados Oficiais</h1>
             <p class="m2-page-subtitle">Provas cronometradas no mesmo estilo e peso da banca oficial.</p>
           </div>
@@ -872,14 +903,27 @@ export function viewMockExams() {
           </div>
         ` : `
           <div style="display:flex; flex-direction:column; gap:16px;">
-            ${mocks.map(mock => `
+            ${mocks.map(mock => {
+              const metaParts = [
+                mock.boardStyle,
+                mock.questionsCount ? `${mock.questionsCount} Questões` : null,
+                mock.timeLimitMinutes ? `${mock.timeLimitMinutes} minutos` : null
+              ].filter(Boolean);
+              const metaText = metaParts.length > 0 ? metaParts.join(' · ') : 'Simulado Oficial';
+              const completedBadgeParts = [
+                mock.score !== undefined && mock.score !== null ? `Nota: ${mock.score}%` : null,
+                mock.rank ? String(mock.rank) : null
+              ].filter(Boolean);
+              const completedBadgeText = completedBadgeParts.length > 0 ? completedBadgeParts.join(' · ') : 'Concluído';
+
+              return `
               <div class="m2-card">
                 <div class="m2-card-header">
                   <div>
-                    <h2 style="font-size:18px; font-weight:700;">${mock.title}</h2>
-                    <span style="font-size:12px; color:var(--text-muted);">${mock.boardStyle} · ${mock.questionsCount} Questões · ${mock.timeLimitMinutes} minutos</span>
+                    <h2 style="font-size:18px; font-weight:700;">${escapeHtml(mock.title || 'Simulado')}</h2>
+                    <span style="font-size:12px; color:var(--text-muted);">${escapeHtml(metaText)}</span>
                   </div>
-                  ${mock.status === 'completed' ? `<span class="m2-pill m2-pill-green">Nota: ${mock.score}% · ${mock.rank}</span>` : `<span class="m2-pill m2-pill-teal">Disponível</span>`}
+                  ${mock.status === 'completed' ? `<span class="m2-pill m2-pill-green">${escapeHtml(completedBadgeText)}</span>` : `<span class="m2-pill m2-pill-teal">Disponível</span>`}
                 </div>
                 <div style="display:flex; justify-content:flex-end; gap:8px;">
                   ${mock.status === 'completed' ? `
@@ -889,7 +933,7 @@ export function viewMockExams() {
                   `}
                 </div>
               </div>
-            `).join('')}
+            `;}).join('')}
           </div>
         `}
       </div>
@@ -933,7 +977,7 @@ export function viewMockResult() {
         <div class="m2-content">
           <div class="m2-page-header">
             <div class="m2-page-title-group">
-              <span class="m2-eyebrow">A12 · Relatório de Desempenho</span>
+              <span class="m2-eyebrow">Relatório de Desempenho</span>
               <h1 class="m2-page-title">Nenhum Simulado Realizado</h1>
               <p class="m2-page-subtitle">Realize um simulado para visualizar o relatório detalhado de erros e acertos.</p>
             </div>
@@ -956,7 +1000,7 @@ export function viewMockResult() {
       <div class="m2-content">
         <div class="m2-page-header">
           <div class="m2-page-title-group">
-            <span class="m2-eyebrow">A12 · Relatório de Desempenho</span>
+            <span class="m2-eyebrow">Relatório de Desempenho</span>
             <h1 class="m2-page-title">Resultado: ${mock.title}</h1>
             <p class="m2-page-subtitle">Realizado em ${mock.completedAt || 'Não informado'} · Classificação: ${mock.rank || '-'}</p>
           </div>
@@ -1009,27 +1053,56 @@ export function viewMockResult() {
     `;
 }
 
+function normalizeQuestionAlternatives(alts) {
+  if (!alts) return [];
+  if (typeof alts === 'string') {
+    try { alts = JSON.parse(alts); } catch (_) { return []; }
+  }
+  const letters = ['A', 'B', 'C', 'D', 'E'];
+  if (Array.isArray(alts)) {
+    return alts.map((item, idx) => {
+      const letter = letters[idx] || String(idx + 1);
+      if (typeof item === 'string') return { id: letter, text: item };
+      return { id: item.id || item.letter || letter, text: item.text || item.label || item.value || '' };
+    });
+  }
+  if (typeof alts === 'object' && alts !== null) {
+    return Object.entries(alts).map(([key, val]) => ({
+      id: String(key).trim().toUpperCase(),
+      text: typeof val === 'string' ? val : (val?.text || '')
+    }));
+  }
+  return [];
+}
+
 // A13: Caderno de Erros
 export function viewErrorNotebook() {
-  const errors = window.M2Data.errorNotebook || [];
+  const allErrors = window.M2Data.errorNotebook || [];
+  const errors = allErrors.filter(err => !err.contestId || !state.contestId || String(err.contestId) === String(state.contestId));
+
   return `
       <div class="m2-content">
         <div class="m2-page-header">
           <div class="m2-page-title-group">
-            <span class="m2-eyebrow">A13 · Aprendizado Orientado ao Erro</span>
+            <span class="m2-eyebrow">Aprendizado Orientado ao Erro</span>
             <h1 class="m2-page-title">Meu Caderno de Erros</h1>
-            <p class="m2-page-subtitle">Todas as questões que você errou ficam salvas aqui com sua justificativa pessoal para não cair na mesma pegadinha.</p>
+            <p class="m2-page-subtitle">Revise todas as questões em que você errou, comparando a alternativa marcada com o gabarito oficial.</p>
           </div>
+          ${errors.length > 0 ? `
+            <div class="m2-pill m2-pill-rose" style="font-weight:700; padding:6px 14px; font-size:12px;">
+              ${icon('alert-triangle', 14)} ${errors.length} ${errors.length === 1 ? 'questão errada' : 'questões erradas'}
+            </div>
+          ` : ''}
         </div>
 
         ${errors.length === 0 ? `
           <div class="m2-card" style="text-align:center; padding:48px 24px;">
-            <div style="width:48px; height:48px; border-radius:50%; background:var(--bg-surface); display:grid; place-items:center; margin:0 auto 12px; color:var(--accent-green);">
+            <div style="width:48px; height:48px; border-radius:50%; background:var(--bg-surface); display:grid; place-items:center; margin:0 auto 12px; color:var(--accent-teal);">
               ${icon('circle-check', 24)}
             </div>
             <h3 style="font-size:18px; font-weight:700;">Nenhum erro registrado no caderno</h3>
             <p style="font-size:13px; color:var(--text-muted); margin:6px auto 16px; max-width:440px;">
-              Quando você responder questões nas sessões de estudo ou simulados e errar, as questões virão para cá automaticamente para que você possa categorizar o motivo e reestudá-las.
+              Quando você responder questões nas sessões de estudo ou simulados e errar, as questões virão para cá automaticamente para que você possa reestudá-las.
             </p>
             <button type="button" class="m2-btn m2-btn-primary" data-nav="study-session">
               ${icon('circle-help', 16)} Praticar Questões
@@ -1037,23 +1110,82 @@ export function viewErrorNotebook() {
           </div>
         ` : `
           <div style="display:flex; flex-direction:column; gap:16px;">
-            ${errors.map(err => `
-              <div class="m2-card">
-                <div class="m2-card-header">
+            ${errors.map((err, index) => {
+              const dateStr = err.answeredAt ? new Date(err.answeredAt).toLocaleDateString('pt-BR') : '';
+              const alts = normalizeQuestionAlternatives(err.alternatives);
+              const studentLetter = String(err.studentAnswer || '').trim().toUpperCase();
+              const correctLetter = String(err.correctAnswer || '').trim().toUpperCase();
+
+              // Buscar o texto de cada uma
+              const studentAlt = alts.find(a => a.id === studentLetter) || { id: studentLetter, text: `Alternativa ${studentLetter}` };
+              const correctAlt = alts.find(a => a.id === correctLetter) || { id: correctLetter, text: `Alternativa ${correctLetter}` };
+
+              return `
+              <div class="m2-card" style="border:1px solid var(--border-color); padding:20px;">
+                <div class="m2-card-header" style="margin-bottom:12px; display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
                   <div>
-                    <span class="m2-pill m2-pill-rose">${icon('alert-triangle', 12)} Motivo: ${err.errorCause || 'Não categorizado'}</span>
-                    <strong style="font-size:15px; display:block; margin-top:6px;">${err.subject || ''} · ${err.topic || ''}</strong>
+                    <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:6px;">
+                      <span class="m2-pill m2-pill-rose" style="font-size:11px; font-weight:700;">
+                        ${icon('alert-triangle', 12)} Erro #${index + 1} ${dateStr ? `· ${dateStr}` : ''}
+                      </span>
+                      ${err.board ? `<span class="m2-pill m2-pill-gray" style="font-size:11px;">Banca: ${escapeHtml(err.board)}</span>` : ''}
+                      ${err.difficulty ? `<span class="m2-pill m2-pill-gray" style="font-size:11px;">Nível: ${escapeHtml(err.difficulty)}</span>` : ''}
+                    </div>
+                    <strong style="font-size:15px; color:var(--text-main); display:block;">
+                      ${escapeHtml(err.subject || 'Disciplina')} · <span style="font-weight:400; color:var(--text-muted);">${escapeHtml(err.topic || 'Tópico')}</span>
+                    </strong>
                   </div>
-                  <button type="button" class="m2-btn m2-btn-primary m2-btn-sm" data-nav="study-session">Refazer Questão</button>
+                  <button type="button" class="m2-btn m2-btn-primary m2-btn-sm" data-nav="study-session" style="white-space:nowrap;">
+                    ${icon('refresh-cw', 13)} Praticar Novamente
+                  </button>
                 </div>
-                ${err.personalNote ? `
-                  <div style="background:var(--bg-card); padding:12px; border-radius:var(--radius-md); font-size:13px; line-height:1.5;">
-                    <strong>Minha Anotação de Correção:</strong>
-                    <p style="color:var(--text-muted); margin-top:4px;">${err.personalNote}</p>
+
+                <!-- Enunciado da Questão -->
+                <div style="background:var(--bg-surface); padding:16px; border-radius:var(--radius-md); font-size:13px; line-height:1.6; color:var(--text-main); margin-bottom:14px; border:1px solid var(--border-color);">
+                  ${plainTextWithBreaks(err.prompt)}
+                </div>
+
+                <!-- Comparativo Destacado: Alternativa Errada Escolhida vs Alternativa Correta -->
+                <div class="m2-error-comparison-grid">
+                  <!-- Alternativa Errada Escolhida -->
+                  <div class="m2-error-choice-card wrong">
+                    <div class="m2-error-choice-header">
+                      <span class="m2-error-choice-badge wrong">
+                        ${icon('x-circle', 14)} Sua Resposta (Incorreta)
+                      </span>
+                      <span class="m2-error-choice-letter">Letra ${escapeHtml(studentLetter || '?')}</span>
+                    </div>
+                    <div class="m2-error-choice-text">
+                      ${escapeHtml(studentAlt.text || 'Opção selecionada no momento da resolução')}
+                    </div>
+                  </div>
+
+                  <!-- Alternativa Correta Oficial -->
+                  <div class="m2-error-choice-card correct">
+                    <div class="m2-error-choice-header">
+                      <span class="m2-error-choice-badge correct">
+                        ${icon('check-circle', 14)} Gabarito Oficial (Correta)
+                      </span>
+                      <span class="m2-error-choice-letter">Letra ${escapeHtml(correctLetter || '?')}</span>
+                    </div>
+                    <div class="m2-error-choice-text">
+                      ${escapeHtml(correctAlt.text || 'Gabarito oficial indicado pela banca examinadora')}
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Comentário do Professor -->
+                ${err.explanation ? `
+                  <div style="background:var(--bg-card); padding:12px 16px; border-radius:var(--radius-md); font-size:13px; line-height:1.6; border-left:4px solid var(--accent-teal); margin-top:14px; border:1px solid var(--border-color);">
+                    <div style="display:flex; align-items:center; gap:6px; color:var(--accent-teal); font-weight:700; margin-bottom:4px;">
+                      ${icon('sparkles', 15)} Comentário e Justificativa do Gabarito:
+                    </div>
+                    <p style="color:var(--text-main); margin:0;">${plainTextWithBreaks(err.explanation)}</p>
                   </div>
                 ` : ''}
               </div>
-            `).join('')}
+            `;
+            }).join('')}
           </div>
         `}
       </div>
@@ -1114,7 +1246,7 @@ export function viewNotebooks() {
     <div class="m2-content">
       <div class="m2-page-header">
         <div class="m2-page-title-group">
-          <span class="m2-eyebrow">A14 · Organização Pessoal</span>
+          <span class="m2-eyebrow">Organização Pessoal</span>
           <h1 class="m2-page-title">Cadernos de Anotações</h1>
           <p class="m2-page-subtitle">Páginas organizadas por pasta, vinculadas ao edital e prontas para revisão.</p>
         </div>
@@ -1175,56 +1307,165 @@ export function viewNoteEditor() {
   const selectedTopic = state.noteTopicId || note?.topic_id || '';
   const selectedEdict = state.noteEdictId || note?.edict_id || '';
 
+  // Preparar conteúdo inicial para a folha Word
+  let initialHtml = content;
+  if (!initialHtml) {
+    initialHtml = '<p><br></p>';
+  } else if (!initialHtml.includes('<p>') && !initialHtml.includes('<div>') && !initialHtml.includes('<h')) {
+    initialHtml = renderNotebookPreview(initialHtml);
+  }
+
+  // Contagem inicial de palavras
+  const plainText = content.replace(/<[^>]+>/g, ' ').trim();
+  const wordCount = plainText ? plainText.split(/\s+/).filter(Boolean).length : 0;
+  const charCount = plainText.length;
+
   return `
     <div class="m2-content">
-      <div class="m2-page-header">
-        <div class="m2-page-title-group">
-          <span class="m2-eyebrow">A15 · Caderno inteligente</span>
-          <h1 class="m2-page-title">${escapeHtml(title)}</h1>
-          <p class="m2-page-subtitle">Autosave, formatação segura e vínculo pedagógico sem sair da sua rotina.</p>
+      <!-- Cabeçalho do Editor em Linha Única (Ultra Compacto) -->
+      <div class="m2-note-single-header">
+        <div class="m2-note-sh-left">
+          <button type="button" class="m2-btn m2-btn-secondary m2-btn-sm" data-nav="notebooks" title="Voltar para a lista">
+            ${icon('arrow-left', 14)} Voltar
+          </button>
+          <div class="m2-note-sh-divider"></div>
+          <input id="m2-note-title" class="m2-note-sh-title" maxlength="255" value="${escapeHtml(title)}" placeholder="Título do documento..." title="Clique para editar o título">
+          <span id="m2-note-save-status" class="m2-note-sh-status">${escapeHtml(state.noteSaveStatus || 'Salvo')}</span>
         </div>
-        <div class="m2-note-actions">
-          <span id="m2-note-save-status" class="m2-save-status">${escapeHtml(state.noteSaveStatus)}</span>
-          <button type="button" class="m2-btn m2-btn-secondary" data-action="toggle-note-preview">${icon('eye', 16)} ${preview ? 'Editar' : 'Visualizar'}</button>
-          <button type="button" class="m2-btn m2-btn-secondary" data-action="toggle-mentor-share">${icon('share-2', 16)} ${state.noteSharedWithMentor ? 'Compartilhada' : 'Compartilhar'}</button>
-          <button type="button" class="m2-btn m2-btn-primary" data-action="save-note">${icon('check', 16)} Salvar</button>
+
+        <div class="m2-note-sh-center">
+          <div class="m2-note-sh-meta" title="Pasta">
+            ${icon('folder', 13)}
+            <input id="m2-note-folder" maxlength="60" value="${escapeHtml(folder)}" placeholder="Pasta...">
+          </div>
+          <div class="m2-note-sh-meta" title="Disciplina vinculada">
+            <select id="m2-note-subject">
+              <option value="">Sem disciplina</option>
+              ${subjects.map(subject => `<option value="${escapeHtml(subject.id)}" ${String(subject.id) === String(selectedSubject) ? 'selected' : ''}>${escapeHtml(subject.name)}</option>`).join('')}
+            </select>
+          </div>
+          <div class="m2-note-sh-meta" title="Tópico do edital">
+            <select id="m2-note-topic">
+              <option value="">Sem tópico</option>
+              ${topics.map(topic => `<option value="${escapeHtml(topic.id)}" ${String(topic.id) === String(selectedTopic) ? 'selected' : ''}>${escapeHtml(topic.name)}</option>`).join('')}
+            </select>
+          </div>
+          <select id="m2-note-edict" style="display:none;">
+            <option value="">Sem vínculo</option>
+            ${edicts.map(edict => `<option value="${escapeHtml(edict.id)}" ${String(edict.id) === String(selectedEdict) ? 'selected' : ''}>${escapeHtml(edict.name || edict.contest_name || 'Edital')}</option>`).join('')}
+          </select>
+          <input id="m2-note-color" type="color" value="${escapeHtml(color)}" class="m2-note-sh-color" title="Cor da etiqueta">
+        </div>
+
+        <div class="m2-note-sh-right">
+          <button type="button" class="m2-btn m2-btn-secondary m2-btn-sm" data-action="toggle-mentor-share" title="Compartilhar com o mentor para feedback">
+            ${icon('share-2', 13)} ${state.noteSharedWithMentor ? 'Compartilhada' : 'Compartilhar'}
+          </button>
+          <button type="button" class="m2-btn m2-btn-secondary m2-btn-sm" data-action="print-note" title="Imprimir ou exportar documento em PDF">
+            ${icon('printer', 13)} Imprimir
+          </button>
+          <button type="button" class="m2-btn m2-btn-primary m2-btn-sm" data-action="save-note">
+            ${icon('check', 14)} Salvar
+          </button>
         </div>
       </div>
 
-      <div class="m2-note-meta-grid">
-        <label>Título<input id="m2-note-title" maxlength="255" value="${escapeHtml(title)}" placeholder="Ex.: Prisão em flagrante"></label>
-        <label>Pasta<input id="m2-note-folder" maxlength="255" value="${escapeHtml(folder)}" placeholder="Ex.: Direito Penal"></label>
-        <label>Cor<input id="m2-note-color" type="color" value="${escapeHtml(color)}"></label>
-        <label>Edital<select id="m2-note-edict"><option value="">Sem vínculo</option>${edicts.map(edict => `<option value="${escapeHtml(edict.id)}" ${String(edict.id) === String(selectedEdict) ? 'selected' : ''}>${escapeHtml(edict.name || edict.contest_name || 'Edital')}</option>`).join('')}</select></label>
-        <label>Matéria<select id="m2-note-subject"><option value="">Sem vínculo</option>${subjects.map(subject => `<option value="${escapeHtml(subject.id)}" ${String(subject.id) === String(selectedSubject) ? 'selected' : ''}>${escapeHtml(subject.name)}</option>`).join('')}</select></label>
-        <label>Tópico<select id="m2-note-topic"><option value="">Sem vínculo</option>${topics.map(topic => `<option value="${escapeHtml(topic.id)}" ${String(topic.id) === String(selectedTopic) ? 'selected' : ''}>${escapeHtml(topic.name)}</option>`).join('')}</select></label>
-      </div>
+      <!-- Estrutura do Editor Word com Ribbon Toolbar -->
+      <div class="m2-word-editor-container">
+        <!-- Ribbon Toolbar (Faixa de Opções Word) -->
+        <div class="m2-word-ribbon" role="toolbar" aria-label="Ferramentas de formatação Word">
+          <!-- Histórico & Estilos -->
+          <div class="m2-word-ribbon-group">
+            <button type="button" class="m2-word-btn" data-action="word-exec" data-command="undo" title="Desfazer (Ctrl+Z)">${icon('rotate-ccw', 15)}</button>
+            <button type="button" class="m2-word-btn" data-action="word-exec" data-command="redo" title="Refazer (Ctrl+Y)">${icon('rotate-cw', 15)}</button>
+          </div>
 
-      <div class="m2-note-editor-card">
-        <div class="m2-note-formatbar" aria-label="Ferramentas de formatação">
-          <button type="button" data-action="note-format" data-format="bold"><strong>B</strong></button>
-          <button type="button" data-action="note-format" data-format="italic"><em>I</em></button>
-          <button type="button" data-action="note-format" data-format="highlight">Destaque</button>
-          <button type="button" data-action="note-format" data-format="heading">Título</button>
-          <button type="button" data-action="note-format" data-format="quote">Citação</button>
-          <button type="button" data-action="note-format" data-format="legal">Artigo</button>
-          <button type="button" data-action="note-format" data-format="map">Mapa mental</button>
+          <!-- Estilo de Parágrafo -->
+          <div class="m2-word-ribbon-group">
+            <select class="m2-word-select" data-action="word-format-block" title="Estilo de Título">
+              <option value="p">Texto Normal</option>
+              <option value="h1">Título 1 (Principal)</option>
+              <option value="h2">Título 2 (Seção)</option>
+              <option value="h3">Título 3 (Subseção)</option>
+              <option value="blockquote">Citação / Doutrina</option>
+            </select>
+          </div>
+
+          <!-- Formatação Básica -->
+          <div class="m2-word-ribbon-group">
+            <button type="button" class="m2-word-btn" data-action="word-exec" data-command="bold" title="Negrito (Ctrl+B)"><strong>B</strong></button>
+            <button type="button" class="m2-word-btn" data-action="word-exec" data-command="italic" title="Itálico (Ctrl+I)"><em>I</em></button>
+            <button type="button" class="m2-word-btn" data-action="word-exec" data-command="underline" title="Sublinhado (Ctrl+U)"><span style="text-decoration:underline;">U</span></button>
+            <button type="button" class="m2-word-btn" data-action="word-exec" data-command="strikeThrough" title="Tachado"><span style="text-decoration:line-through;">S</span></button>
+          </div>
+
+          <!-- Marca-Texto de Estudo -->
+          <div class="m2-word-ribbon-group" title="Marca-texto de estudo">
+            <button type="button" class="m2-word-btn" data-action="word-highlight" data-color="#fef08a" style="background:#fef08a; color:#1e293b; padding:4px 8px;" title="Destaque Amarelo">🖍️</button>
+            <button type="button" class="m2-word-btn" data-action="word-highlight" data-color="#bbf7d0" style="background:#bbf7d0; color:#064e3b; padding:4px 8px;" title="Destaque Verde">🖍️</button>
+            <button type="button" class="m2-word-btn" data-action="word-highlight" data-color="#bfdbfe" style="background:#bfdbfe; color:#1e3a8a; padding:4px 8px;" title="Destaque Azul">🖍️</button>
+            <button type="button" class="m2-word-btn" data-action="word-highlight" data-color="#fbcfe8" style="background:#fbcfe8; color:#831843; padding:4px 8px;" title="Destaque Rosa">🖍️</button>
+            <button type="button" class="m2-word-btn" data-action="word-exec" data-command="removeFormat" title="Limpar Destaque / Formatação">${icon('eraser', 14)}</button>
+          </div>
+
+          <!-- Alinhamento & Listas -->
+          <div class="m2-word-ribbon-group">
+            <button type="button" class="m2-word-btn" data-action="word-exec" data-command="justifyLeft" title="Alinhar à Esquerda">${icon('align-left', 15)}</button>
+            <button type="button" class="m2-word-btn" data-action="word-exec" data-command="justifyCenter" title="Centralizar">${icon('align-center', 15)}</button>
+            <button type="button" class="m2-word-btn" data-action="word-exec" data-command="justifyRight" title="Alinhar à Direita">${icon('align-right', 15)}</button>
+            <button type="button" class="m2-word-btn" data-action="word-exec" data-command="justifyFull" title="Justificar">${icon('align-justify', 15)}</button>
+            <button type="button" class="m2-word-btn" data-action="word-exec" data-command="insertUnorderedList" title="Lista com Marcadores">${icon('list', 15)}</button>
+            <button type="button" class="m2-word-btn" data-action="word-exec" data-command="insertOrderedList" title="Lista Numerada">${icon('list-ordered', 15)}</button>
+          </div>
+
+          <!-- Blocos Especiais de Concurso -->
+          <div class="m2-word-ribbon-group" style="border-right:none;">
+            <button type="button" class="m2-word-btn" data-action="word-insert-block" data-block="artigo" title="Inserir Bloco de Lei Seca">⚖️ Artigo de Lei</button>
+            <button type="button" class="m2-word-btn" data-action="word-insert-block" data-block="sumula" title="Inserir Bloco de Súmula">🏛️ Súmula</button>
+            <button type="button" class="m2-word-btn" data-action="word-insert-block" data-block="pegadinha" title="Inserir Alerta da Banca">⚡ Pegadinha</button>
+            <button type="button" class="m2-word-btn" data-action="word-insert-block" data-block="tabela" title="Inserir Tabela Comparativa">📊 Tabela</button>
+            <button type="button" class="m2-word-btn" data-action="word-insert-block" data-block="divider" title="Inserir Linha Divisória">➖ Linha</button>
+          </div>
         </div>
-        ${preview ? `<article class="m2-note-preview">${renderNotebookPreview(content) || '<p>Sem conteúdo para visualizar.</p>'}</article>` : `
-          <textarea id="m2-note-textarea" placeholder="Escreva seu resumo. Use os atalhos acima para estruturar o texto.">${escapeHtml(content)}</textarea>
-          <p class="m2-note-help">Destaque: <code>==trecho==</code> · Mapa: <code>[mapa]</code>, um item por linha, <code>[/mapa]</code>.</p>
-        `}
+
+        <!-- Folha de Papel do Documento Word -->
+        <div class="m2-word-sheet-wrapper">
+          <div
+            id="m2-note-editor-doc"
+            class="m2-word-sheet"
+            contenteditable="true"
+            spellcheck="true"
+            data-placeholder="Comece seu resumo, anotação de aula ou jurisprudência aqui..."
+          >${initialHtml}</div>
+        </div>
+
+        <!-- Barra de Status Word -->
+        <div class="m2-word-statusbar">
+          <div style="display:flex; align-items:center; gap:16px;">
+            <span>${icon('file-text', 13)} Página 1 de 1</span>
+            <span id="m2-doc-word-count"><strong>${wordCount}</strong> palavras</span>
+            <span id="m2-doc-char-count"><strong>${charCount}</strong> caracteres</span>
+          </div>
+          <div style="display:flex; align-items:center; gap:12px;">
+            <span>Português (Brasil)</span>
+            <span>·</span>
+            <span>Zoom: 100%</span>
+            <span>·</span>
+            <span style="color:var(--accent-teal);">${icon('check-circle', 12)} Modo Editor Word Ativo</span>
+          </div>
+        </div>
       </div>
     </div>
   `;
 }
+
 export function viewMaterials() {
   const materials = window.M2Data.materials || [];
   return `
       <div class="m2-content">
         <div class="m2-page-header">
           <div class="m2-page-title-group">
-            <span class="m2-eyebrow">A19 · Biblioteca Didática</span>
+            <span class="m2-eyebrow">Biblioteca Didática</span>
             <h1 class="m2-page-title">Materiais & PDFs do Edital</h1>
             <p class="m2-page-subtitle">Apostilas, esquemas e leis sintetizadas fornecidas pelo mentor e equipe Getfy.</p>
           </div>
@@ -1242,22 +1483,30 @@ export function viewMaterials() {
           </div>
         ` : `
           <div style="display:flex; flex-direction:column; gap:12px;">
-            ${materials.map(m => `
+            ${materials.map(m => {
+              const metaParts = [
+                m.topic,
+                m.size,
+                (m.pages && Number(m.pages) > 0 ? `${m.pages} páginas` : null)
+              ].filter(Boolean);
+              const metaText = metaParts.length > 0 ? metaParts.join(' · ') : 'Material didático em PDF';
+
+              return `
               <div class="m2-card" style="flex-direction:row; align-items:center; justify-content:space-between; flex-wrap:wrap;">
                 <div style="display:flex; align-items:center; gap:14px;">
                   <div style="width:40px; height:40px; border-radius:var(--radius-md); background:var(--accent-rose-soft); color:var(--accent-rose); display:grid; place-items:center;">
                     ${icon('file-text', 20)}
                   </div>
                   <div>
-                    <strong>${m.title}</strong>
-                    <span style="display:block; font-size:12px; color:var(--text-muted);">${m.topic || ''} · ${m.size || ''} · ${m.pages || 0} páginas</span>
+                    <strong>${escapeHtml(m.title || 'Material')}</strong>
+                    <span style="display:block; font-size:12px; color:var(--text-muted);">${escapeHtml(metaText)}</span>
                   </div>
                 </div>
                 <button type="button" class="m2-btn m2-btn-secondary m2-btn-sm" data-action="download-material">
                   ${icon('download', 14)} Baixar Arquivo
                 </button>
               </div>
-            `).join('')}
+            `;}).join('')}
           </div>
         `}
       </div>
@@ -1267,47 +1516,134 @@ export function viewMaterials() {
 // A20: Cursos Getfy
 export function viewCourses() {
   const courses = window.M2Data.courses || [];
+  const totalCourses = courses.length;
+
   return `
-      <div class="m2-content">
-        <div class="m2-page-header">
-          <div class="m2-page-title-group">
-            <span class="m2-eyebrow">A20 · Área de Membros Integrada</span>
-            <h1 class="m2-page-title">Meus Cursos Getfy</h1>
-            <p class="m2-page-subtitle">Aulas em vídeo integradas ao cronograma da Mentoria 2.0.</p>
-          </div>
+    <div class="m2-content">
+      <div class="m2-page-header" style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:16px;">
+        <div class="m2-page-title-group">
+          <span class="m2-eyebrow">Área de Membros</span>
+          <h1 class="m2-page-title">Meus Cursos</h1>
+          <p class="m2-page-subtitle">Aulas em vídeo e conteúdos complementares disponíveis na sua área de membros.</p>
         </div>
 
-        ${courses.length === 0 ? `
-          <div class="m2-card" style="text-align:center; padding:48px 24px;">
-            <div style="width:48px; height:48px; border-radius:50%; background:var(--bg-surface); display:grid; place-items:center; margin:0 auto 12px; color:var(--accent-teal);">
-              ${icon('video', 24)}
+        ${totalCourses > 0 ? `
+          <div style="display:flex; gap:10px; flex-wrap:wrap;">
+            <div class="m2-pill" style="background:var(--bg-card); border:1px solid var(--border-color); padding:6px 14px; border-radius:999px; font-size:12px; display:flex; align-items:center; gap:6px;">
+              ${icon('book-open', 14, 'text-teal')} <strong>${totalCourses}</strong> ${totalCourses === 1 ? 'Curso disponível' : 'Cursos disponíveis'}
             </div>
-            <h3 style="font-size:18px; font-weight:700;">Nenhum curso Getfy vinculado</h3>
-            <p style="font-size:13px; color:var(--text-muted); margin:6px auto 0; max-width:440px;">
-              Os cursos em vídeo cadastrados na sua conta Getfy aparecerão aqui sincronizados com as disciplinas do seu edital.
-            </p>
           </div>
-        ` : `
-          <div class="m2-grid-2">
-            ${courses.map(c => `
-              <div class="m2-card">
-                <h2 style="font-size:18px; font-weight:700;">${c.title}</h2>
-                <span style="font-size:12px; color:var(--text-muted);">${c.teacher || 'Getfy'} · ${c.completedLessons || 0} de ${c.totalLessons || 0} aulas concluídas</span>
-                <div class="m2-progress-track" style="margin-top:12px;">
-                  <div class="m2-progress-fill" style="width:${c.progressPct || 0}%;"></div>
+        ` : ''}
+      </div>
+
+      ${totalCourses === 0 ? `
+        <div class="m2-card" style="text-align:center; padding:56px 24px; border:1px dashed var(--border-color); background:var(--bg-card);">
+          <div style="width:56px; height:56px; border-radius:50%; background:var(--bg-surface); display:grid; place-items:center; margin:0 auto 16px; color:var(--accent-teal); border:1px solid var(--border-color);">
+            ${icon('video', 28)}
+          </div>
+          <h3 style="font-size:18px; font-weight:700; color:var(--text-main);">Nenhum curso em vídeo liberado nesta conta</h3>
+          <p style="font-size:13px; color:var(--text-muted); margin:8px auto 0; max-width:480px; line-height:1.5;">
+            Os cursos da sua Área de Membros aparecerão aqui automaticamente assim que vinculados à sua matrícula ou adquiridos na plataforma.
+          </p>
+        </div>
+      ` : `
+        <div class="m2-grid-2" style="gap:20px;">
+          ${courses.map(c => {
+            const courseTitle = c.name || c.title || 'Curso';
+            const courseUrl = c.member_area_url || ('/m/' + (c.checkout_slug || c.slug));
+            const modulesCount = Number(c.modules_count) || 1;
+
+            return `
+              <div class="m2-card" style="display:flex; flex-direction:column; justify-content:space-between; padding:0; overflow:hidden; border:1px solid var(--border-color); transition:transform 0.2s, box-shadow 0.2s;">
+                <!-- Header / Banner do Curso -->
+                <div style="position:relative; width:100%; height:140px; background:linear-gradient(135deg, rgba(16,185,129,0.15) 0%, rgba(99,102,241,0.25) 100%), #1e293b; display:flex; align-items:center; justify-content:center; overflow:hidden;">
+                  ${c.image_url ? `
+                    <img src="${escapeHtml(c.image_url)}" alt="${escapeHtml(courseTitle)}" style="width:100%; height:100%; object-fit:cover;" onerror="this.style.display='none'">
+                    <div style="position:absolute; inset:0; background:linear-gradient(to top, rgba(15,23,42,0.85) 0%, transparent 60%);"></div>
+                  ` : `
+                    <div style="display:flex; flex-direction:column; align-items:center; gap:8px; opacity:0.85;">
+                      <div style="width:48px; height:48px; border-radius:50%; background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.2); display:grid; place-items:center; color:#fff;">
+                        ${icon('play', 22)}
+                      </div>
+                      <span style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted);">Área de Membros</span>
+                    </div>
+                  `}
                 </div>
-                <div style="display:flex; justify-content:flex-end; margin-top:16px;">
-                  <button type="button" class="m2-btn m2-btn-primary m2-btn-sm" data-action="open-getfy-lesson">Assistir Aulas</button>
+
+                <!-- Conteúdo do Card -->
+                <div style="padding:18px; display:flex; flex-direction:column; flex:1; justify-content:space-between;">
+                  <div>
+                    <h3 style="font-size:16px; font-weight:700; color:var(--text-main); margin:0 0 6px 0; line-height:1.3;">
+                      ${escapeHtml(courseTitle)}
+                    </h3>
+                    <p style="font-size:12px; color:var(--text-muted); margin:0 0 14px 0; line-height:1.4; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;">
+                      ${escapeHtml(c.description || 'Assista a todas as videoaulas e baixe os materiais complementares deste curso.')}
+                    </p>
+
+                    <!-- Metadados -->
+                    <div style="display:flex; align-items:center; gap:12px; font-size:11px; color:var(--text-muted); margin-bottom:12px; flex-wrap:wrap;">
+                      <span style="display:flex; align-items:center; gap:4px;">
+                        ${icon('folder', 13, 'text-teal')} ${modulesCount} ${modulesCount === 1 ? 'módulo' : 'módulos'}
+                      </span>
+                    </div>
+                  </div>
+
+                  <!-- Botão de Ação: Somente Nova Aba -->
+                  <div style="border-top:1px solid var(--border-color); padding-top:14px; margin-top:8px;">
+                    <button
+                      type="button"
+                      class="m2-btn m2-btn-primary"
+                      data-action="open-course-new-tab"
+                      data-url="${escapeHtml(courseUrl)}"
+                      title="Abrir este curso em uma nova aba do navegador"
+                      style="display:flex; align-items:center; justify-content:center; gap:8px; width:100%;">
+                      ${icon('external-link', 14)} Acessar Curso em Nova Aba
+                    </button>
+                  </div>
                 </div>
               </div>
-            `).join('')}
-          </div>
-        `}
-      </div>
-    `;
+            `;
+          }).join('')}
+        </div>
+      `}
+    </div>
+  `;
 }
 
 export function viewRedacao() {
+  const hasAiAccess = window.M2Data?.has_ai_access !== false;
+  if (!hasAiAccess) {
+    return `
+      <div class="m2-content">
+        <div class="m2-page-header">
+          <div class="m2-page-title-group">
+            <span class="m2-eyebrow">Prática Discursiva & Produção Textual</span>
+            <h1 class="m2-page-title">Oficina de Redação com IA</h1>
+            <p class="m2-page-subtitle">Pratique redações temáticas no padrão da banca examinadora e receba correção detalhada por competências em segundos.</p>
+          </div>
+        </div>
+        <div class="m2-card" style="text-align:center; padding:54px 20px; max-width:620px; margin:32px auto;">
+          <div style="width:64px; height:64px; border-radius:50%; background:var(--accent-amber-soft); display:grid; place-items:center; margin:0 auto 16px; color:var(--accent-amber);">
+            ${icon('sparkles', 32)}
+          </div>
+          <h2 style="font-size:20px; font-weight:800; color:var(--text-main); margin-bottom:8px;">Recurso de IA Bloqueado</h2>
+          <p style="font-size:14px; color:var(--text-muted); max-width:460px; margin:0 auto 20px; line-height:1.6;">
+            A Oficina de Redação com correção analítica instantânea utiliza Inteligência Artificial e não está habilitada para o seu produto ou plano atual.
+          </p>
+          <div style="background:var(--bg-app); border:1px solid var(--border-color); border-radius:var(--radius-md); padding:12px 18px; display:inline-flex; align-items:center; gap:8px; margin-bottom:24px; font-weight:600; font-size:13px; color:var(--text-main);">
+            <span style="color:var(--accent-teal);">${icon('alert-circle', 16)}</span>
+            <span>Peça para o administrador ativar a IA para sua conta.</span>
+          </div>
+          <div>
+            <button type="button" class="m2-btn m2-btn-secondary" data-nav="today">
+              ${icon('arrow-left', 14)} Voltar para o Início
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
   const essay = window.M2Data.essayData;
   const theme = essay ? essay.currentTheme : null;
   const result = state.essayCorrectionResult;
@@ -1320,7 +1656,7 @@ export function viewRedacao() {
         <div class="m2-content">
           <div class="m2-page-header">
             <div class="m2-page-title-group">
-              <span class="m2-eyebrow">A24 · Prática Discursiva & Produção Textual</span>
+              <span class="m2-eyebrow">Prática Discursiva & Produção Textual</span>
               <h1 class="m2-page-title">Oficina de Redação com IA</h1>
               <p class="m2-page-subtitle">Pratique redações temáticas no padrão da banca examinadora e receba correção detalhada por competências em segundos.</p>
             </div>
@@ -1342,7 +1678,7 @@ export function viewRedacao() {
       <div class="m2-content">
         <div class="m2-page-header">
           <div class="m2-page-title-group">
-            <span class="m2-eyebrow">A24 · Prática Discursiva & Produção Textual</span>
+            <span class="m2-eyebrow">Prática Discursiva & Produção Textual</span>
             <h1 class="m2-page-title">Oficina de Redação com IA</h1>
             <p class="m2-page-subtitle">Pratique redações temáticas no padrão da banca examinadora e receba correção detalhada por competências em segundos.</p>
           </div>

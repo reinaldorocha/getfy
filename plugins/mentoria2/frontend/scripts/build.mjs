@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -7,7 +7,7 @@ const frontend = fileURLToPath(new URL('..', import.meta.url));
 const dist = fileURLToPath(new URL('../../dist/', import.meta.url));
 
 await mkdir(dist, { recursive: true });
-const files = [
+const baseFiles = [
   'plugin-ui.js',
   'admin.js',
   'student.js',
@@ -28,19 +28,22 @@ const files = [
   'm2-icons.js',
   'm2-data.js',
   'm2-app.js',
-  'modules/core.js',
-  'modules/shell.js',
-  'modules/routine.js',
-  'modules/curriculum.js',
-  'modules/study.js',
-  'modules/metrics.js',
-  'modules/mentor.js',
-  'modules/mentor-resources.js',
-  'modules/ai.js',
-  'modules/tutor-client.js',
-  'modules/events.js',
   'plugin-ui.css'
 ];
+
+async function listModuleFiles(relativeDirectory = 'modules') {
+  const entries = await readdir(`${frontend}/src/${relativeDirectory}`, { withFileTypes: true });
+  const files = await Promise.all(entries.map(async entry => {
+    const relativePath = `${relativeDirectory}/${entry.name}`;
+    if (entry.isDirectory()) return listModuleFiles(relativePath);
+    return entry.isFile() && entry.name.endsWith('.js') ? [relativePath] : [];
+  }));
+  return files.flat();
+}
+
+// Modules can now be organized in nested folders (controllers, stores, etc.).
+// Keeping this discovery recursive prevents a successful build with missing assets.
+const files = [...baseFiles, ...(await listModuleFiles()).sort()];
 
 const sourceFiles = await Promise.all(files.map(async (file) => [file, await readFile(`${frontend}/src/${file}`, 'utf8')]));
 const version = createHash('sha256')

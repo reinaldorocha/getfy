@@ -1,4 +1,4 @@
-import { state, icon, escapeHtml, plainTextWithBreaks, formatTimer } from './core.js?v=d6fd58c3ef81';
+import { state, icon, escapeHtml, plainTextWithBreaks, formatTimer } from './core.js?v=b93e67d2d013';
 
 export function renderTopbar() {
     const unread = Number(window.M2Data?.notifications?.unread_count || 0);
@@ -15,6 +15,11 @@ export function renderTopbar() {
           <span style="font-size:13px; font-weight:600; color:var(--text-main); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:220px;">
             ${escapeHtml(contest.name)}
           </span>
+          ${(!isMentor && window.M2Data?.bonus_access?.is_active) ? `
+            <div style="background:linear-gradient(135deg, rgba(245,158,11,0.15), rgba(217,119,6,0.25)); border:1px solid rgba(245,158,11,0.4); color:#d97706; padding:3px 10px; border-radius:999px; font-size:11px; font-weight:700; display:flex; align-items:center; gap:5px;" title="Degustação completa liberada pelo mentor">
+              ${icon('zap', 12)} Bônus 7 Dias Ativo (${window.M2Data.bonus_access.days_left}d)
+            </div>
+          ` : ''}
         </div>
 
         <div class="m2-topbar-right">
@@ -29,96 +34,159 @@ export function renderTopbar() {
     `;
   }
 
+export function renderDesktopNotification() {
+    const unread = Number(window.M2Data?.notifications?.unread_count || 0);
+    return `<button type="button" class="m2-desktop-notification m2-btn-icon" data-action="open-notifications" title="Notificacoes pedagogicas" aria-label="Abrir central de notificacoes" style="position:relative;">
+      ${icon('bell', 18)}${unread ? `<span class="m2-notification-badge">${unread > 99 ? '99+' : unread}</span>` : ''}
+    </button>`;
+  }
+
   /**
    * RENDERIZAÇÃO DA SIDEBAR (Aluno vs Mentor)
    */
+  export function renderStudentProfileCorner() {
+    const isMentor = state.mode === 'mentor' || (state.screen && state.screen.startsWith('mentor-'));
+    const contests = window.M2Data?.contests || [];
+    const contest = contests.find(item => String(item.id) === String(state.contestId)) || contests[0] || null;
+
+    const currentTheme = state.theme || 'dark';
+
+    const userInitial = isMentor
+      ? (window.M2Data?.mentor?.initials || (window.M2Data?.mentor?.name ? window.M2Data.mentor.name[0] : 'M'))
+      : (window.M2Data?.student?.initials || (window.M2Data?.student?.name ? window.M2Data.student.name[0] : 'A'));
+    const userName = isMentor
+      ? (window.M2Data?.mentor?.name || 'Mentor')
+      : (window.M2Data?.student?.name || 'Aluno');
+    const userRole = isMentor
+      ? (window.M2Data?.mentor?.role || 'Painel do Mentor')
+      : 'Meu perfil';
+    const profileAction = isMentor
+      ? 'open-mentor-profile-menu'
+      : 'open-student-profile-menu';
+
+    return `<div class="m2-student-top-actions">
+      ${contests.length ? `
+        <div class="m2-top-contest-box" title="Concurso Foco Ativo">
+          <span class="m2-top-contest-prefix">${icon('shield', 15)}</span>
+          <select data-action="change-contest" aria-label="Trocar concurso foco" class="m2-top-contest-select">
+            ${contests.map(item => `<option value="${item.id}" ${String(item.id) === String(contest?.id) ? 'selected' : ''}>${escapeHtml(item.name)}</option>`).join('')}
+          </select>
+          <span class="m2-top-contest-chevron">${icon('chevron-down', 13)}</span>
+        </div>` : ''}
+      <button type="button" class="m2-top-theme-btn" data-action="toggle-theme" title="Alternar para tema ${currentTheme === 'dark' ? 'claro' : 'escuro'}" aria-label="Alternar tema">
+        ${icon(currentTheme === 'dark' ? 'sun' : 'moon', 15)}
+        <span>${currentTheme === 'dark' ? 'Tema Claro' : 'Tema Escuro'}</span>
+      </button>
+      <button type="button" class="m2-student-profile-corner" data-action="${profileAction}" aria-haspopup="menu" aria-label="Abrir perfil">
+        <span class="m2-avatar">${escapeHtml(userInitial || '')}</span>
+        <span class="m2-user-info"><span class="m2-user-name">${escapeHtml(userName || '')}</span><span class="m2-user-role">${escapeHtml(userRole || '')}</span></span>
+        ${icon('chevron-down', 14)}
+      </button>
+    </div>`;
+  }
+
   export function renderSidebar() {
     const isMentor = state.mode === 'mentor';
     const isWorkspace = state.mode === 'workspace';
     const contests = window.M2Data?.contests || [];
     const contest = contests.find(c => String(c.id) === String(state.contestId)) || contests[0] || { name: 'Não informado', role: '', id: '' };
 
+    const branding = window.M2Data?.mentorship?.platform_branding || {};
+    const brandName = branding.brand_name || 'Mentoria 2.0';
+    const mentorBadge = branding.mentor_panel_label || 'Painel do Mentor';
+    const studentBadge = branding.student_area_label || 'Área do Aluno';
+    const platformLogo = window.M2Data?.mentorship?.platform_logo?.url || null;
+    const brandmarkHtml = platformLogo
+      ? `<span class="m2-brandmark m2-brandmark-has-logo"><img src="${escapeHtml(platformLogo)}" alt="${escapeHtml(brandName)}" class="m2-brand-logo-img"></span>`
+      : `<span class="m2-brandmark">${icon('graduation-cap', 20)}</span>`;
+
     if (isMentor) {
       const mentorAlerts = window.M2Data.mentor?.alertStudentsCount || 0;
       const mentorFeedbacksCount = (window.M2Data.mentorFeedbacks || []).length;
       // Menu do Mentor (M01 a M20)
       const mentorNav = [
-        { section: 'Visão Geral', items: [
+        { id: 'mentor-visao-geral', section: 'Visão geral', color: '#f59e0b', defaultOpen: true, items: [
           { id: 'mentor-overview', label: 'Radar da Mentoria', icon: 'layout-dashboard', badge: mentorAlerts > 0 ? String(mentorAlerts) : '' },
+        ]},
+        { id: 'mentor-alunos', section: 'Alunos e turmas', color: '#10b981', defaultOpen: true, items: [
           { id: 'mentor-students', label: 'Alunos', icon: 'users' },
           { id: 'mentor-cohorts', label: 'Turmas', icon: 'folder' },
-          { id: 'mentor-contests', label: 'Concursos & Editais', icon: 'shield' }
+          { id: 'mentor-feedback', label: 'Feedbacks pedagógicos', icon: 'message-square', badge: mentorFeedbacksCount > 0 ? String(mentorFeedbacksCount) : '' },
         ]},
-        { section: 'Conteúdos & Banco', items: [
+        { id: 'mentor-planejamento', section: 'Planejamento', color: '#ec4899', defaultOpen: true, items: [
+          { id: 'mentor-contests', label: 'Concursos & Editais', icon: 'shield' },
+          { id: 'mentor-radar-editais', label: 'Radar de Editais', icon: 'radar' },
+          { id: 'mentor-import-review', label: 'Importar Edital', icon: 'sparkles' }
+        ]},
+        { id: 'mentor-conteudos', section: 'Conteúdos e avaliações', color: '#6366f1', defaultOpen: true, items: [
           { id: 'mentor-contents', label: 'Biblioteca de Conteúdos', icon: 'layers' },
+          { id: 'mentor-materials', label: 'Materiais & PDFs', icon: 'file-text' },
           { id: 'mentor-questions', label: 'Banco de Questões', icon: 'circle-help' },
           { id: 'mentor-flashcards', label: 'Baralhos Oficiais', icon: 'rotate-3d' },
-          { id: 'mentor-materials', label: 'Materiais & PDFs', icon: 'file-text' },
           { id: 'mentor-mock-exams', label: 'Simulados', icon: 'clipboard-list' },
-          { id: 'mentor-import-review', label: 'Importador de Edital (IA)', icon: 'sparkles' },
-          { id: 'mentor-prompts', label: 'Prompts IA & Importação JSON', icon: 'sparkles', badge: 'Novo' }
         ]},
-        { section: 'Acompanhamento', items: [
-          { id: 'mentor-goals', label: 'Metas & Desafios', icon: 'target' },
-          { id: 'mentor-feedback', label: 'Feedbacks & Mensagens', icon: 'message-square', badge: mentorFeedbacksCount > 0 ? String(mentorFeedbacksCount) : '' },
+        { id: 'mentor-resultados', section: 'Resultados', color: '#10b981', defaultOpen: true, items: [
           { id: 'mentor-reports', label: 'Relatórios & Métricas', icon: 'chart-no-axes-combined' },
-          { id: 'mentor-audit', label: 'Trilha de Auditoria', icon: 'activity' }
         ]},
-        { section: 'Administração', items: [
+        { id: 'mentor-ia', section: 'IA e automações', color: '#06b6d4', defaultOpen: true, items: [
+          { id: 'mentor-prompts', label: 'Prompts IA & Importação JSON', icon: 'sparkles', badge: 'Novo' },
+          { id: 'mentor-ai-costs', label: 'Consumo & Custos de IA', icon: 'sparkles', badge: 'IA' },
+        ]},
+        { id: 'mentor-admin', section: 'Administração', color: '#8b5cf6', defaultOpen: true, items: [
           { id: 'mentor-products', label: 'Produtos Getfy', icon: 'award' },
-          { id: 'mentor-settings', label: 'Configurações', icon: 'settings' }
+          { id: 'mentor-settings', label: 'Configurações', icon: 'settings' },
+          { id: 'mentor-audit', label: 'Trilha de Auditoria', icon: 'activity' }
         ]}
       ];
 
       return `
         <aside class="m2-sidebar ${state.sidebarCollapsed ? 'collapsed' : ''}" id="m2-sidebar">
           <div class="m2-brand">
-            <span class="m2-brandmark">${icon('graduation-cap', 20)}</span>
+            ${brandmarkHtml}
             <div class="m2-brand-text">
-              <span class="m2-brand-name">Mentoria 2.0</span>
-              <span class="m2-brand-badge">Painel do Mentor</span>
+              <span class="m2-brand-name">${escapeHtml(brandName)}</span>
+              <span class="m2-brand-badge">${escapeHtml(mentorBadge)}</span>
             </div>
             <button type="button" class="m2-sidebar-collapse-toggle" data-action="toggle-sidebar-collapse" title="${state.sidebarCollapsed ? 'Expandir menu lateral' : 'Encolher menu lateral'}" aria-label="Recolher ou expandir menu lateral">
               ${icon(state.sidebarCollapsed ? 'chevron-right' : 'chevron-left', 14)}
             </button>
           </div>
 
-          ${contests.length > 0 ? `
-            <div class="m2-sidebar-contest-box">
-              <div class="m2-sidebar-contest-header">
-                ${icon('shield-check', 13, 'text-teal')}
-                <span class="m2-sidebar-contest-label">Concurso Foco</span>
-              </div>
-              <select data-action="change-contest" class="m2-sidebar-contest-select" title="Trocar Concurso Foco">
-                ${contests.map(c => `<option value="${c.id}" ${String(c.id) === String(contest.id) ? 'selected' : ''}>${escapeHtml(c.name)}</option>`).join('')}
-              </select>
-              ${contest.role ? `<span class="m2-sidebar-contest-role">${escapeHtml(contest.role)}</span>` : ''}
-            </div>
-          ` : ''}
-
-          <div style="display:flex; flex-direction:column; gap:16px;">
-            ${mentorNav.map(sec => `
-              <div class="m2-nav-section">
-                <span class="m2-nav-label">${sec.section}</span>
-                ${sec.items.map(it => `
-                  <button type="button" class="m2-nav-item ${state.screen === it.id ? 'active' : ''}" data-nav="${it.id}">
-                    <span class="m2-nav-item-left">
-                      ${icon(it.icon, 16)}
-                      <span>${it.label}</span>
+          <div style="display:flex; flex-direction:column; gap:8px;" class="m2-nav-sections-accordion">
+            ${mentorNav.map(sec => {
+              const containsActive = sec.items.some(it => it.id === state.screen);
+              const isSectionOpen = (state.sidebarSectionsOpen && state.sidebarSectionsOpen[sec.id] !== undefined)
+                ? state.sidebarSectionsOpen[sec.id]
+                : (containsActive || (sec.defaultOpen !== false));
+              return `
+                <div class="m2-nav-section ${isSectionOpen ? 'is-open' : 'is-collapsed'}">
+                  <button type="button" class="m2-nav-section-header" data-action="toggle-nav-section" data-section-id="${sec.id}" title="${isSectionOpen ? 'Recolher ' + sec.section : 'Expandir ' + sec.section}">
+                    <span class="m2-nav-section-title-wrap">
+                      <span class="m2-nav-section-dot" style="background:${sec.color || '#0ab5bd'};"></span>
+                      <span class="m2-nav-label">${sec.section}</span>
                     </span>
-                    ${it.badge ? `<span class="m2-nav-badge">${it.badge}</span>` : ''}
+                    <span class="m2-nav-section-chevron ${isSectionOpen ? 'open' : ''}">
+                      ${icon('chevron-down', 13)}
+                    </span>
                   </button>
-                `).join('')}
-              </div>
-            `).join('')}
+                  <div class="m2-nav-section-items" style="${isSectionOpen ? '' : 'display:none;'}">
+                    ${sec.items.map(it => `
+                      <button type="button" class="m2-nav-item ${state.screen === it.id ? 'active' : ''}" data-nav="${it.id}">
+                        <span class="m2-nav-item-left">
+                          ${icon(it.icon, 16)}
+                          <span>${it.label}</span>
+                        </span>
+                        ${it.badge ? `<span class="m2-nav-badge">${it.badge}</span>` : ''}
+                      </button>
+                    `).join('')}
+                  </div>
+                </div>
+              `;
+            }).join('')}
           </div>
 
           <div class="m2-sidebar-footer">
             <div class="m2-sidebar-footer-actions">
-              <button type="button" class="m2-sidebar-footer-btn" data-action="toggle-theme" title="Alternar tema claro/escuro">
-                ${icon(state.theme === 'dark' ? 'sun' : 'moon', 14)}
-                <span class="m2-sidebar-footer-btn-label">${state.theme === 'dark' ? 'Tema Claro' : 'Tema Escuro'}</span>
-              </button>
               <button type="button" class="m2-sidebar-footer-btn" data-nav="mentor-help" title="Central de Ajuda">
                 ${icon('help-circle', 14)}
                 <span class="m2-sidebar-footer-btn-label">Ajuda</span>
@@ -140,102 +208,118 @@ export function renderTopbar() {
     const pendingReviewsCount = (window.M2Data?.reviews || []).filter(r => r.status === 'pending' || r.status === 'delayed').length;
     const errorsCount = (window.M2Data?.errorNotebook || []).length;
 
-    // Menu do Aluno (A01 a A23 + Inovações)
-    const studentNav = [
-      { section: 'Minha Rotina', items: [
-        { id: 'today', label: 'Hoje', icon: 'house' },
+    const caps = window.M2Data?.capabilities || [];
+    const hasBonus = Boolean(window.M2Data?.bonus_access?.is_active);
+    const isSingleQuestionsProduct = !isMentor && !isWorkspace && caps.includes('questoes') && !caps.includes('edital') && !caps.includes('cronograma') && !hasBonus;
+    const isSingleMockProduct = !isMentor && !isWorkspace && caps.includes('simulados') && !caps.includes('edital') && !caps.includes('cronograma') && !caps.includes('questoes') && !hasBonus;
+
+    // Menu do Aluno (A01 a A23 + Inovações ou Modos Focados Low-Ticket)
+    const studentNav = isSingleQuestionsProduct ? [
+      { id: 'student-caderno', section: 'Meu Caderno de Questões', color: '#6366f1', defaultOpen: true, items: [
+        { id: 'questions', label: 'Caderno de Questões', icon: 'circle-help' },
+        { id: 'error-notebook', label: 'Caderno de Erros', icon: 'alert-triangle', badge: errorsCount > 0 ? String(errorsCount) : '' },
+        { id: 'progress', label: 'Métricas de Resolução', icon: 'chart-no-axes-combined' },
+        { id: 'notebooks', label: 'Minhas Anotações', icon: 'notebook-pen' },
+      ]}
+    ] : isSingleMockProduct ? [
+      { id: 'student-simulados', section: 'Meus Simulados', color: '#f59e0b', defaultOpen: true, items: [
+        { id: 'mock-exams', label: 'Simulados', icon: 'clipboard-list' },
+        { id: 'calculadora', label: 'Calculadora Cebraspe', icon: 'calculator' },
+        { id: 'progress', label: 'Métricas de Desempenho', icon: 'chart-no-axes-combined' },
+      ]}
+    ] : [
+      { id: 'student-inicio', section: 'Principal', color: '#ec4899', defaultOpen: true, items: [
+        { id: 'today', label: 'Início', icon: 'house' },
+      ]},
+      { id: 'student-concurso', section: 'Concurso', color: '#f59e0b', defaultOpen: true, items: [
         { id: 'planning', label: 'Planejamento', icon: 'calendar-days' },
         { id: 'syllabus', label: 'Edital Verticalizado', icon: 'list-tree' },
         { id: 'radar-editais', label: 'Radar de Editais & DO', icon: 'radar' }
       ]},
-      { section: 'Praticar & Estudo', items: [
+      { id: 'student-estudar', section: 'Estudar', color: '#6366f1', defaultOpen: true, items: [
         { id: 'questions', label: 'Banco de Questões', icon: 'circle-help' },
         { id: 'redacao', label: 'Oficina de Redação (IA)', icon: 'pen-tool' },
         { id: 'flashcards', label: 'Flashcards', icon: 'layers', badge: dueFlashcardsCount > 0 ? String(dueFlashcardsCount) : '' },
         { id: 'reviews', label: 'Revisões Periódicas', icon: 'calendar-sync', badge: pendingReviewsCount > 0 ? String(pendingReviewsCount) : '' },
         { id: 'mock-exams', label: 'Simulados', icon: 'clipboard-list' },
-        { id: 'calculadora', label: 'Calculadora Cebraspe', icon: 'calculator' },
         { id: 'error-notebook', label: 'Caderno de Erros', icon: 'alert-triangle', badge: errorsCount > 0 ? String(errorsCount) : '' }
       ]},
-      { section: 'Métricas & Evolução', items: [
-        { id: 'progress', label: 'Métricas de Desempenho', icon: 'chart-no-axes-combined' },
-        { id: 'notebooks', label: 'Minhas Anotações', icon: 'notebook-pen' },
-        { id: 'goals', label: 'Metas & Conquistas', icon: 'trophy' },
-        { id: 'ranking', label: 'Ranking da Turma', icon: 'award' }
+      { id: 'student-acompanhar', section: 'Acompanhar', color: '#10b981', defaultOpen: false, items: [
+        { id: 'progress', label: 'Desempenho', icon: 'chart-no-axes-combined' },
+        { id: 'notebooks', label: 'Anotações', icon: 'notebook-pen' },
       ]},
-      { section: 'Apoio & Getfy', items: [
+      { id: 'student-recursos', section: 'Recursos', color: '#06b6d4', defaultOpen: false, items: [
+        { id: 'courses', label: 'Meus Cursos', icon: 'book-open' },
         { id: 'materials', label: 'Materiais & PDFs', icon: 'file-text' },
-        { id: 'courses', label: 'Aulas & Cursos Getfy', icon: 'book-open' },
         { id: 'tutor', label: 'Tutor IA Contextual', icon: 'bot' },
-        { id: 'ai-memory', label: 'Memória da IA', icon: 'brain' },
-        { id: 'settings', label: 'Configurações', icon: 'settings' }
+        { id: 'calculadora', label: 'Calculadora Cebraspe', icon: 'calculator' }
       ]}
     ];
 
     return `
       <aside class="m2-sidebar ${state.sidebarCollapsed ? 'collapsed' : ''}" id="m2-sidebar">
         <div class="m2-brand">
-          <span class="m2-brandmark">${icon('graduation-cap', 20)}</span>
+          ${brandmarkHtml}
           <div class="m2-brand-text">
-            <span class="m2-brand-name">Mentoria 2.0</span>
-            <span class="m2-brand-badge">Área do Aluno</span>
+            <span class="m2-brand-name">${escapeHtml(brandName)}</span>
+            <span class="m2-brand-badge">${escapeHtml(studentBadge)}</span>
           </div>
           <button type="button" class="m2-sidebar-collapse-toggle" data-action="toggle-sidebar-collapse" title="${state.sidebarCollapsed ? 'Expandir menu lateral' : 'Encolher menu lateral'}" aria-label="Recolher ou expandir menu lateral">
             ${icon(state.sidebarCollapsed ? 'chevron-right' : 'chevron-left', 14)}
           </button>
         </div>
 
-        ${contests.length > 0 ? `
-          <div class="m2-sidebar-contest-box">
-            <div class="m2-sidebar-contest-header">
-              ${icon('shield-check', 13, 'text-teal')}
-              <span class="m2-sidebar-contest-label">Concurso Foco</span>
-            </div>
-            <select data-action="change-contest" class="m2-sidebar-contest-select" title="Trocar Concurso Foco">
-              ${contests.map(c => `<option value="${c.id}" ${String(c.id) === String(contest.id) ? 'selected' : ''}>${escapeHtml(c.name)}</option>`).join('')}
-            </select>
-            ${contest.role ? `<span class="m2-sidebar-contest-role">${escapeHtml(contest.role)}</span>` : ''}
-          </div>
-        ` : ''}
-
-        <div style="display:flex; flex-direction:column; gap:16px;">
-          ${studentNav.map(sec => `
-            <div class="m2-nav-section">
-              <span class="m2-nav-label">${sec.section}</span>
-              ${sec.items.map(it => `
-                <button type="button" class="m2-nav-item ${state.screen === it.id ? 'active' : ''}" data-nav="${it.id}">
-                  <span class="m2-nav-item-left">
-                    ${icon(it.icon, 16)}
-                    <span>${it.label}</span>
+        <div style="display:flex; flex-direction:column; gap:8px;" class="m2-nav-sections-accordion">
+          ${studentNav.map(sec => {
+            const containsActive = sec.items.some(it => it.id === state.screen);
+            const isSectionOpen = (state.sidebarSectionsOpen && state.sidebarSectionsOpen[sec.id] !== undefined)
+              ? state.sidebarSectionsOpen[sec.id]
+              : (containsActive || (sec.defaultOpen !== false));
+            return `
+              <div class="m2-nav-section ${isSectionOpen ? 'is-open' : 'is-collapsed'}">
+                <button type="button" class="m2-nav-section-header" data-action="toggle-nav-section" data-section-id="${sec.id}" title="${isSectionOpen ? 'Recolher ' + sec.section : 'Expandir ' + sec.section}">
+                  <span class="m2-nav-section-title-wrap">
+                    <span class="m2-nav-section-dot" style="background:${sec.color || '#0ab5bd'};"></span>
+                    <span class="m2-nav-label">${sec.section}</span>
                   </span>
-                  ${it.badge ? `<span class="m2-nav-badge">${it.badge}</span>` : ''}
+                  <span class="m2-nav-section-chevron ${isSectionOpen ? 'open' : ''}">
+                    ${icon('chevron-down', 13)}
+                  </span>
                 </button>
-              `).join('')}
-            </div>
-          `).join('')}
+                <div class="m2-nav-section-items" style="${isSectionOpen ? '' : 'display:none;'}">
+                  ${sec.items.map(it => `
+                    <button type="button" class="m2-nav-item ${state.screen === it.id ? 'active' : ''}" data-nav="${it.id}">
+                      <span class="m2-nav-item-left">
+                        ${icon(it.icon, 16)}
+                        <span>${it.label}</span>
+                      </span>
+                      ${it.badge ? `<span class="m2-nav-badge">${it.badge}</span>` : ''}
+                    </button>
+                  `).join('')}
+                </div>
+              </div>
+            `;
+          }).join('')}
         </div>
 
         <div class="m2-sidebar-footer">
           <div class="m2-sidebar-footer-actions">
-            <button type="button" class="m2-sidebar-footer-btn" data-action="toggle-theme" title="Alternar tema claro/escuro">
-              ${icon(state.theme === 'dark' ? 'sun' : 'moon', 14)}
-              <span class="m2-sidebar-footer-btn-label">${state.theme === 'dark' ? 'Tema Claro' : 'Tema Escuro'}</span>
-            </button>
             <button type="button" class="m2-sidebar-footer-btn" data-nav="help" title="Central de Ajuda">
               ${icon('help-circle', 14)}
               <span class="m2-sidebar-footer-btn-label">Ajuda</span>
             </button>
           </div>
-          <button type="button" class="m2-btn m2-btn-secondary m2-btn-sm" data-nav="onboarding" style="width:100%; justify-content:flex-start;">
-            ${icon('sparkles', 14)} Reiniciar Onboarding
-          </button>
-          <div class="m2-user-badge">
-            <div class="m2-avatar">${window.M2Data.student.initials || ''}</div>
-            <div class="m2-user-info">
-              <span class="m2-user-name">${window.M2Data.student.name || 'Aluno'}</span>
-              <span class="m2-user-role">${window.M2Data.student.cohort || 'Sem turma'}</span>
+          ${isSingleQuestionsProduct ? `
+            <div style="background:var(--accent-teal-soft); border:1px solid var(--accent-teal); border-radius:var(--radius-md); padding:10px 12px; margin-bottom:10px; font-size:11px; color:var(--text-main);">
+              <strong style="display:flex; align-items:center; gap:5px; color:var(--accent-teal); font-size:12px; margin-bottom:4px;">${icon('sparkles', 13)} Mentoria Completa</strong>
+              <span>Acesse Cronograma Inteligente, Edital Verticalizado e Simulados com seu mentor.</span>
             </div>
-          </div>
+          ` : `
+            <button type="button" class="m2-btn m2-btn-secondary m2-btn-sm" data-nav="onboarding" style="width:100%; justify-content:flex-start;">
+              ${icon('sparkles', 14)} Reiniciar Onboarding
+            </button>
+          `}
+
         </div>
       </aside>
     `;
@@ -433,7 +517,7 @@ export   function renderFloatingMiniTimer() {
           <!-- Mensagens do Chat -->
           <div class="m2-floating-ai-body" id="m2-floating-chat-messages">
             ${messages.map(msg => `
-              <div style="display:flex; flex-direction:column; align-self:${msg.sender === 'user' ? 'flex-end' : 'flex-start'}; max-width:85%; gap:4px;">
+              <div class="m2-floating-ai-message ${msg.sender === 'user' ? 'is-user' : 'is-tutor'}">
                 <div style="display:flex; align-items:center; gap:6px; font-size:10px; color:var(--text-muted); align-self:${msg.sender === 'user' ? 'flex-end' : 'flex-start'};">
                   <span>${msg.sender === 'user' ? (window.M2Data.student?.name ? `Você (${window.M2Data.student.name.split(' ')[0]})` : 'Você') : 'Tutor IA'}</span>
                   <span>·</span>
@@ -447,6 +531,7 @@ export   function renderFloatingMiniTimer() {
                     ${msg.sources.map(src => `<span class="m2-pill m2-pill-teal" style="font-size:9px; padding:1px 6px;">${src}</span>`).join('')}
                   </div>
                 ` : ''}
+              </div>
             `).join('')}
             ${state.floatingAiTyping ? `
               <div style="display:flex; align-items:center; gap:6px; padding:10px 14px; background:var(--bg-card); border:1px solid var(--border-color); border-radius:14px; border-bottom-left-radius:2px; max-width:120px; align-self:flex-start;">
@@ -592,6 +677,12 @@ export   function renderFloatingMiniTimer() {
       const notifications = state.notifications || [];
       return `<div class="m2-modal-overlay" data-action="close-modal-backdrop"><div class="m2-modal-content" style="max-width:640px;"><div class="m2-modal-header"><div><h3>Central de notificacoes</h3><p>Avisos pedagogicos, metas e retornos do mentor.</p></div><button type="button" class="m2-btn-icon" data-action="close-modal" aria-label="Fechar">${icon('x', 16)}</button></div><div style="display:flex;justify-content:flex-end;margin:0 0 10px;"><button type="button" class="m2-btn m2-btn-secondary m2-btn-sm" data-action="read-all-notifications">Marcar todas como lidas</button></div><div style="display:flex;flex-direction:column;gap:8px;max-height:55vh;overflow:auto;">${notifications.length ? notifications.map(notification => `<button type="button" data-action="read-notification" data-id="${escapeHtml(notification.id)}" style="text-align:left;padding:13px;border:1px solid var(--border-color);border-radius:10px;background:${notification.read_at ? 'var(--bg-card)' : 'var(--accent-teal-soft)'};color:var(--text-main);cursor:pointer;"><strong style="display:block;margin-bottom:4px;">${escapeHtml(notification.title || 'Aviso')}</strong><span style="display:block;font-size:13px;color:var(--text-muted);">${escapeHtml(notification.message || '')}</span><small style="display:block;margin-top:7px;color:var(--text-muted);">${escapeHtml(notification.created_at || '')}</small></button>`).join('') : '<p class="m2-empty-inline">Voce nao tem notificacoes.</p>'}</div></div></div>`;
     }
+    if (state.modal === 'student-profile-menu') {
+      return `<div class="m2-modal-overlay" data-action="close-modal-backdrop"><div class="m2-modal-content" style="max-width:420px;"><div class="m2-modal-header"><div><h3>Meu perfil</h3><p>Acesse seus atalhos pessoais.</p></div><button type="button" class="m2-btn-icon" data-action="close-modal" aria-label="Fechar">${icon('x', 16)}</button></div><div style="display:grid;gap:10px;"><button type="button" class="m2-btn m2-btn-secondary" data-action="open-profile-goals">${icon('trophy', 16)} Metas e conquistas</button><button type="button" class="m2-btn m2-btn-secondary" data-action="open-profile-settings">${icon('settings', 16)} Configurações</button><button type="button" class="m2-btn m2-btn-secondary" data-action="open-profile-courses">${icon('book-open', 16)} Voltar aos cursos</button></div></div></div>`;
+    }
+    if (state.modal === 'mentor-profile-menu') {
+      return `<div class="m2-modal-overlay" data-action="close-modal-backdrop"><div class="m2-modal-content" style="max-width:420px;"><div class="m2-modal-header"><div><h3>Painel do Mentor</h3><p>Atalhos rápidos do perfil e gestão.</p></div><button type="button" class="m2-btn-icon" data-action="close-modal" aria-label="Fechar">${icon('x', 16)}</button></div><div style="display:grid;gap:10px;"><button type="button" class="m2-btn m2-btn-secondary" data-action="open-profile-settings">${icon('settings', 16)} Configurações da Mentoria</button><button type="button" class="m2-btn m2-btn-secondary" data-action="open-profile-goals">${icon('chart-no-axes-combined', 16)} Relatórios & Métricas</button><button type="button" class="m2-btn m2-btn-secondary" data-action="open-profile-courses">${icon('users', 16)} Gestão de Alunos</button><button type="button" class="m2-btn m2-btn-secondary" data-action="toggle-theme">${icon(state.theme === 'dark' ? 'sun' : 'moon', 16)} Alternar Tema (${state.theme === 'dark' ? 'Modo Claro' : 'Modo Escuro'})</button></div></div></div>`;
+    }
     if (state.modal === 'official-ranking') {
       const ranking = state.officialRanking || [];
       return `<div class="m2-modal-overlay" data-action="close-modal-backdrop"><div class="m2-modal-content" style="max-width:680px;"><div class="m2-modal-header"><div><h3>Ranking: ${escapeHtml(state.officialRankingTitle || 'Simulado oficial')}</h3><p>Resultados de alunos que optaram por aparecer no ranking.</p></div><button type="button" class="m2-btn-icon" data-action="close-modal" aria-label="Fechar">${icon('x', 16)}</button></div><div style="display:flex;flex-direction:column;gap:8px;max-height:50vh;overflow:auto;">${ranking.length ? ranking.map(row => `<div style="display:grid;grid-template-columns:42px 1fr auto;gap:10px;align-items:center;padding:12px;border:1px solid var(--border-color);border-radius:10px;"><strong style="color:var(--accent-teal);">${Number(row.position)}?</strong><span>${escapeHtml(row.name || 'Aluno')}</span><span style="font-size:13px;color:var(--text-muted);">${Number(row.percentage || 0)}% ? ${Number(row.time_minutes || 0)} min</span></div>`).join('') : '<p class="m2-empty-inline">Ainda n?o h? resultados p?blicos para este simulado.</p>'}</div><div class="m2-modal-actions"><button type="button" class="m2-btn m2-btn-secondary" data-action="close-modal">Fechar</button></div></div></div>`;
@@ -600,6 +691,81 @@ export   function renderFloatingMiniTimer() {
       const cohorts = window.M2Data.cohorts || [];
       const questions = state.officialMockQuestions || [];
       return `<div class="m2-modal-overlay" data-action="close-modal-backdrop"><div class="m2-modal-content" style="max-width:720px;"><div class="m2-modal-header"><div><h3>Publicar simulado oficial</h3><p>As mesmas questoes serao disponibilizadas para toda a turma.</p></div><button type="button" class="m2-btn-icon" data-action="close-modal">${icon('x', 16)}</button></div><div style="display:grid;gap:12px;"><label class="m2-modal-field">Titulo<input id="m2-official-mock-name" maxlength="255" required></label><label class="m2-modal-field">Turma<select id="m2-official-mock-cohort">${cohorts.map(cohort => `<option value="${escapeHtml(cohort.id)}">${escapeHtml(cohort.name)}</option>`).join('')}</select></label><div class="m2-completion-grid"><label class="m2-modal-field">Inicio<input id="m2-official-mock-from" type="datetime-local"></label><label class="m2-modal-field">Encerramento<input id="m2-official-mock-until" type="datetime-local"></label><label class="m2-modal-field">Tempo (min)<input id="m2-official-mock-time" type="number" min="1" max="720" value="120"></label><label class="m2-modal-field">Tentativas<input id="m2-official-mock-attempts" type="number" min="1" max="5" value="1"></label></div><div><strong>Questoes publicadas</strong><div style="max-height:220px;overflow:auto;margin-top:8px;display:grid;gap:6px;">${questions.map(question => `<label style="display:flex;gap:8px;padding:8px;border:1px solid var(--border-color);border-radius:8px;"><input type="checkbox" name="m2-official-question" value="${escapeHtml(question.id)}"><span>${escapeHtml(question.subject || 'Geral')} - ${escapeHtml(question.prompt || '')}</span></label>`).join('') || '<p class="m2-empty-inline">Carregando questoes publicadas...</p>'}</div></div></div><div class="m2-modal-actions"><button type="button" class="m2-btn m2-btn-secondary" data-action="close-modal">Cancelar</button><button type="button" class="m2-btn m2-btn-primary" data-action="publish-official-mock">Publicar para a turma</button></div></div></div>`;
+    }
+
+    if (state.modal === 'mentor-new-announcement') {
+      const modalContests = window.M2Data?.contests || [];
+      const modalStudents = window.M2Data?.mentorStudents || window.M2Data?.students || [];
+      const targetType = state.announcementTargetType || 'all';
+
+      return `
+        <div class="m2-modal-overlay" data-action="close-modal-backdrop">
+          <div class="m2-modal-content" style="max-width:620px;">
+            <div class="m2-modal-header">
+              <div>
+                <h3>Novo Aviso da Mentoria</h3>
+                <p>Configure e publique um comunicado estratégico para seus alunos.</p>
+              </div>
+              <button type="button" class="m2-btn-icon" data-action="close-modal" aria-label="Fechar">${icon('x', 16)}</button>
+            </div>
+
+            <div style="display:flex; flex-direction:column; gap:14px; margin:16px 0;">
+              <label class="m2-modal-field">
+                <span>Título do Comunicado *</span>
+                <input type="text" id="m2-input-ann-title" placeholder="Ex: Simulado Oficial neste Sábado às 08h" required>
+              </label>
+
+              <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+                <label class="m2-modal-field">
+                  <span>Destinatário / Escopo *</span>
+                  <select id="m2-input-ann-target-type" data-action="change-announcement-target-type">
+                    <option value="all" ${targetType === 'all' ? 'selected' : ''}>🌐 Todos os Alunos</option>
+                    <option value="contest" ${targetType === 'contest' ? 'selected' : ''}>🎯 Por Concurso / Edital</option>
+                    <option value="student" ${targetType === 'student' ? 'selected' : ''}>👤 Para Aluno Específico</option>
+                  </select>
+                </label>
+
+                <label class="m2-modal-field">
+                  <span>Prioridade</span>
+                  <select id="m2-input-ann-priority">
+                    <option value="normal">Normal (Informativo)</option>
+                    <option value="important">Importante (Destaque Dourado)</option>
+                    <option value="urgent">🚨 Urgente (Alerta Vermelho)</option>
+                  </select>
+                </label>
+              </div>
+
+              ${targetType === 'contest' ? `
+                <label class="m2-modal-field">
+                  <span>Selecione o Concurso Foco *</span>
+                  <select id="m2-input-ann-contest-id">
+                    ${modalContests.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('')}
+                  </select>
+                </label>
+              ` : ''}
+
+              ${targetType === 'student' ? `
+                <label class="m2-modal-field">
+                  <span>Selecione o Aluno *</span>
+                  <select id="m2-input-ann-student-id">
+                    ${modalStudents.map(s => `<option value="${s.id}">${escapeHtml(s.name)} (${escapeHtml(s.email || '')})</option>`).join('')}
+                  </select>
+                </label>
+              ` : ''}
+
+              <label class="m2-modal-field">
+                <span>Mensagem / Orientações do Mentor *</span>
+                <textarea id="m2-input-ann-content" rows="4" placeholder="Escreva aqui as instruções que aparecerão em destaque no mural de avisos da página inicial do aluno..." required></textarea>
+              </label>
+            </div>
+
+            <div class="m2-modal-actions">
+              <button type="button" class="m2-btn m2-btn-secondary" data-action="close-modal">Cancelar</button>
+              <button type="button" class="m2-btn m2-btn-primary" data-action="save-mentor-announcement">${icon('check', 16)} Publicar Aviso</button>
+            </div>
+          </div>
+        </div>
+      `;
     }
     const contests = window.M2Data.contests || [];
     const calendarItems = state.calendarRangeKey ? (state.calendarItems || []) : (window.M2Data.scheduleItems || []);
@@ -1198,17 +1364,23 @@ export   function renderFloatingMiniTimer() {
 
     if (state.modal === 'question-form') {
       const q = state.editingQuestion || null;
+      const draft = state.questionFormDraft || null;
       const isEditing = Boolean(q?.id);
       const subjects = window.M2Data.subjects || [];
-      const diff = q?.difficulty || 'Média';
-      const isCertoErrado = q?.type === 'certo_errado' || (q?.alternatives && typeof q.alternatives === 'object' && Object.keys(q.alternatives).length <= 2 && (q.alternatives.Certo || q.alternatives.C));
+      const diff = draft ? draft.difficulty : (q?.difficulty || 'Média');
+      const isCertoErrado = draft ? (draft.type === 'certo_errado') : (q?.type === 'certo_errado' || (q?.alternatives && typeof q.alternatives === 'object' && Object.keys(q.alternatives).length <= 2 && (q.alternatives.Certo || q.alternatives.C)));
       const alts = q?.alternatives || {};
-      const altA = Array.isArray(alts) ? (alts[0] || '') : (alts.A || alts['0'] || '');
-      const altB = Array.isArray(alts) ? (alts[1] || '') : (alts.B || alts['1'] || '');
-      const altC = Array.isArray(alts) ? (alts[2] || '') : (alts.C || alts['2'] || '');
-      const altD = Array.isArray(alts) ? (alts[3] || '') : (alts.D || alts['3'] || '');
-      const altE = Array.isArray(alts) ? (alts[4] || '') : (alts.E || alts['4'] || '');
-      const correct = q?.correct_answer || q?.answer || 'A';
+      const altA = draft ? draft.altA : (Array.isArray(alts) ? (alts[0] || '') : (alts.A || alts['0'] || ''));
+      const altB = draft ? draft.altB : (Array.isArray(alts) ? (alts[1] || '') : (alts.B || alts['1'] || ''));
+      const altC = draft ? draft.altC : (Array.isArray(alts) ? (alts[2] || '') : (alts.C || alts['2'] || ''));
+      const altD = draft ? draft.altD : (Array.isArray(alts) ? (alts[3] || '') : (alts.D || alts['3'] || ''));
+      const altE = draft ? draft.altE : (Array.isArray(alts) ? (alts[4] || '') : (alts.E || alts['4'] || ''));
+      const correct = draft ? draft.correct : (q?.correct_answer || q?.answer || 'A');
+      const subjectVal = draft ? draft.subject : (q?.subjectName || q?.subject || '');
+      const topicVal = draft ? draft.topic : (q?.topicName || q?.topic || '');
+      const boardVal = draft ? draft.board : (q?.board || '');
+      const promptVal = draft ? draft.prompt : (q?.statement || q?.prompt || '');
+      const explanationVal = draft ? draft.explanation : (q?.explanation || '');
 
       return `
         <div class="m2-modal-overlay" data-action="close-modal-backdrop">
@@ -1234,18 +1406,22 @@ export   function renderFloatingMiniTimer() {
               <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
                 <div>
                   <label style="font-size:12px; font-weight:600; color:var(--text-muted); display:block; margin-bottom:4px;">Disciplina / Matéria:</label>
-                  <input type="text" id="m2-qf-subject" list="m2-qf-subject-list" class="m2-field-input" value="${escapeHtml(q?.subjectName || q?.subject || '')}" placeholder="Ex: Direito Constitucional" style="width:100%; padding:8px 12px; border-radius:var(--radius-md); background:var(--bg-card); border:1px solid var(--border-color); color:var(--text-main); font-size:13px;" required />
+                  <input type="text" id="m2-qf-subject" list="m2-qf-subject-list" class="m2-field-input" value="${escapeHtml(subjectVal)}" placeholder="Ex: Direito Constitucional" style="width:100%; padding:8px 12px; border-radius:var(--radius-md); background:var(--bg-card); border:1px solid var(--border-color); color:var(--text-main); font-size:13px;" required />
                   <datalist id="m2-qf-subject-list">
                     ${subjects.map(s => `<option value="${escapeHtml(s.name)}"></option>`).join('')}
                   </datalist>
                 </div>
                 <div>
                   <label style="font-size:12px; font-weight:600; color:var(--text-muted); display:block; margin-bottom:4px;">Assunto / Tópico:</label>
-                  <input type="text" id="m2-qf-topic" class="m2-field-input" value="${escapeHtml(q?.topicName || q?.topic || '')}" placeholder="Ex: Direitos Individuais (Art. 5º)" style="width:100%; padding:8px 12px; border-radius:var(--radius-md); background:var(--bg-card); border:1px solid var(--border-color); color:var(--text-main); font-size:13px;" />
+                  <input type="text" id="m2-qf-topic" class="m2-field-input" value="${escapeHtml(topicVal)}" placeholder="Ex: Direitos Individuais (Art. 5º)" style="width:100%; padding:8px 12px; border-radius:var(--radius-md); background:var(--bg-card); border:1px solid var(--border-color); color:var(--text-main); font-size:13px;" />
                 </div>
               </div>
 
-              <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+              <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px;">
+                <div>
+                  <label style="font-size:12px; font-weight:600; color:var(--text-muted); display:block; margin-bottom:4px;">Banca:</label>
+                  <input type="text" id="m2-qf-board" class="m2-field-input" value="${escapeHtml(boardVal)}" placeholder="Ex: Cebraspe, FGV, FCC" style="width:100%; padding:8px 12px; border-radius:var(--radius-md); background:var(--bg-card); border:1px solid var(--border-color); color:var(--text-main); font-size:13px;" />
+                </div>
                 <div>
                   <label style="font-size:12px; font-weight:600; color:var(--text-muted); display:block; margin-bottom:4px;">Dificuldade:</label>
                   <select id="m2-qf-difficulty" class="m2-field-input" style="width:100%; padding:8px 12px; border-radius:var(--radius-md); background:var(--bg-card); border:1px solid var(--border-color); color:var(--text-main); font-size:13px;">
@@ -1257,7 +1433,7 @@ export   function renderFloatingMiniTimer() {
                 <div>
                   <label style="font-size:12px; font-weight:600; color:var(--text-muted); display:block; margin-bottom:4px;">Tipo de Questão:</label>
                   <select id="m2-qf-type" data-action="toggle-qf-type" class="m2-field-input" style="width:100%; padding:8px 12px; border-radius:var(--radius-md); background:var(--bg-card); border:1px solid var(--border-color); color:var(--text-main); font-size:13px;">
-                    <option value="multipla_escolha" ${!isCertoErrado ? 'selected' : ''}>Múltipla Escolha (A, B, C, D, E)</option>
+                    <option value="multipla_escolha" ${!isCertoErrado ? 'selected' : ''}>Múltipla Escolha</option>
                     <option value="certo_errado" ${isCertoErrado ? 'selected' : ''}>Certo ou Errado (Cebraspe)</option>
                   </select>
                 </div>
@@ -1265,7 +1441,7 @@ export   function renderFloatingMiniTimer() {
 
               <div>
                 <label style="font-size:12px; font-weight:600; color:var(--text-muted); display:block; margin-bottom:4px;">Enunciado da Questão:</label>
-                <textarea id="m2-qf-prompt" rows="3" class="m2-field-input" placeholder="Digite o enunciado completo da questão..." style="width:100%; padding:10px 12px; border-radius:var(--radius-md); background:var(--bg-card); border:1px solid var(--border-color); color:var(--text-main); font-size:13px; resize:vertical;" required>${escapeHtml(q?.statement || q?.prompt || '')}</textarea>
+                <textarea id="m2-qf-prompt" rows="3" class="m2-field-input" placeholder="Digite o enunciado completo da questão..." style="width:100%; padding:10px 12px; border-radius:var(--radius-md); background:var(--bg-card); border:1px solid var(--border-color); color:var(--text-main); font-size:13px; resize:vertical;" required>${escapeHtml(promptVal)}</textarea>
               </div>
 
               <div id="m2-qf-alternatives-group" style="${isCertoErrado ? 'display:none;' : ''}">
@@ -1312,7 +1488,7 @@ export   function renderFloatingMiniTimer() {
                 </div>
                 <div>
                   <label style="font-size:12px; font-weight:600; color:var(--text-muted); display:block; margin-bottom:4px;">Comentário do Professor / Gabarito Comentado:</label>
-                  <textarea id="m2-qf-explanation" rows="2" class="m2-field-input" placeholder="Fundamentação jurídica ou comentário pedagógico..." style="width:100%; padding:8px 12px; border-radius:var(--radius-md); background:var(--bg-card); border:1px solid var(--border-color); color:var(--text-main); font-size:13px; resize:vertical;">${escapeHtml(q?.explanation || '')}</textarea>
+                  <textarea id="m2-qf-explanation" rows="2" class="m2-field-input" placeholder="Fundamentação jurídica ou comentário pedagógico..." style="width:100%; padding:8px 12px; border-radius:var(--radius-md); background:var(--bg-card); border:1px solid var(--border-color); color:var(--text-main); font-size:13px; resize:vertical;">${escapeHtml(explanationVal)}</textarea>
                 </div>
               </div>
 
@@ -1520,6 +1696,321 @@ export   function renderFloatingMiniTimer() {
                 <button type="button" class="m2-btn m2-btn-secondary" data-action="close-modal">Cancelar</button>
                 <button type="button" class="m2-btn m2-btn-primary" data-action="submit-manage-audience">
                   ${icon('check', 16)} Salvar Público-Alvo
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      `;
+    }
+
+    if (state.modal === 'promotional-banner') {
+      const b = state.editingPromoBanner || {};
+      const contests = window.M2Data.contests || [];
+      const isContestTarget = b.target === 'contest';
+
+      return `
+        <div class="m2-modal-overlay" data-action="close-modal-backdrop">
+          <div class="m2-modal-content" style="max-width:580px; max-height:90vh; overflow-y:auto;">
+            <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border-color); padding-bottom:12px;">
+              <div style="display:flex; align-items:center; gap:10px;">
+                <div style="width:36px; height:36px; border-radius:var(--radius-md); background:var(--accent-amber-soft); color:var(--accent-amber); display:grid; place-items:center;">
+                  ${icon('tag', 20)}
+                </div>
+                <div>
+                  <h3 style="font-size:16px; font-weight:700; color:var(--text-main); margin:0;">
+                    ${b.id ? 'Editar Banner Promocional' : 'Novo Banner Promocional'}
+                  </h3>
+                  <span style="font-size:11px; color:var(--text-muted);">
+                    Ofertas especiais exibidas no topo da tela inicial do aluno
+                  </span>
+                </div>
+              </div>
+              <button type="button" class="m2-btn-icon" data-action="close-modal">${icon('x', 16)}</button>
+            </div>
+
+            <form style="display:flex; flex-direction:column; gap:14px; margin-top:16px;" onsubmit="event.preventDefault();">
+              <div>
+                <label style="font-size:12px; font-weight:700; color:var(--text-main); display:block; margin-bottom:6px;">
+                  Título / Chamada da Oferta *
+                </label>
+                <input type="text" id="m2-pb-title" class="m2-input" value="${escapeHtml(b.title || '')}" placeholder="Ex.: BLACK FRIDAY: PLATAFORMA POR 99 ANUAL" required>
+              </div>
+
+              <div>
+                <label style="font-size:12px; font-weight:700; color:var(--text-main); display:block; margin-bottom:6px;">
+                  Imagem do Banner (Opcional)
+                </label>
+                <div style="display:flex; gap:8px;">
+                  <input type="text" id="m2-pb-image-url" class="m2-input" value="${escapeHtml(b.image_url || '')}" placeholder="https://... ou clique em Upload">
+                  <input type="file" id="m2-pb-image-file" accept="image/*" style="display:none;">
+                  <button type="button" class="m2-btn m2-btn-secondary m2-btn-sm" data-action="choose-promo-banner-image" style="white-space:nowrap;">
+                    ${icon('upload', 14)} Upload
+                  </button>
+                </div>
+                <small style="font-size:11px; color:var(--text-muted); display:block; margin-top:4px;">
+                  Imagem em proporção horizontal (recomendado 1200x300 ou 16:9).
+                </small>
+              </div>
+
+              <div>
+                <label style="font-size:12px; font-weight:700; color:var(--text-main); display:block; margin-bottom:6px;">
+                  Link de Redirecionamento / Checkout *
+                </label>
+                <input type="url" id="m2-pb-link-url" class="m2-input" value="${escapeHtml(b.link_url || '')}" placeholder="https://checkout.getfy.com.br/meu-produto-blackfriday">
+                <small style="font-size:11px; color:var(--text-muted); display:block; margin-top:4px;">
+                  O aluno será redirecionado para este endereço ao clicar no banner ou botão.
+                </small>
+              </div>
+
+              <div>
+                <label style="font-size:12px; font-weight:700; color:var(--text-main); display:block; margin-bottom:6px;">
+                  Texto do Botão
+                </label>
+                <input type="text" id="m2-pb-link-text" class="m2-input" value="${escapeHtml(b.link_text || 'Clique aqui')}" placeholder="Clique aqui">
+              </div>
+
+              <div style="background:var(--bg-surface); border:1px solid var(--border-color); border-radius:var(--radius-md); padding:12px;">
+                <label style="font-size:12px; font-weight:700; color:var(--text-main); display:block; margin-bottom:8px;">
+                  Público-Alvo / Alcance da Oferta:
+                </label>
+                <div style="display:flex; flex-direction:column; gap:8px;">
+                  <label style="display:flex; align-items:center; gap:8px; font-size:13px; color:var(--text-main); cursor:pointer;">
+                    <input type="radio" name="m2-pb-target" value="all" ${!isContestTarget ? 'checked' : ''} onchange="document.getElementById('m2-pb-contest-select-wrap').style.display = 'none';">
+                    <span>🌟 Todos os Alunos (Visível para qualquer estudante da mentoria)</span>
+                  </label>
+                  <label style="display:flex; align-items:center; gap:8px; font-size:13px; color:var(--text-main); cursor:pointer;">
+                    <input type="radio" name="m2-pb-target" value="contest" ${isContestTarget ? 'checked' : ''} onchange="document.getElementById('m2-pb-contest-select-wrap').style.display = 'block';">
+                    <span>🎯 Por Edital Específico (Visível apenas para alunos matriculados neste concurso)</span>
+                  </label>
+                </div>
+
+                <div id="m2-pb-contest-select-wrap" style="margin-top:10px; ${isContestTarget ? '' : 'display:none;'}">
+                  <select id="m2-pb-contest-id" class="m2-input" style="font-size:12px;">
+                    <option value="">Selecione o concurso alvo...</option>
+                    ${contests.map(c => `
+                      <option value="${c.id}" ${String(b.contest_id) === String(c.id) ? 'selected' : ''}>
+                        ${escapeHtml(c.name)} ${c.organization ? `(${escapeHtml(c.organization)})` : ''}
+                      </option>
+                    `).join('')}
+                  </select>
+                </div>
+              </div>
+
+              <label style="display:flex; align-items:center; gap:8px; font-size:13px; color:var(--text-main); cursor:pointer; margin-top:2px;">
+                <input type="checkbox" id="m2-pb-is-active" ${b.is_active !== false ? 'checked' : ''}>
+                <strong>Banner ativo e visível para os alunos</strong>
+              </label>
+
+              <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:12px; border-top:1px solid var(--border-color); padding-top:14px;">
+                <button type="button" class="m2-btn m2-btn-secondary" data-action="close-modal">Cancelar</button>
+                <button type="button" class="m2-btn m2-btn-primary" data-action="save-promotional-banner" data-id="${escapeHtml(b.id || '')}">
+                  ${icon('check', 16)} Salvar Banner Promocional
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      `;
+    }
+
+    if (state.modal === 'product-config') {
+      const p = state.configuringProduct || {};
+      const contests = window.M2Data.contests || [];
+      const st = p.settings || {};
+      const caps = p.capabilities || [];
+      const isQuestionsOnly = caps.includes('questoes') && !caps.includes('edital') && !caps.includes('cronograma');
+      const isMockOnly = caps.includes('simulados') && !caps.includes('edital') && !caps.includes('cronograma') && !caps.includes('questoes');
+      const accessMode = st.access_mode || (isQuestionsOnly ? 'questions_only' : (isMockOnly ? 'mock_only' : 'full'));
+      const autoBonus7d = Boolean(st.auto_bonus_7d);
+      const aiEnabled = st.ai_enabled !== false;
+      const aiScheduleEnabled = Boolean(st.ai_schedule_enabled);
+      const linkedContestIds = Array.isArray(st.contest_ids) ? st.contest_ids.map(String) : [];
+
+      return `
+        <div class="m2-modal-overlay" data-action="close-modal-backdrop">
+          <div class="m2-modal-content" style="max-width:700px; max-height:90vh; overflow-y:auto;">
+            <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border-color); padding-bottom:12px;">
+              <div style="display:flex; align-items:center; gap:10px;">
+                <div style="width:36px; height:36px; border-radius:var(--radius-md); background:var(--accent-teal-soft); color:var(--accent-teal); display:grid; place-items:center;">
+                  ${icon('shopping-bag', 20)}
+                </div>
+                <div>
+                  <h3 style="font-size:16px; font-weight:700; color:var(--text-main); margin:0;">
+                    Configurar Produto: ${escapeHtml(p.name || ('Produto #' + p.id))}
+                  </h3>
+                  <span style="font-size:11px; color:var(--text-muted);">
+                    Regras de entrega automática para alunos que comprarem este produto
+                  </span>
+                </div>
+              </div>
+              <button type="button" class="m2-btn-icon" data-action="close-modal">${icon('x', 16)}</button>
+            </div>
+
+            <form style="display:flex; flex-direction:column; gap:14px; margin-top:14px;" onsubmit="event.preventDefault();">
+              <!-- 1. Módulos & Experiência do Aluno -->
+              <div style="background:var(--bg-card); border:1px solid var(--border-color); border-radius:var(--radius-md); padding:14px;">
+                <div style="display:flex; align-items:center; gap:6px; margin-bottom:4px;">
+                  ${icon('layers', 16, 'text-teal')}
+                  <strong style="font-size:13px; color:var(--text-main);">1. Módulos Liberados na Plataforma</strong>
+                </div>
+                <span style="font-size:11px; color:var(--text-muted); display:block; margin-bottom:10px;">
+                  Define quais telas o aluno acessa após comprar este produto (100% automático):
+                </span>
+
+                <div style="display:flex; flex-direction:column; gap:8px;">
+                  <label style="display:flex; align-items:flex-start; gap:10px; padding:10px; border-radius:var(--radius-sm); border:1px solid var(--border-color); background:var(--bg-surface); cursor:pointer;">
+                    <input type="radio" name="m2-prod-access-mode" value="full" ${accessMode === 'full' ? 'checked' : ''} style="margin-top:3px;">
+                    <div>
+                      <strong style="font-size:13px; color:var(--text-main); display:block;">🌟 Mentoria Completa (Todos os Módulos)</strong>
+                      <span style="font-size:11px; color:var(--text-muted); display:block; margin-top:2px;">
+                        Acesso irrestrito a todos os recursos: Cronograma Inteligente, Edital Verticalizado, Ciclo de Estudos, Redação IA, Tutor IA, Simulados, Banco de Questões e Métricas.
+                      </span>
+                    </div>
+                  </label>
+
+                  <label style="display:flex; align-items:flex-start; gap:10px; padding:10px; border-radius:var(--radius-sm); border:1px solid var(--border-color); background:var(--bg-surface); cursor:pointer;">
+                    <input type="radio" name="m2-prod-access-mode" value="questions_only" ${accessMode === 'questions_only' ? 'checked' : ''} style="margin-top:3px;">
+                    <div>
+                      <strong style="font-size:13px; color:var(--text-main); display:block;">🎯 Apenas Caderno de Questões (Modo Focado)</strong>
+                      <span style="font-size:11px; color:var(--text-muted); display:block; margin-top:2px;">
+                        Ideal para produtos tipo "300/500 Questões". Oculta todo o planejamento/mentoria e exibe apenas o <strong>Caderno de Questões</strong>, <strong>Caderno de Erros</strong> e <strong>Métricas de Resolução</strong>.
+                      </span>
+                    </div>
+                  </label>
+
+                  <label style="display:flex; align-items:flex-start; gap:10px; padding:10px; border-radius:var(--radius-sm); border:1px solid var(--border-color); background:var(--bg-surface); cursor:pointer;">
+                    <input type="radio" name="m2-prod-access-mode" value="mock_only" ${accessMode === 'mock_only' ? 'checked' : ''} style="margin-top:3px;">
+                    <div>
+                      <strong style="font-size:13px; color:var(--text-main); display:block;">📝 Apenas Tela de Simulados</strong>
+                      <span style="font-size:11px; color:var(--text-muted); display:block; margin-top:2px;">
+                        Ideal para produtos avulsos de simulados. Oculta cronograma e questões avulsas, liberando apenas a realização de <strong>Simulados</strong>, <strong>Calculadora Cebraspe</strong> e <strong>Desempenho</strong>.
+                      </span>
+                    </div>
+                  </label>
+
+                  <label style="display:flex; align-items:flex-start; gap:10px; padding:10px; border-radius:var(--radius-sm); border:1px solid var(--border-color); background:var(--bg-surface); cursor:pointer;">
+                    <input type="radio" name="m2-prod-access-mode" value="custom" ${accessMode === 'custom' ? 'checked' : ''} style="margin-top:3px;">
+                    <div style="flex:1;">
+                      <strong style="font-size:13px; color:var(--text-main); display:block;">🛠️ Personalizado (Escolher Módulos Específicos)</strong>
+                      <span style="font-size:11px; color:var(--text-muted); display:block; margin-top:2px;">
+                        Habilite individualmente apenas os módulos que este produto deve liberar para o aluno:
+                      </span>
+                      <div id="m2-custom-caps-wrapper" style="margin-top:10px; display:grid; grid-template-columns:1fr 1fr; gap:6px; padding-top:8px; border-top:1px dashed var(--border-color);">
+                        ${[
+                          { id: 'cronograma', label: 'Cronograma' },
+                          { id: 'cronograma_inteligente', label: 'Ciclo Inteligente' },
+                          { id: 'edital', label: 'Edital Verticalizado' },
+                          { id: 'questoes', label: 'Caderno de Questões' },
+                          { id: 'simulados', label: 'Simulados' },
+                          { id: 'redacao', label: 'Oficina de Redação' },
+                          { id: 'flashcards', label: 'Flashcards' },
+                          { id: 'revisoes', label: 'Revisões' },
+                          { id: 'cadernos', label: 'Cadernos & Anotações' },
+                          { id: 'tutor_ia', label: 'Tutor IA' },
+                          { id: 'metricas', label: 'Métricas & Raio-X' },
+                          { id: 'materiais', label: 'Materiais & PDFs' }
+                        ].map(mod => `
+                          <label style="display:flex; align-items:center; gap:6px; font-size:12px; color:var(--text-main); cursor:pointer;">
+                            <input type="checkbox" name="m2-custom-cap" value="${mod.id}" ${caps.includes(mod.id) || accessMode === 'full' ? 'checked' : ''}>
+                            <span>${mod.label}</span>
+                          </label>
+                        `).join('')}
+                      </div>
+                    </div>
+                  </label>
+                </div>
+              </div>
+
+              <!-- 2. Cadernos & Concursos Disponibilizados -->
+              <div style="background:var(--bg-card); border:1px solid var(--border-color); border-radius:var(--radius-md); padding:14px;">
+                <div style="display:flex; align-items:center; gap:6px; margin-bottom:4px;">
+                  ${icon('book-open', 16, 'text-teal')}
+                  <strong style="font-size:13px; color:var(--text-main);">2. Cadernos & Concursos Disponibilizados</strong>
+                </div>
+                <span style="font-size:11px; color:var(--text-muted); display:block; margin-bottom:10px;">
+                  Selecione os concursos dos quais o comprador deste produto poderá resolver as questões:
+                </span>
+
+                ${contests.length === 0 ? `
+                  <div style="font-size:12px; color:var(--text-muted); padding:8px; background:var(--bg-surface); border-radius:var(--radius-sm);">
+                    Nenhum concurso cadastrado ainda. Todas as questões com público <strong>Produto Getfy -> ${escapeHtml(p.name)}</strong> serão liberadas.
+                  </div>
+                ` : `
+                  <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; max-height:160px; overflow-y:auto; padding:4px;">
+                    ${contests.map(c => `
+                      <label style="display:flex; align-items:center; gap:8px; font-size:12px; color:var(--text-main); background:var(--bg-surface); padding:8px 10px; border-radius:var(--radius-sm); border:1px solid var(--border-color); cursor:pointer;">
+                        <input type="checkbox" name="m2-prod-contest" value="${c.id}" ${linkedContestIds.includes(String(c.id)) ? 'checked' : ''}>
+                        <span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+                          ${escapeHtml(c.name || 'Concurso #' + c.id)} ${c.organization ? `(${escapeHtml(c.organization)})` : ''}
+                        </span>
+                      </label>
+                    `).join('')}
+                  </div>
+                `}
+                <div style="margin-top:8px; font-size:11px; color:var(--accent-teal); display:flex; align-items:center; gap:4px;">
+                  ${icon('info', 13)} Todas as questões marcadas para este Produto na tela de Questões também são entregues automaticamente.
+                </div>
+              </div>
+
+              <!-- 3. Bônus de 7 Dias Escalável -->
+              <div style="background:var(--bg-card); border:1px solid var(--border-color); border-radius:var(--radius-md); padding:14px;">
+                <div style="display:flex; align-items:center; gap:6px; margin-bottom:4px;">
+                  ${icon('zap', 16, 'text-amber')}
+                  <strong style="font-size:13px; color:var(--text-main);">3. Bônus de Degustação na Matrícula (Funil de Upsell)</strong>
+                </div>
+                <span style="font-size:11px; color:var(--text-muted); display:block; margin-bottom:10px;">
+                  Conceda acesso completo temporário sem nenhuma ação manual do mentor:
+                </span>
+
+                <label style="display:flex; align-items:flex-start; gap:10px; padding:10px; border-radius:var(--radius-sm); border:1px solid var(--border-color); background:var(--bg-surface); cursor:pointer;">
+                  <input type="checkbox" id="m2-prod-auto-bonus-7d" ${autoBonus7d ? 'checked' : ''} style="margin-top:3px;">
+                  <div>
+                    <strong style="font-size:13px; color:var(--text-main); display:block;">⚡ Liberar automaticamente 7 dias de Mentoria Completa no 1º acesso</strong>
+                    <span style="font-size:11px; color:var(--text-muted); display:block; margin-top:2px;">
+                      Assim que o aluno comprar este produto e fizer o 1º login, ele ganha 7 dias de degustação com todos os 23 módulos. No 8º dia, volta sozinho para o modo contratado. Zero trabalho manual!
+                    </span>
+                  </div>
+                </label>
+              </div>
+
+              <!-- 4. Inteligência Artificial (IA) & Controle de Custo -->
+              <div style="background:var(--bg-card); border:1px solid var(--border-color); border-radius:var(--radius-md); padding:14px;">
+                <div style="display:flex; align-items:center; gap:6px; margin-bottom:4px;">
+                  ${icon('cpu', 16, 'text-teal')}
+                  <strong style="font-size:13px; color:var(--text-main);">4. Inteligência Artificial (IA) & Controle de Custos</strong>
+                </div>
+                <span style="font-size:11px; color:var(--text-muted); display:block; margin-bottom:10px;">
+                  Controle se alunos deste produto podem usar recursos de IA (ideal para produtos low ticket não gerarem custo de API):
+                </span>
+
+                <div style="display:flex; flex-direction:column; gap:10px;">
+                  <label style="display:flex; align-items:flex-start; gap:10px; padding:10px; border-radius:var(--radius-sm); border:1px solid var(--border-color); background:var(--bg-surface); cursor:pointer;">
+                    <input type="checkbox" id="m2-prod-ai-enabled" ${aiEnabled ? 'checked' : ''} style="margin-top:3px;">
+                    <div>
+                      <strong style="font-size:13px; color:var(--text-main); display:block;">✨ Ativar Módulos de Inteligência Artificial</strong>
+                      <span style="font-size:11px; color:var(--text-muted); display:block; margin-top:2px;">
+                        Habilita Oficina de Redação IA (temas e correção analítica), OCR de Folha Manuscrita, Tutor 24h e Prescrição de Estudos Águia IA. Se desmarcado, exibe aviso pedagógico para upgrade de plano.
+                      </span>
+                    </div>
+                  </label>
+
+                  <label style="display:flex; align-items:flex-start; gap:10px; padding:10px; border-radius:var(--radius-sm); border:1px solid var(--border-color); background:var(--bg-surface); cursor:pointer;">
+                    <input type="checkbox" id="m2-prod-ai-schedule-enabled" ${aiScheduleEnabled ? 'checked' : ''} style="margin-top:3px;">
+                    <div>
+                      <strong style="font-size:13px; color:var(--text-main); display:block;">📅 Permitir Geração de Cronograma com IA no Onboarding</strong>
+                      <span style="font-size:11px; color:var(--text-muted); display:block; margin-top:2px;">
+                        Permite que o aluno escolha gerar o cronograma adaptativo refinado por IA no onboarding além do algoritmo matemático de slots.
+                      </span>
+                    </div>
+                  </label>
+                </div>
+              </div>
+
+              <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:8px; border-top:1px solid var(--border-color); padding-top:12px;">
+                <button type="button" class="m2-btn m2-btn-secondary" data-action="close-modal">Cancelar</button>
+                <button type="button" class="m2-btn m2-btn-primary" data-action="submit-product-config" data-product-id="${escapeHtml(p.id)}">
+                  ${icon('check', 16)} Salvar Configurações do Produto
                 </button>
               </div>
             </form>

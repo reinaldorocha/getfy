@@ -1,6 +1,8 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
+use Plugins\Mentoria2\Http\Controllers\BackgroundTaskController;
+use Plugins\Mentoria2\Http\Controllers\HealthController;
 use Plugins\Mentoria2\Http\Controllers\CohortController;
 use Plugins\Mentoria2\Http\Controllers\ContentController;
 use Plugins\Mentoria2\Http\Controllers\CourseQuestionController;
@@ -24,6 +26,7 @@ use Plugins\Mentoria2\Http\Middleware\MentorWorkspaceContext;
 
 Route::get('/', [PanelController::class, 'index'])->name('mentoria2.index');
 Route::get('/data', [PanelController::class, 'data'])->name('mentoria2.data');
+Route::get('/students', [PanelController::class, 'students'])->name('mentoria2.students.index');
 Route::get('/students/{student}', [PanelController::class, 'student'])->whereNumber('student')->name('mentoria2.students.show');
 Route::get('/students/{student}/preview', [StudentController::class, 'preview'])->whereNumber('student')->name('mentoria2.students.preview');
 
@@ -37,6 +40,16 @@ Route::delete('/products/{product}', [PanelController::class, 'disableProduct'])
 Route::get('/settings/student-home-banner', [MentoriaSettingsController::class, 'studentHomeBanner'])->name('mentoria2.settings.student-home-banner.show');
 Route::post('/settings/student-home-banner', [MentoriaSettingsController::class, 'storeStudentHomeBanner'])->name('mentoria2.settings.student-home-banner.store');
 Route::delete('/settings/student-home-banner', [MentoriaSettingsController::class, 'destroyStudentHomeBanner'])->name('mentoria2.settings.student-home-banner.destroy');
+Route::get('/settings/logo', [MentoriaSettingsController::class, 'platformLogo'])->name('mentoria2.settings.platform-logo.show');
+Route::post('/settings/logo', [MentoriaSettingsController::class, 'storePlatformLogo'])->name('mentoria2.settings.platform-logo.store');
+Route::delete('/settings/logo', [MentoriaSettingsController::class, 'destroyPlatformLogo'])->name('mentoria2.settings.platform-logo.destroy');
+Route::get('/settings/branding', [MentoriaSettingsController::class, 'platformBranding'])->name('mentoria2.settings.platform-branding.show');
+Route::put('/settings/branding', [MentoriaSettingsController::class, 'updatePlatformBranding'])->name('mentoria2.settings.platform-branding.update');
+Route::get('/settings/platform-colors', [MentoriaSettingsController::class, 'platformColors'])->name('mentoria2.settings.platform-colors.show');
+Route::put('/settings/platform-colors', [MentoriaSettingsController::class, 'updatePlatformColors'])->name('mentoria2.settings.platform-colors.update');
+Route::get('/settings/promotional-banners', [MentoriaSettingsController::class, 'promotionalBanners'])->name('mentoria2.settings.promotional-banners.index');
+Route::put('/settings/promotional-banners', [MentoriaSettingsController::class, 'updatePromotionalBanners'])->name('mentoria2.settings.promotional-banners.update');
+Route::post('/settings/promotional-banners/upload', [MentoriaSettingsController::class, 'uploadPromotionalBannerImage'])->name('mentoria2.settings.promotional-banners.upload');
 
 /* Metas e desafios atribuídos pelo mentor */
 Route::post('/goals', [GoalController::class, 'store'])->name('mentoria2.goals.store');
@@ -153,6 +166,8 @@ Route::delete('/students/{student}/notebooks/{notebook}', [StudyController::clas
 Route::get('/students/{student}/feedbacks', [FeedbackController::class, 'mentorIndex'])->whereNumber('student')->name('mentoria2.feedbacks.index');
 Route::post('/students/{student}/feedbacks', [FeedbackController::class, 'store'])->whereNumber('student')->name('mentoria2.feedbacks.store');
 Route::patch('/students/{student}/preferences', [StudentController::class, 'saveStudentPreferences'])->whereNumber('student')->name('mentoria2.students.preferences');
+Route::post('/students/{student}/bonus-access', [StudentController::class, 'grantBonusAccess'])->whereNumber('student')->name('mentoria2.students.bonus-access.grant');
+Route::delete('/students/{student}/bonus-access', [StudentController::class, 'revokeBonusAccess'])->whereNumber('student')->name('mentoria2.students.bonus-access.revoke');
 Route::get('/gamification/rules', [GamificationController::class, 'rules'])->name('mentoria2.gamification.rules');
 Route::put('/gamification/rules', [GamificationController::class, 'saveRules'])->name('mentoria2.gamification.rules.update');
 
@@ -180,9 +195,31 @@ Route::patch('/question-reports/{report}/resolve', [QuestionReportController::cl
 
 /* Radar de Editais em Aberto (Mentor) */
 Route::get('/radar/contests', [ContestRadarController::class, 'index'])->name('mentoria2.radar.index');
+Route::get('/radar/sources', [ContestRadarController::class, 'sources'])->name('mentoria2.radar.sources.index');
+Route::post('/radar/sources', [ContestRadarController::class, 'storeSource'])->name('mentoria2.radar.sources.store');
+Route::get('/radar/review-queue', [ContestRadarController::class, 'reviewQueue'])->name('mentoria2.radar.review-queue');
+Route::patch('/radar/contests/{contest}/review', [ContestRadarController::class, 'review'])->name('mentoria2.radar.review');
+Route::post('/radar/sync', [ContestRadarController::class, 'sync'])->name('mentoria2.radar.sync');
 
 /* Hub de Prompts de IA e Importador JSON (Mentor) */
 Route::get('/external-prompts', [ExternalImportController::class, 'prompts'])->name('mentoria2.prompts.index');
 Route::post('/external-import/validate', [ExternalImportController::class, 'validateJson'])->name('mentoria2.import.validate');
 Route::post('/external-import/execute', [ExternalImportController::class, 'importJson'])->name('mentoria2.import.execute');
+Route::post('/external-import/ai-extract', [ExternalImportController::class, 'extractWithAi'])->name('mentoria2.import.ai-extract');
+Route::post('/external-import/extract-pdf-text', [ExternalImportController::class, 'extractPdfText'])->name('mentoria2.import.extract-pdf-text');
 
+/* Consumo e Custos de IA (Mentor) */
+Route::get('/ai-usage/stats', [\Plugins\Mentoria2\Http\Controllers\AiUsageController::class, 'stats'])->name('mentoria2.ai-usage.stats');
+Route::get('/ai-usage/logs', [\Plugins\Mentoria2\Http\Controllers\AiUsageController::class, 'logs'])->name('mentoria2.ai-usage.logs');
+
+
+
+/* Tarefas Assíncronas e Filas em Segundo Plano */
+Route::get('/tasks', [BackgroundTaskController::class, 'index'])->name('mentoria2.tasks.index');
+Route::get('/tasks/{task}', [BackgroundTaskController::class, 'show'])->name('mentoria2.tasks.show');
+Route::post('/radar/sync-async', [BackgroundTaskController::class, 'syncRadarAsync'])->name('mentoria2.radar.sync-async');
+Route::post('/external-import/execute-async', [BackgroundTaskController::class, 'importJsonAsync'])->name('mentoria2.import.execute-async');
+
+
+/* Observabilidade, Saúde Operacional e Auditoria */
+Route::get('/system-health', [HealthController::class, 'check'])->name('mentoria2.health.check');

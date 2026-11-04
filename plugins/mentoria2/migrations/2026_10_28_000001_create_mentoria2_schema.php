@@ -46,7 +46,7 @@ return new class extends Migration
                 $t->string('phase',30)->default('Publicado');
                 $t->decimal('salary',12,2)->nullable(); $t->date('exam_date')->nullable();
                 $t->boolean('pre_notice')->default(false); $t->longText('logo')->nullable();
-                $t->string('review_intervals')->default('1,7,30');
+                $t->string('review_intervals')->default('1,7,30'); $t->json('fixed_plan_items')->nullable();
                 $t->foreignId('created_by')->constrained('users')->cascadeOnDelete();
                 $t->boolean('is_active')->default(true)->index(); $t->timestamps();
             });
@@ -190,7 +190,7 @@ return new class extends Migration
 
         if (! Schema::hasTable('mentoria2_schedule_items')) {
             Schema::create('mentoria2_schedule_items', function (Blueprint $t) {
-                $t->uuid('id')->primary(); $t->unsignedBigInteger('tenant_id')->index(); $t->uuid('schedule_id');
+                $t->uuid('id')->primary(); $t->unsignedBigInteger('tenant_id')->index(); $t->uuid('schedule_id'); $t->string('label', 255)->nullable(); $t->text('description')->nullable(); $t->boolean('is_fixed')->default(false)->index();
                 $t->date('planned_date')->nullable(); $t->unsignedInteger('cycle_position')->nullable();
                 $t->uuid('subject_id')->nullable(); $t->uuid('topic_id')->nullable(); $t->uuid('subtopic_id')->nullable();
                 $t->unsignedInteger('duration_minutes')->nullable(); $t->unsignedTinyInteger('priority')->nullable();
@@ -741,7 +741,7 @@ return new class extends Migration
                 $table->id();
                 $table->unsignedBigInteger('tenant_id')->unique();
                 $table->string('student_home_banner_path', 1024)->nullable();
-                $table->string('student_home_banner_name', 255)->nullable();
+                $table->string('student_home_banner_name', 255)->nullable(); $table->json('platform_colors')->nullable();
                 $table->timestamps();
             });
         }

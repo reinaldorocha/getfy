@@ -242,6 +242,23 @@ class ContentAudienceService
             ->mapWithKeys(fn ($id) => [(string) $id => true])
             ->all();
 
+        // Incorpora automaticamente os concursos/cadernos vinculados aos produtos que o aluno possui
+        $productSettingsRows = DB::table('product_user')
+            ->join('mentoria2_products', 'mentoria2_products.product_id', '=', 'product_user.product_id')
+            ->where('product_user.user_id', $student->id)
+            ->where('mentoria2_products.tenant_id', $tenantId)
+            ->where('mentoria2_products.is_active', true)
+            ->pluck('mentoria2_products.settings');
+
+        foreach ($productSettingsRows as $stJson) {
+            $st = is_array($stJson) ? $stJson : json_decode($stJson ?: '[]', true);
+            foreach ($st['contest_ids'] ?? [] as $cId) {
+                if ($cId) {
+                    $contests[(string) $cId] = true;
+                }
+            }
+        }
+
         $edicts = DB::table('mentoria2_student_edicts')
             ->where('tenant_id', $tenantId)
             ->where('student_id', $student->id)

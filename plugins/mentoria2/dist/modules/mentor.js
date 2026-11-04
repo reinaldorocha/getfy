@@ -1,5 +1,5 @@
-import { state, icon, escapeHtml, plainTextWithBreaks } from './core.js?v=d6fd58c3ef81';
-import { renderAudienceBadge } from './shell.js?v=d6fd58c3ef81';
+import { state, icon, escapeHtml, plainTextWithBreaks, getAnnouncements } from './core.js?v=b93e67d2d013';
+import { renderAudienceBadge } from './shell.js?v=b93e67d2d013';
 
 function mentorPagination(screen) {
   const meta = window.M2Data.mentorListState?.[screen]?.meta;
@@ -8,16 +8,62 @@ function mentorPagination(screen) {
   return `<div style="display:flex; justify-content:space-between; align-items:center; margin-top:16px; gap:10px;"><span style="font-size:12px; color:var(--text-muted);">Página ${page} de ${meta.last_page} · ${meta.total} itens</span><div style="display:flex; gap:8px;"><button class="m2-btn m2-btn-secondary m2-btn-sm" data-action="mentor-list-page" data-screen="${screen}" data-page="${page - 1}" ${page <= 1 ? 'disabled' : ''}>Anterior</button><button class="m2-btn m2-btn-secondary m2-btn-sm" data-action="mentor-list-page" data-screen="${screen}" data-page="${page + 1}" ${page >= meta.last_page ? 'disabled' : ''}>Próxima</button></div></div>`;
 }
 
+export function viewMentorAiCosts() {
+  const stats = window.M2Data.ai_stats || {};
+  const totals = stats.totals || {};
+  const byFeature = Array.isArray(stats.by_feature) ? stats.by_feature : [];
+  const logs = Array.isArray(stats.recent_logs) ? stats.recent_logs : [];
+  const money = value => Number(value || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  const integer = value => Number(value || 0).toLocaleString('pt-BR');
+
+  return `<div class="m2-content">
+    <div class="m2-page-header"><div class="m2-page-title-group"><span class="m2-eyebrow">IA e automações</span><h1 class="m2-page-title">Consumo e custos de IA</h1><p class="m2-page-subtitle">Dados auditáveis de uso da IA pela mentoria.</p></div><button class="m2-btn m2-btn-secondary" data-action="refresh-ai-costs">${icon('refresh-cw', 15)} Atualizar</button></div>
+    <section class="m2-grid-4" style="margin-bottom:18px;">
+      <article class="m2-card"><span class="m2-kpi-label">Custo estimado</span><strong class="m2-kpi-value">${money(totals.total_cost_brl)}</strong></article>
+      <article class="m2-card"><span class="m2-kpi-label">Solicitações</span><strong class="m2-kpi-value">${integer(totals.total_requests)}</strong></article>
+      <article class="m2-card"><span class="m2-kpi-label">Tokens processados</span><strong class="m2-kpi-value">${integer(totals.total_tokens)}</strong></article>
+      <article class="m2-card"><span class="m2-kpi-label">Alunos que usaram IA</span><strong class="m2-kpi-value">${integer(totals.total_students)}</strong></article>
+    </section>
+    <section class="m2-card" style="margin-bottom:18px;"><div class="m2-card-header"><div><h2 class="m2-card-title">Uso por recurso</h2><p class="m2-card-subtitle">Custo e volume registrados por recurso.</p></div></div>${byFeature.length ? `<div class="m2-table-wrap"><table class="m2-table"><thead><tr><th>Recurso</th><th>Solicitações</th><th>Tokens</th><th>Custo</th></tr></thead><tbody>${byFeature.map(row => `<tr><td>${escapeHtml(row.label || row.feature || 'IA')}</td><td>${integer(row.count)}</td><td>${integer(row.total_tokens)}</td><td>${money(row.cost_brl)}</td></tr>`).join('')}</tbody></table></div>` : `<div class="m2-empty-state"><div class="m2-empty-icon">${icon('sparkles', 24)}</div><h3>Sem consumo registrado</h3><p>Os custos aparecerão aqui quando os recursos de IA forem utilizados.</p></div>`}</section>
+    <section class="m2-card"><div class="m2-card-header"><div><h2 class="m2-card-title">Atividade recente</h2><p class="m2-card-subtitle">Últimos registros processados pelo serviço de IA.</p></div></div>${logs.length ? `<div class="m2-table-wrap"><table class="m2-table"><thead><tr><th>Recurso</th><th>Usuário</th><th>Modelo</th><th>Tokens</th><th>Custo</th><th>Data</th></tr></thead><tbody>${logs.map(log => `<tr><td>${escapeHtml(log.feature_label || log.feature || 'IA')}</td><td>${escapeHtml(log.student_name || 'Mentor / Sistema')}</td><td>${escapeHtml(log.model || '—')}</td><td>${integer(log.total_tokens)}</td><td>${money(log.cost_brl)}</td><td>${escapeHtml(log.created_at || '—')}</td></tr>`).join('')}</tbody></table></div>` : `<div class="m2-empty-state"><div class="m2-empty-icon">${icon('activity', 24)}</div><h3>Nenhum registro recente</h3><p>Esta tela exibirá somente eventos persistidos pelo serviço de IA.</p></div>`}</section>
+  </div>`;
+}
+
+export function viewMentorRadarEditais() {
+  const sources = Array.isArray(window.M2Data.radarSources) ? window.M2Data.radarSources : [];
+  const queue = Array.isArray(window.M2Data.radarReviewQueue) ? window.M2Data.radarReviewQueue : [];
+  const sourceModal = state.modal === 'radar-source-form' ? `
+    <div class="m2-modal-overlay" data-action="close-radar-source-modal" style="display:flex; align-items:center; justify-content:center; z-index:99999;">
+      <div class="m2-modal-card" style="max-width:640px; width:92%;" onclick="event.stopPropagation()">
+        <div style="padding:18px 20px; border-bottom:1px solid var(--border-color); display:flex; justify-content:space-between; align-items:center;"><div><h3 style="margin:0;">Nova fonte do Radar</h3><p style="margin:4px 0 0; color:var(--text-muted); font-size:12px;">A fonte só será consultada após você ativá-la.</p></div><button type="button" class="m2-btn-icon" data-action="close-radar-source-modal">×</button></div>
+        <form data-form="radar-source" style="padding:20px; display:grid; gap:14px;">
+          <label class="m2-field"><span>Nome da fonte</span><input class="m2-input" name="label" required placeholder="Ex.: Querido Diário — Piauí"></label>
+          <label class="m2-field"><span>Tipo</span><select class="m2-input" name="kind"><option value="querido_diario">Querido Diário</option><option value="official_gazette">Diário oficial</option><option value="board">Órgão ou banca</option><option value="manual">Cadastro manual</option></select></label>
+          <label class="m2-field"><span>URL de origem</span><input class="m2-input" name="origin_url" type="url" placeholder="https://…"></label>
+          <label class="m2-field"><span>Territórios IBGE</span><input class="m2-input" name="territories" placeholder="Ex.: 2211001, 2208007"><small>Códigos separados por vírgula; obrigatório para Querido Diário.</small></label>
+          <label style="display:flex; align-items:center; gap:8px; font-size:13px;"><input type="checkbox" name="is_active" value="1"> Ativar a fonte após salvar</label>
+          <div style="display:flex; justify-content:flex-end; gap:8px;"><button type="button" class="m2-btn m2-btn-secondary" data-action="close-radar-source-modal">Cancelar</button><button class="m2-btn m2-btn-primary" type="button" data-action="save-radar-source">Salvar fonte</button></div>
+        </form>
+      </div>
+    </div>` : '';
+  return `<div class="m2-content">
+    <div class="m2-page-header"><div class="m2-page-title-group"><span class="m2-eyebrow">Coleta, IA e curadoria</span><h1 class="m2-page-title">Radar de Editais Policiais</h1><p class="m2-page-subtitle">Fontes auditáveis, publicações pendentes e decisões que abastecem o Radar dos alunos.</p></div><div style="display:flex; gap:8px;"><button class="m2-btn m2-btn-secondary" data-action="sync-radar-sources">${icon('refresh-cw', 15)} Sincronizar fontes</button><button class="m2-btn m2-btn-primary" data-action="open-radar-source-modal">${icon('plus', 15)} Nova fonte</button></div></div>
+    <section class="m2-card" style="margin-bottom:18px;"><div class="m2-card-header"><div><h2 class="m2-card-title">Fontes configuradas</h2><p class="m2-card-subtitle">Nenhuma consulta ocorre sem uma fonte ativa e território definido.</p></div></div>${sources.length ? `<div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(250px,1fr)); gap:12px;">${sources.map(source => `<div style="padding:14px; border:1px solid var(--border-color); border-radius:var(--radius-md);"><div style="display:flex; justify-content:space-between; gap:8px;"><strong>${escapeHtml(source.label)}</strong><span class="m2-pill ${source.is_active ? 'm2-pill-teal' : 'm2-pill-slate'}">${source.is_active ? 'Ativa' : 'Inativa'}</span></div><p style="margin:8px 0 0; font-size:12px; color:var(--text-muted);">${escapeHtml(source.kind)} · ${source.territories?.length ? `${source.territories.length} território(s)` : 'sem território'}</p><p style="margin:6px 0 0; font-size:11px; color:var(--text-muted);">${source.last_synced_at ? `Última sincronização: ${escapeHtml(new Date(source.last_synced_at).toLocaleString('pt-BR'))}` : 'Ainda não sincronizada'}</p></div>`).join('')}</div>` : `<div class="m2-empty-state"><div class="m2-empty-icon">${icon('database', 24)}</div><h3>Nenhuma fonte configurada</h3><p>Adicione uma fonte oficial ou o Querido Diário com os territórios que deseja acompanhar.</p></div>`}</section>
+    <section class="m2-card"><div class="m2-card-header"><div><h2 class="m2-card-title">Fila de revisão</h2><p class="m2-card-subtitle">A IA apenas classifica. A publicação depende da sua aprovação e da fonte vinculada.</p></div><span class="m2-pill m2-pill-amber">${queue.length} pendente(s)</span></div>${queue.length ? `<div style="display:grid; gap:12px;">${queue.map(item => `<article style="padding:16px; border:1px solid var(--border-color); border-radius:var(--radius-md);"><div style="display:flex; justify-content:space-between; gap:12px;"><div><strong>${escapeHtml(item.title)}</strong><p style="font-size:12px; margin:5px 0; color:var(--text-muted);">${escapeHtml(item.career_track || 'A classificar')} · confiança ${item.classification_confidence === null ? 'n/d' : `${Math.round(item.classification_confidence * 100)}%`}</p><p style="font-size:12px; margin:0; color:var(--text-muted);">${escapeHtml(item.raw_excerpt || item.summary || 'Sem recorte disponível.')}</p></div><div style="display:flex; align-items:flex-start; gap:6px; flex-wrap:wrap; justify-content:flex-end;"><button class="m2-btn m2-btn-primary m2-btn-sm" data-action="review-radar-contest" data-contest-id="${escapeHtml(item.id)}" data-decision="published">Publicar</button><button class="m2-btn m2-btn-secondary m2-btn-sm" data-action="review-radar-contest" data-contest-id="${escapeHtml(item.id)}" data-decision="rejected">Descartar</button></div></div></article>`).join('')}</div>` : `<div class="m2-empty-state"><div class="m2-empty-icon">${icon('circle-check', 24)}</div><h3>Fila de revisão vazia</h3><p>Publicações encontradas pelas fontes aparecerão aqui antes de chegar aos alunos.</p></div>`}</section>${sourceModal}
+  </div>`;
+}
+
 export   function viewMentorOverview() {
     const mentor = window.M2Data.mentor || {};
     const contests = window.M2Data.contests || [];
     const allStudents = window.M2Data.mentorStudents || window.M2Data.students || [];
+    const announcements = getAnnouncements();
 
     return `
       <div class="m2-content">
         <div class="m2-page-header">
           <div class="m2-page-title-group">
-            <span class="m2-eyebrow">M01 · Painel Geral do Mentor</span>
+            <span class="m2-eyebrow">Painel Geral do Mentor</span>
             <h1 class="m2-page-title">Radar de Acompanhamento</h1>
             <p class="m2-page-subtitle">Visão unificada dos alunos, turmas ativas e alertas pedagógicos prioritários.</p>
           </div>
@@ -93,6 +139,56 @@ export   function viewMentorOverview() {
             })()}
           </div>
         </div>
+
+        <!-- Quadro de Avisos & Comunicados da Mentoria -->
+        <div class="m2-card" style="margin-top:20px;">
+          <div class="m2-card-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+            <div>
+              <span class="m2-card-title" style="display:flex; align-items:center; gap:8px;">
+                ${icon('megaphone', 18, 'text-teal')} Avisos & Comunicados da Mentoria
+              </span>
+              <span style="font-size:12px; color:var(--text-muted);">
+                Configure avisos para todos os alunos, por concurso específico ou individualmente.
+              </span>
+            </div>
+            <button type="button" class="m2-btn m2-btn-primary m2-btn-sm" data-action="open-mentor-new-announcement">
+              ${icon('plus', 14)} Novo Aviso
+            </button>
+          </div>
+
+          <div class="m2-mentor-announcements-list" style="display:flex; flex-direction:column; gap:10px; margin-top:14px;">
+            ${announcements.length ? announcements.map(ann => {
+              const targetBadge = ann.target_type === 'all'
+                ? '<span class="m2-pill m2-pill-blue">🌐 Todos os Alunos</span>'
+                : ann.target_type === 'contest'
+                ? `<span class="m2-pill m2-pill-teal">🎯 Concurso: ${escapeHtml(ann.target_label || 'Edital Foco')}</span>`
+                : `<span class="m2-pill m2-pill-amber">👤 Aluno: ${escapeHtml(ann.target_label || 'Específico')}</span>`;
+              
+              const priorityBadge = ann.priority === 'urgent'
+                ? '<span class="m2-pill m2-pill-rose">🚨 Urgente</span>'
+                : ann.priority === 'important'
+                ? '<span class="m2-pill m2-pill-amber">⭐ Importante</span>'
+                : '<span class="m2-pill m2-pill-gray">Informativo</span>';
+
+              return `
+                <div style="display:flex; justify-content:space-between; align-items:flex-start; padding:14px 16px; border:1px solid var(--border-color); border-radius:var(--radius-md); background:var(--bg-card); gap:12px;">
+                  <div style="flex:1; min-width:0;">
+                    <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px; flex-wrap:wrap;">
+                      ${targetBadge}
+                      ${priorityBadge}
+                      <span style="font-size:11px; color:var(--text-muted);">${escapeHtml(ann.created_at || '')}</span>
+                    </div>
+                    <strong style="display:block; font-size:14px; color:var(--text-main); margin-bottom:4px;">${escapeHtml(ann.title)}</strong>
+                    <p style="font-size:12px; color:var(--text-muted); margin:0; line-height:1.5;">${escapeHtml(ann.content)}</p>
+                  </div>
+                  <button type="button" class="m2-btn m2-btn-danger m2-btn-sm" data-action="delete-mentor-announcement" data-id="${escapeHtml(ann.id)}" title="Excluir comunicado" style="flex-shrink:0;">
+                    ${icon('trash-2', 14)} Excluir
+                  </button>
+                </div>
+              `;
+            }).join('') : '<p class="m2-empty-inline">Nenhum comunicado cadastrado ainda. Clique em "Novo Aviso" para publicar o primeiro.</p>'}
+          </div>
+        </div>
       </div>
     `;
   }
@@ -105,7 +201,7 @@ export function viewMentorStudents() {
       <div class="m2-content">
         <div class="m2-page-header">
           <div class="m2-page-title-group">
-            <span class="m2-eyebrow">M02 · Gestão Individual</span>
+            <span class="m2-eyebrow">Gestão Individual</span>
             <h1 class="m2-page-title">Alunos Acompanhados</h1>
             <p class="m2-page-subtitle">Acompanhe métricas, intervenções e acesse o workspace de cada aluno em modo mentor.</p>
           </div>
@@ -179,7 +275,7 @@ export function viewMentorStudentProfile() {
       <div class="m2-content">
         <div class="m2-page-header">
           <div class="m2-page-title-group">
-            <span class="m2-eyebrow">M03 · Visão 360 do Aluno</span>
+            <span class="m2-eyebrow">Visão 360 do Aluno</span>
             <h1 class="m2-page-title">${st.name || 'Aluno'}</h1>
             <p class="m2-page-subtitle">${st.cohort || 'Sem turma'} · Concurso: ${st.contest || 'Não informado'}</p>
           </div>
@@ -254,7 +350,7 @@ export function viewMentorCohorts() {
       <div class="m2-content">
         <div class="m2-page-header">
           <div class="m2-page-title-group">
-            <span class="m2-eyebrow">M05 · Gestão Coletiva</span>
+            <span class="m2-eyebrow">Gestão Coletiva</span>
             <h1 class="m2-page-title">Turmas de Mentoria</h1>
             <p class="m2-page-subtitle">Acompanhe turmas com planos-base padronizados, metas compartilhadas e materiais vinculados.</p>
           </div>
@@ -315,7 +411,7 @@ export function viewMentorCohortDetail() {
         <div class="m2-content">
           <div class="m2-page-header">
             <div class="m2-page-title-group">
-              <span class="m2-eyebrow">M06 · Turma Específica</span>
+              <span class="m2-eyebrow">Turma Específica</span>
               <h1 class="m2-page-title">Turma Não Encontrada</h1>
               <p class="m2-page-subtitle">Nenhuma turma foi selecionada ou cadastrada.</p>
             </div>
@@ -341,7 +437,7 @@ export function viewMentorCohortDetail() {
       <div class="m2-content">
         <div class="m2-page-header">
           <div class="m2-page-title-group">
-            <span class="m2-eyebrow">M06 · Turma Específica</span>
+            <span class="m2-eyebrow">Turma Específica</span>
             <h1 class="m2-page-title">${escapeHtml(co.name)}</h1>
             <p class="m2-page-subtitle">${co.studentsCount || students.length} alunos matriculados · Concurso ativo: ${escapeHtml(co.contest || 'Geral')}</p>
           </div>
@@ -389,7 +485,7 @@ export function viewMentorContests() {
       <div class="m2-content">
         <div class="m2-page-header">
           <div class="m2-page-title-group">
-            <span class="m2-eyebrow">M07 · Catálogo Estrutural</span>
+            <span class="m2-eyebrow">Catálogo Estrutural</span>
             <h1 class="m2-page-title">Gestão de Concursos & Editais</h1>
             <p class="m2-page-subtitle">Um concurso contém seu edital oficial, matérias, tópicos e pesos.</p>
           </div>
@@ -470,7 +566,7 @@ export function viewMentorContestDetail() {
         <div class="m2-content">
           <div class="m2-page-header">
             <div class="m2-page-title-group">
-              <span class="m2-eyebrow">M08 · Gestão Integrada</span>
+              <span class="m2-eyebrow">Gestão Integrada</span>
               <h1 class="m2-page-title">Nenhum Concurso Selecionado</h1>
               <p class="m2-page-subtitle">Cadastre ou selecione um concurso para configurar seu edital verticalizado.</p>
             </div>
@@ -491,16 +587,125 @@ export function viewMentorContestDetail() {
     }
 
     const syllabus = window.M2Data.syllabus || [];
+    const reviewIntervalsStr = c.reviewIntervals || c.review_intervals || '1,7,30';
+    const milestones = reviewIntervalsStr.split(',').map(s => s.trim()).filter(Boolean);
+    const fixedItems = Array.isArray(c.fixedPlanItems || c.fixed_plan_items) ? (c.fixedPlanItems || c.fixed_plan_items) : [];
 
     return `
       <div class="m2-content">
         <div class="m2-page-header">
           <div class="m2-page-title-group">
-            <span class="m2-eyebrow">M08 · Gestão Integrada</span>
-            <h1 class="m2-page-title">${c.name} — Estrutura do Edital</h1>
+            <span class="m2-eyebrow">Gestão Integrada</span>
+            <h1 class="m2-page-title">${escapeHtml(c.name)} — Estrutura do Edital</h1>
             <p class="m2-page-subtitle">Configure disciplinas, pesos, relevância e ordem dos tópicos.</p>
           </div>
           <button type="button" class="m2-btn m2-btn-secondary" data-nav="mentor-contests">Voltar aos Concursos</button>
+        </div>
+
+        <!-- M08.1: Automações do Concurso (Revisões Personalizadas & Metas Fixas) -->
+        <div class="m2-contest-automations">
+          <!-- Card 1: Política de Revisões por Concurso -->
+          <div class="m2-contest-setting-card m2-review-policy-card">
+            <div class="m2-contest-setting-heading">
+              <div class="m2-contest-setting-icon">${icon('refresh-cw', 20)}</div>
+              <div>
+                <span class="m2-contest-setting-kicker">AUTOMAÇÃO PEDAGÓGICA</span>
+                <h2>Política de Revisões por Concurso</h2>
+              </div>
+            </div>
+            <p class="m2-contest-setting-description">
+              Defina os intervalos em dias para as revisões espaçadas periódicas automáticas de cada tópico concluído neste edital.
+            </p>
+
+            <div class="m2-review-timeline">
+              ${milestones.map((m, idx) => `
+                <div class="m2-review-milestone">
+                  <span>${idx + 1}</span>
+                  <strong>D-${escapeHtml(m)}</strong>
+                  <small>${m === '1' ? '24 horas' : `${m} dias`}</small>
+                </div>
+              `).join('')}
+            </div>
+
+            <label class="m2-contest-setting-field">
+              <span>Intervalos de revisão espaçada (dias separados por vírgula):</span>
+              <input type="text" id="m2-contest-review-intervals" class="m2-field-input" value="${escapeHtml(reviewIntervalsStr)}" placeholder="1,7,30">
+            </label>
+
+            <div class="m2-contest-setting-footer">
+              <span>${icon('info', 13)} Cria revisões automáticas no cronograma do aluno.</span>
+              <button type="button" class="m2-btn m2-btn-primary m2-btn-sm" data-action="save-contest-review-policy" data-id="${c.id}">
+                ${icon('check', 14)} Salvar Política de Revisões
+              </button>
+            </div>
+          </div>
+
+          <!-- Card 2: Metas Fixas / Compromissos Semanais -->
+          <div class="m2-contest-setting-card m2-fixed-plan-card">
+            <div class="m2-contest-setting-heading">
+              <div class="m2-contest-setting-icon">${icon('calendar', 20)}</div>
+              <div>
+                <span class="m2-contest-setting-kicker">COMPROMISSOS SEMANAIS</span>
+                <h2>Metas Fixas do Edital</h2>
+              </div>
+            </div>
+            <p class="m2-contest-setting-description">
+              Atividades fixas recorrentes por dia da semana (ex: Redação, Lei Seca, Simulado) que entram automaticamente no cronograma dos alunos deste edital.
+            </p>
+
+            <div class="m2-fixed-plan-editor">
+              <div class="m2-fixed-plan-columns">
+                <span>Dia</span>
+                <span>Assunto ou Atividade</span>
+                <span>Minutos</span>
+                <span></span>
+              </div>
+              <div id="m2-fixed-plan-rows">
+                ${(fixedItems.length > 0 ? fixedItems : [{ days: ['seg'], label: '', duration_minutes: 30, description: '' }]).map(f => {
+                  const day = (f.days && f.days[0]) || 'seg';
+                  return `
+                    <div class="m2-fixed-plan-row" data-fixed-plan-row>
+                      <label>
+                        <span class="m2-sr-only">Dia</span>
+                        <select class="m2-fixed-plan-day" aria-label="Dia da meta">
+                          <option value="dom" ${day === 'dom' ? 'selected' : ''}>Domingo</option>
+                          <option value="seg" ${day === 'seg' ? 'selected' : ''}>Segunda-feira</option>
+                          <option value="ter" ${day === 'ter' ? 'selected' : ''}>Terça-feira</option>
+                          <option value="qua" ${day === 'qua' ? 'selected' : ''}>Quarta-feira</option>
+                          <option value="qui" ${day === 'qui' ? 'selected' : ''}>Quinta-feira</option>
+                          <option value="sex" ${day === 'sex' ? 'selected' : ''}>Sexta-feira</option>
+                          <option value="sab" ${day === 'sab' ? 'selected' : ''}>Sábado</option>
+                        </select>
+                      </label>
+                      <label>
+                        <span class="m2-sr-only">Assunto ou atividade</span>
+                        <input type="text" class="m2-fixed-plan-label" value="${escapeHtml(f.label || '')}" placeholder="Ex.: Redação ou Lei Seca" maxlength="255" aria-label="Assunto ou atividade">
+                      </label>
+                      <label>
+                        <span class="m2-sr-only">Minutos</span>
+                        <input type="number" class="m2-fixed-plan-minutes" value="${f.duration_minutes || 30}" min="1" max="1440" step="1" inputmode="numeric" placeholder="30" aria-label="Minutos">
+                      </label>
+                      <button type="button" class="m2-fixed-plan-remove" data-action="remove-fixed-plan-row" aria-label="Remover meta">${icon('trash-2', 15)}</button>
+                      <label class="m2-fixed-plan-description-wrap">
+                        <span class="m2-sr-only">Descrição</span>
+                        <input type="text" class="m2-fixed-plan-description" value="${escapeHtml(f.description || '')}" placeholder="Descrição opcional para orientar o aluno" maxlength="1000" aria-label="Descrição da meta">
+                      </label>
+                    </div>
+                  `;
+                }).join('')}
+              </div>
+              <button type="button" class="m2-fixed-plan-add" data-action="add-fixed-plan-row">
+                ${icon('plus', 14)} Adicionar Meta Fixa
+              </button>
+            </div>
+
+            <div class="m2-contest-setting-footer">
+              <span>${icon('info', 13)} Entram no cronograma de todos os alunos deste concurso.</span>
+              <button type="button" class="m2-btn m2-btn-primary m2-btn-sm" data-action="save-contest-fixed-plan" data-id="${c.id}">
+                ${icon('check', 14)} Salvar Metas Fixas
+              </button>
+            </div>
+          </div>
         </div>
 
         <div class="m2-card">
@@ -542,7 +747,7 @@ export function viewMentorImportReview() {
       <div class="m2-content">
         <div class="m2-page-header">
           <div class="m2-page-title-group">
-            <span class="m2-eyebrow">M09 · Assistente Inteligente de PDF</span>
+            <span class="m2-eyebrow">Assistente Inteligente de PDF</span>
             <h1 class="m2-page-title">Importação de Edital com IA</h1>
             <p class="m2-page-subtitle">Envie o arquivo PDF oficial do Diário Oficial ou copie o prompt estruturado para gerar via ChatGPT/Claude e importar em JSON.</p>
           </div>
@@ -585,7 +790,7 @@ export function viewMentorContents() {
       <div class="m2-content">
         <div class="m2-page-header">
           <div class="m2-page-title-group">
-            <span class="m2-eyebrow">M10 · Repositório Unificado</span>
+            <span class="m2-eyebrow">Repositório Unificado</span>
             <h1 class="m2-page-title">Biblioteca de Conteúdos Didáticos</h1>
             <p class="m2-page-subtitle">Públicos combináveis: defina quem tem acesso por Tenant, Turma, Concurso ou Aluno específico.</p>
           </div>
@@ -647,7 +852,7 @@ export function viewMentorQuestions() {
       <div class="m2-content">
         <div class="m2-page-header">
           <div class="m2-page-title-group">
-            <span class="m2-eyebrow">M11 · Curadoria e Criação</span>
+            <span class="m2-eyebrow">Curadoria e Criação</span>
             <h1 class="m2-page-title">Gestão do Banco de Questões</h1>
             <p class="m2-page-subtitle">Cadastre manualmente ou importe questões geradas por IA externa (ChatGPT/Claude) via código JSON.</p>
           </div>
@@ -819,7 +1024,7 @@ export function viewMentorFlashcards() {
       <div class="m2-content">
         <div class="m2-page-header">
           <div class="m2-page-title-group">
-            <span class="m2-eyebrow">M12 · Baralhos Oficiais</span>
+            <span class="m2-eyebrow">Baralhos Oficiais</span>
             <h1 class="m2-page-title">Gestão de Flashcards Oficiais</h1>
             <p class="m2-page-subtitle">Crie baralhos e distribua para os alunos com sincronização automática ou importe lotes gerados por IA.</p>
           </div>
@@ -929,7 +1134,7 @@ export function viewMentorDeckEditor() {
     const deck = decks.find(item => String(item.id) === String(state.activeDeckId));
 
     if (!deck) {
-      return `<div class="m2-content"><div class="m2-page-header"><div class="m2-page-title-group"><span class="m2-eyebrow">M12 · Baralhos Oficiais</span><h1 class="m2-page-title">Baralho não encontrado</h1><p class="m2-page-subtitle">O baralho não está mais disponível na lista atual.</p></div><button type="button" class="m2-btn m2-btn-secondary" data-nav="mentor-flashcards">Voltar aos baralhos</button></div></div>`;
+      return `<div class="m2-content"><div class="m2-page-header"><div class="m2-page-title-group"><span class="m2-eyebrow">Baralhos Oficiais</span><h1 class="m2-page-title">Baralho não encontrado</h1><p class="m2-page-subtitle">O baralho não está mais disponível na lista atual.</p></div><button type="button" class="m2-btn m2-btn-secondary" data-nav="mentor-flashcards">Voltar aos baralhos</button></div></div>`;
     }
 
     const cards = Array.isArray(deck.cards) ? deck.cards : [];
@@ -938,7 +1143,7 @@ export function viewMentorDeckEditor() {
       <div class="m2-content">
         <div class="m2-page-header">
           <div class="m2-page-title-group">
-            <span class="m2-eyebrow">M12 · Editor de Baralho</span>
+            <span class="m2-eyebrow">Editor de Baralho</span>
             <h1 class="m2-page-title">${escapeHtml(deck.title || deck.name || 'Baralho')}</h1>
             <p class="m2-page-subtitle">${cardCount} · ${escapeHtml(deck.subject || 'Geral')}. Crie e atualize os cartões distribuídos aos alunos.</p>
           </div>
@@ -987,7 +1192,7 @@ export function viewMentorMaterials() {
       <div class="m2-content">
         <div class="m2-page-header">
           <div class="m2-page-title-group">
-            <span class="m2-eyebrow">M13 · Materiais Didáticos</span>
+            <span class="m2-eyebrow">Materiais Didáticos</span>
             <h1 class="m2-page-title">Upload de Materiais & PDFs</h1>
             <p class="m2-page-subtitle">Vincule apostilas, resumos e leis esquematizadas aos tópicos do edital.</p>
           </div>
@@ -1054,7 +1259,7 @@ export function viewMentorMockExams() {
       <div class="m2-content">
         <div class="m2-page-header">
           <div class="m2-page-title-group">
-            <span class="m2-eyebrow">M14 ? Provas e Agendamentos</span>
+            <span class="m2-eyebrow">Provas e Agendamentos</span>
             <h1 class="m2-page-title">Configura??o de Simulados</h1>
             <p class="m2-page-subtitle">Publique provas oficiais por turma, acompanhe ades?o e confira o ranking real.</p>
           </div>
@@ -1083,7 +1288,7 @@ export function viewMentorGoals() {
       <div class="m2-content">
         <div class="m2-page-header">
           <div class="m2-page-title-group">
-            <span class="m2-eyebrow">M15 · Engajamento</span>
+            <span class="m2-eyebrow">Engajamento</span>
             <h1 class="m2-page-title">Metas & Desafios da Turma</h1>
             <p class="m2-page-subtitle">Atribua metas semanais ou desafios de fim de semana para impulsionar a constância.</p>
           </div>
@@ -1138,7 +1343,7 @@ export function viewMentorFeedback() {
       <div class="m2-content">
         <div class="m2-page-header">
           <div class="m2-page-title-group">
-            <span class="m2-eyebrow">M16 · Canal Direto & Avaliações</span>
+            <span class="m2-eyebrow">Canal Direto & Avaliações</span>
             <h1 class="m2-page-title">Feedbacks & Correção Pedagógica</h1>
             <p class="m2-page-subtitle">Avalie redações submetidas pelos alunos e responda orientações pedagógicas.</p>
           </div>
@@ -1249,7 +1454,7 @@ export function viewMentorReports() {
       <div class="m2-content">
         <div class="m2-page-header">
           <div class="m2-page-title-group">
-            <span class="m2-eyebrow">M17 · Business Intelligence</span>
+            <span class="m2-eyebrow">Business Intelligence</span>
             <h1 class="m2-page-title">Relatórios & Métricas da Mentoria</h1>
             <p class="m2-page-subtitle">Aproveitamento médio, curvas de retenção e exportação de relatórios em CSV e PDF.</p>
           </div>
@@ -1280,9 +1485,9 @@ export function viewMentorProducts() {
       <div class="m2-content">
         <div class="m2-page-header">
           <div class="m2-page-title-group">
-            <span class="m2-eyebrow">M18 · Integração Comercial Getfy</span>
+            <span class="m2-eyebrow">Integração Comercial Getfy</span>
             <h1 class="m2-page-title">Produtos & Checkout Getfy</h1>
-            <p class="m2-page-subtitle">Vincule os produtos cadastrados no checkout Getfy com as turmas e capabilities da Mentoria 2.0.</p>
+            <p class="m2-page-subtitle">Configure por produto quais módulos e recursos da Mentoria 2.0 cada produto terá acesso.</p>
           </div>
         </div>
 
@@ -1297,59 +1502,556 @@ export function viewMentorProducts() {
             </p>
           </div>
         ` : `
-          <div style="display:flex; flex-direction:column; gap:12px;">
-            ${products.map(p => `
-              <div class="m2-card">
-                <div style="display:flex; justify-content:space-between; align-items:center; gap:12px;">
-                  <div>
-                    <strong>${escapeHtml(p.name || p.title || 'Produto')}</strong>
-                    <span style="font-size:12px; color:var(--text-muted); display:block;">Produto ID: #${escapeHtml(p.id)} · ${p.mentoria2_enabled ? 'Matrículas da Mentoria ativas' : 'Não concede matrícula na Mentoria'}</span>
+          <div style="display:flex; flex-direction:column; gap:14px;">
+            ${products.map(p => {
+              const st = p.settings || {};
+              const caps = p.capabilities || [];
+              const isQuestionsOnly = caps.includes('questoes') && !caps.includes('edital') && !caps.includes('cronograma');
+              const isMockOnly = caps.includes('simulados') && !caps.includes('edital') && !caps.includes('cronograma') && !caps.includes('questoes');
+              const accessMode = st.access_mode || (isQuestionsOnly ? 'questions_only' : (isMockOnly ? 'mock_only' : 'full'));
+              const modeLabel = accessMode === 'questions_only' ? 'Apenas Questões' : (accessMode === 'mock_only' ? 'Apenas Simulados' : (accessMode === 'custom' ? 'Módulos Personalizados' : 'Mentoria Completa'));
+
+              return `
+              <div class="m2-card" style="display:flex; flex-direction:column; gap:12px;">
+                <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:16px; flex-wrap:wrap;">
+                  <div style="flex:1; min-width:260px;">
+                    <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
+                      <strong style="font-size:16px; color:var(--text-main);">${escapeHtml(p.name || p.title || 'Produto')}</strong>
+                      <span class="m2-pill ${p.mentoria2_enabled ? 'm2-pill-teal' : 'm2-pill-gray'}">${p.mentoria2_enabled ? 'Vinculado' : 'Não vinculado'}</span>
+                    </div>
+                    <span style="font-size:12px; color:var(--text-muted); display:block;">
+                      Produto ID: #${escapeHtml(p.id)} · ${p.mentoria2_enabled ? 'Matrículas da Mentoria ativas' : 'Não concede matrícula na Mentoria'}
+                    </span>
                   </div>
+
                   <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; justify-content:flex-end;">
-                    <span class="m2-pill ${p.mentoria2_enabled ? 'm2-pill-teal' : 'm2-pill-gray'}">${p.mentoria2_enabled ? 'Vinculado' : 'Não vinculado'}</span>
-                    <button type="button" class="m2-btn m2-btn-secondary m2-btn-sm" data-action="${p.mentoria2_enabled ? 'disable-mentoria-product' : 'enable-mentoria-product'}" data-product-id="${escapeHtml(p.id)}">${p.mentoria2_enabled ? 'Desvincular' : 'Vincular à Mentoria'}</button>
+                    <button type="button" class="m2-btn m2-btn-primary m2-btn-sm" data-action="open-product-config" data-product-id="${escapeHtml(p.id)}">
+                      ${icon('settings', 14)} Configurar Módulos & Acesso
+                    </button>
+                    <button type="button" class="m2-btn m2-btn-secondary m2-btn-sm" data-action="${p.mentoria2_enabled ? 'disable-mentoria-product' : 'enable-mentoria-product'}" data-product-id="${escapeHtml(p.id)}">
+                      ${p.mentoria2_enabled ? 'Desvincular' : 'Vincular à Mentoria'}
+                    </button>
                   </div>
                 </div>
+
+                <!-- Detalhes dos Módulos Liberados -->
+                <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; padding-top:8px; border-top:1px solid var(--border-color); font-size:12px;">
+                  <span style="color:var(--text-muted); font-weight:600;">Modo de Entrega:</span>
+                  <span class="m2-pill m2-pill-violet">${escapeHtml(modeLabel)}</span>
+                  ${st.auto_bonus_7d ? `<span class="m2-pill m2-pill-amber">⚡ Bônus 7d Ativo</span>` : ''}
+                  ${st.ai_enabled === false ? `<span class="m2-pill m2-pill-rose">🚫 Sem IA</span>` : `<span class="m2-pill m2-pill-teal">✨ Com IA</span>`}
+                  ${Array.isArray(st.contest_ids) && st.contest_ids.length > 0 ? `<span class="m2-pill m2-pill-gray">${st.contest_ids.length} Concurso(s) Vinculado(s)</span>` : ''}
+                </div>
               </div>
-            `).join('')}
+            `;}).join('')}
           </div>
         `}
       </div>
     `;
   }
 
-  // M19: Configurações do Mentor
-export function viewMentorSettings() {
+// Configurações do Mentor
+  export function viewMentorSettings() {
     const banner = window.M2Data.mentorship?.student_home_banner || null;
+    const logo = window.M2Data.mentorship?.platform_logo || null;
+    const branding = window.M2Data.mentorship?.platform_branding || { brand_name: 'Mentoria 2.0', student_area_label: 'Área do Aluno', mentor_panel_label: 'Painel do Mentor' };
+    const platformColors = window.M2Data.mentorship?.platform_colors || {
+      primary: '#0f766e',
+      secondary: '#7c3aed',
+      sidebar: '#0f172a',
+      sidebar_text: '#94a3b8',
+      bg_app: '#090d16',
+      bg_card: '#111827',
+      border_color: '#1e293b',
+      text_main: '#f8fafc',
+      text_muted: '#94a3b8',
+      accent_green: '#10b981',
+      accent_amber: '#f59e0b',
+      accent_rose: '#ef4444',
+      theme_preset: 'midnight'
+    };
+    const activeTab = state.mentorSettingsTab || 'general';
+    const colorEditScheme = state.colorEditScheme || 'dark';
+    const activeColors = (colorEditScheme === 'light' ? (platformColors.light || platformColors) : (platformColors.dark || platformColors)) || {};
+
     const bannerPreview = banner?.url
-      ? `<img src="${escapeHtml(banner.url)}" alt="Pr?via da capa da ?rea do aluno">`
+      ? `<img src="${escapeHtml(banner.url)}" alt="Previa da capa da area do aluno">`
       : '';
+    const logoPreview = logo?.url
+      ? `<img src="${escapeHtml(logo.url)}" alt="Previa da logo da plataforma" class="m2-logo-preview-img">`
+      : '';
+
     return `
       <div class="m2-content">
         <div class="m2-page-header">
           <div class="m2-page-title-group">
-            <span class="m2-eyebrow">M19 ? Par?metros Globais</span>
-            <h1 class="m2-page-title">Configura??es da Mentoria</h1>
-            <p class="m2-page-subtitle">Pol?ticas padr?o de repeti??o espa?ada, modelo de IA e gamifica??o.</p>
+            <span class="m2-eyebrow">Parâmetros Globais</span>
+            <h1 class="m2-page-title">Configurações da Mentoria</h1>
+            <p class="m2-page-subtitle">Personalize a identidade visual, temas, logo, banners e textos da plataforma.</p>
           </div>
         </div>
 
-        <div class="m2-settings-grid">
-          <section class="m2-card m2-banner-settings-card">
-            <div class="m2-settings-card-heading"><div><h2 class="m2-card-title">${icon('image', 18)} Capa da ?rea do aluno</h2><p>Exibida no in?cio do painel do aluno. Sem imagem publicada, nenhuma capa ? mostrada.</p></div></div>
-            <div class="m2-banner-settings-preview ${bannerPreview ? 'is-visible' : ''}">${bannerPreview}</div>
-            <input id="m2-student-home-banner-input" type="file" accept="image/jpeg,image/png,image/webp" hidden>
-            <div class="m2-banner-settings-actions">
-              <button type="button" class="m2-btn m2-btn-primary" data-action="choose-student-home-banner">${icon('upload', 16)} Enviar capa</button>
-              <button type="button" class="m2-btn m2-btn-secondary" data-action="remove-student-home-banner" ${bannerPreview ? '' : 'hidden'}>Remover capa</button>
-            </div>
-            <p class="m2-form-hint">Use JPG, PNG ou WebP de at? 5 MB. Para melhor resultado, use uma imagem horizontal (propor??o aproximada de 16:5).</p>
-          </section>
-          <div class="m2-card" style="max-width:680px;">
-            <h2 class="m2-card-title">${icon('settings', 18)} Par?metros do Provedor de IA</h2>
-            <p style="font-size:13px; color:var(--text-muted);">Integra??o via plugin <strong>ai-member</strong> do Getfy e adaptador OpenRouter.</p>
-          </div>
+        <!-- Abas Superiores de Configuração -->
+        <div class="m2-settings-tab-nav" role="tablist">
+          <button type="button" class="m2-settings-tab-btn ${activeTab === 'general' ? 'active' : ''}" data-action="switch-mentor-settings-tab" data-tab="general" role="tab">
+            ${icon('settings', 16)} Geral & Marca
+          </button>
+          <button type="button" class="m2-settings-tab-btn ${activeTab === 'appearance' ? 'active' : ''}" data-action="switch-mentor-settings-tab" data-tab="appearance" role="tab">
+            ${icon('palette', 16)} Cores & Personalização de Temas
+          </button>
+          <button type="button" class="m2-settings-tab-btn ${activeTab === 'promotions' ? 'active' : ''}" data-action="switch-mentor-settings-tab" data-tab="promotions" role="tab">
+            ${icon('tag', 16)} Banners Promocionais
+          </button>
         </div>
+
+        <!-- CONTEÚDO DA ABA 1: GERAL & MARCA -->
+        ${activeTab === 'general' ? `
+          <div class="m2-settings-grid">
+            <!-- Card de Marca & Textos -->
+            <section class="m2-card m2-brand-settings-card">
+              <div class="m2-settings-card-heading">
+                <div>
+                  <h2 class="m2-card-title">${icon('award', 18)} Marca & Textos do Ambiente</h2>
+                  <p>Personalize a logo e os textos exibidos no canto superior do painel e da área do aluno.</p>
+                </div>
+              </div>
+
+              <!-- Upload da Logo -->
+              <div style="margin-top:14px; padding:14px; background:var(--bg-surface); border:1px solid var(--border-color); border-radius:var(--radius-md);">
+                <label class="m2-field-label" style="font-weight:600; margin-bottom:8px;">Logo do ambiente</label>
+                <div style="display:flex; align-items:center; gap:16px; margin-top:8px; flex-wrap:wrap;">
+                  <div class="m2-logo-settings-preview ${logoPreview ? 'is-visible' : ''}" style="width:54px; height:54px; border-radius:var(--radius-md); border:1px dashed var(--border-color); display:grid; place-items:center; background:var(--bg-card); overflow:hidden;">
+                    ${logoPreview || icon('image', 24)}
+                  </div>
+                  <div>
+                    <input id="m2-platform-logo-input" type="file" accept="image/jpeg,image/png,image/webp,image/svg+xml" hidden>
+                    <div style="display:flex; gap:8px;">
+                      <button type="button" class="m2-btn m2-btn-primary m2-btn-sm" data-action="choose-platform-logo">${icon('upload', 14)} Enviar logo</button>
+                      <button type="button" class="m2-btn m2-btn-secondary m2-btn-sm" data-action="remove-platform-logo" ${logoPreview ? '' : 'hidden'}>Remover logo</button>
+                    </div>
+                    <p class="m2-form-hint" style="margin-top:6px;">JPG, PNG, WebP ou SVG de até 5 MB. Exibida no canto superior do menu lateral.</p>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Campos de Personalização de Textos -->
+              <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:14px; margin-top:16px;">
+                <label class="m2-field-label">
+                  Texto Principal (Título da Marca)
+                  <input id="m2-branding-brand-name" class="m2-field-input" type="text" value="${escapeHtml(branding.brand_name || 'Mentoria 2.0')}" placeholder="Ex.: Mentoria 2.0" maxlength="60" style="margin-top:6px;">
+                  <small style="color:var(--text-muted); font-size:11px; display:block; margin-top:4px;">Substitui 'Mentoria 2.0' no topo da barra lateral.</small>
+                </label>
+
+                <label class="m2-field-label">
+                  Texto da Área do Aluno
+                  <input id="m2-branding-student-label" class="m2-field-input" type="text" value="${escapeHtml(branding.student_area_label || 'Área do Aluno')}" placeholder="Ex.: Área do Aluno" maxlength="60" style="margin-top:6px;">
+                  <small style="color:var(--text-muted); font-size:11px; display:block; margin-top:4px;">Substitui o rótulo 'Área do Aluno' na visão do estudante.</small>
+                </label>
+
+                <label class="m2-field-label">
+                  Texto do Painel do Mentor
+                  <input id="m2-branding-mentor-label" class="m2-field-input" type="text" value="${escapeHtml(branding.mentor_panel_label || 'Painel do Mentor')}" placeholder="Ex.: Painel do Mentor" maxlength="60" style="margin-top:6px;">
+                  <small style="color:var(--text-muted); font-size:11px; display:block; margin-top:4px;">Substitui o rótulo 'Painel do Mentor' na visão do mentor.</small>
+                </label>
+              </div>
+
+              <div style="margin-top:18px;">
+                <button type="button" class="m2-btn m2-btn-primary" data-action="save-platform-branding">
+                  ${icon('save', 16)} Salvar textos da marca
+                </button>
+              </div>
+            </section>
+
+            <!-- Card de Capa / Banner da Área do Aluno -->
+            <section class="m2-card m2-banner-settings-card">
+              <div class="m2-settings-card-heading">
+                <div>
+                  <h2 class="m2-card-title">${icon('image', 18)} Capa da Área do Aluno</h2>
+                  <p>Exibida no início do painel do aluno para acolhimento e identidade visual.</p>
+                </div>
+              </div>
+              <div class="m2-banner-settings-preview ${bannerPreview ? 'is-visible' : ''}">${bannerPreview}</div>
+              <input id="m2-student-home-banner-input" type="file" accept="image/jpeg,image/png,image/webp" hidden>
+              <div class="m2-banner-settings-actions">
+                <button type="button" class="m2-btn m2-btn-primary" data-action="choose-student-home-banner">${icon('upload', 16)} Enviar capa</button>
+                <button type="button" class="m2-btn m2-btn-secondary" data-action="remove-student-home-banner" ${bannerPreview ? '' : 'hidden'}>Remover capa</button>
+              </div>
+              <p class="m2-form-hint">Use JPG, PNG ou WebP de até 5 MB. Proporção recomendada: 16:5.</p>
+            </section>
+
+            <!-- Card de Parâmetros IA -->
+            <div class="m2-card" style="max-width:680px;">
+              <h2 class="m2-card-title">${icon('settings', 18)} Parâmetros do Provedor de IA</h2>
+              <p style="font-size:13px; color:var(--text-muted); margin-top:4px;">Integração via plugin <strong>ai-member</strong> do Getfy e adaptador OpenRouter.</p>
+            </div>
+          </div>
+        ` : activeTab === 'appearance' ? `
+          <!-- CONTEÚDO DA ABA 2: CORES & TEMAS CUSTOMIZÁVEIS -->
+          <div style="display:flex; flex-direction:column; gap:20px;">
+            <!-- Seletor de Modo: Tema Escuro vs Tema Claro -->
+            <div class="m2-card" style="border-left: 4px solid var(--accent-teal); padding:16px 20px;">
+              <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+                <div>
+                  <div style="display:flex; align-items:center; gap:8px;">
+                    <span style="font-size:15px; font-weight:700; color:var(--text-main);">Personalizar Paleta:</span>
+                    <span class="m2-pill ${colorEditScheme === 'dark' ? 'm2-pill-violet' : 'm2-pill-amber'}" style="font-size:11px; font-weight:700;">
+                      ${colorEditScheme === 'dark' ? '🌙 Modo Escuro Ativo' : '☀️ Modo Claro Ativo'}
+                    </span>
+                  </div>
+                  <p style="font-size:12px; color:var(--text-muted); margin:4px 0 0 0;">
+                    Alterne entre os modos para configurar e pré-visualizar as cores de cada tema. Ambos são salvos juntos na plataforma.
+                  </p>
+                </div>
+                <div class="m2-theme-mode-tabs">
+                  <button type="button" class="m2-theme-mode-tab-btn ${colorEditScheme === 'dark' ? 'is-active' : ''}" data-action="switch-color-edit-scheme" data-scheme="dark">
+                    🌙 Tema Escuro (Dark)
+                  </button>
+                  <button type="button" class="m2-theme-mode-tab-btn ${colorEditScheme === 'light' ? 'is-active' : ''}" data-action="switch-color-edit-scheme" data-scheme="light">
+                    ☀️ Tema Claro (Light)
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Seção 1: Temas Pré-definidos com 1-Clique -->
+            <section class="m2-card">
+              <div class="m2-settings-card-heading">
+                <div>
+                  <h2 class="m2-card-title">${icon('palette', 18)} Escolha um Tema Pré-definido (1-Clique)</h2>
+                  <p>Aplique paletas harmônicas completas criadas especialmente para plataformas educacionais.</p>
+                </div>
+              </div>
+
+              <div class="m2-theme-presets-grid" style="margin-top:14px;">
+                <!-- Preset 0: Rota da Farda (Identidade Oficial) -->
+                <div class="m2-theme-preset-card ${activeColors.theme_preset === 'rota_da_farda' ? 'is-active' : ''}" data-action="select-theme-preset" data-preset="rota_da_farda">
+                  <div class="m2-theme-dots-row">
+                    <span class="m2-theme-dot" style="background:#D7192A;" title="Vermelho #D7192A"></span>
+                    <span class="m2-theme-dot" style="background:#E8A332;" title="Dourado #E8A332"></span>
+                    <span class="m2-theme-dot" style="background:${colorEditScheme === 'dark' ? '#1B1B1E' : '#F4F4F5'};" title="${colorEditScheme === 'dark' ? 'Carvão #1B1B1E' : 'Gelo #F4F4F5'}"></span>
+                    <span class="m2-theme-dot" style="background:${colorEditScheme === 'dark' ? '#0B0B0C' : '#FFFFFF'};" title="${colorEditScheme === 'dark' ? 'Preto #0B0B0C' : 'Branco #FFFFFF'}"></span>
+                  </div>
+                  <div>
+                    <strong style="font-size:14px; color:var(--text-main); display:block;">🦅 Rota da Farda (${colorEditScheme === 'dark' ? 'Dark' : 'Light'})</strong>
+                    <small style="color:var(--text-muted); font-size:11px;">Vermelho (#D7192A), Dourado (#E8A332) e Preto Carvão (#0B0B0C).</small>
+                  </div>
+                </div>
+
+                <!-- Preset 1: Midnight Pro -->
+                <div class="m2-theme-preset-card ${activeColors.theme_preset === 'midnight' ? 'is-active' : ''}" data-action="select-theme-preset" data-preset="midnight">
+                  <div class="m2-theme-dots-row">
+                    <span class="m2-theme-dot" style="background:#0f766e;"></span>
+                    <span class="m2-theme-dot" style="background:#7c3aed;"></span>
+                    <span class="m2-theme-dot" style="background:${colorEditScheme === 'dark' ? '#0f172a' : '#f8fafc'};"></span>
+                    <span class="m2-theme-dot" style="background:${colorEditScheme === 'dark' ? '#090d16' : '#f1f5f9'};"></span>
+                  </div>
+                  <div>
+                    <strong style="font-size:14px; color:var(--text-main); display:block;">🌌 Midnight (${colorEditScheme === 'dark' ? 'Dark' : 'Light'})</strong>
+                    <small style="color:var(--text-muted); font-size:11px;">Teal elegante, violeta suave e base moderna.</small>
+                  </div>
+                </div>
+
+                <!-- Preset 2: Esmeralda Jurídico -->
+                <div class="m2-theme-preset-card ${activeColors.theme_preset === 'emerald' ? 'is-active' : ''}" data-action="select-theme-preset" data-preset="emerald">
+                  <div class="m2-theme-dots-row">
+                    <span class="m2-theme-dot" style="background:#059669;"></span>
+                    <span class="m2-theme-dot" style="background:#d97706;"></span>
+                    <span class="m2-theme-dot" style="background:${colorEditScheme === 'dark' ? '#064e3b' : '#f0fdf4'};"></span>
+                    <span class="m2-theme-dot" style="background:${colorEditScheme === 'dark' ? '#022c22' : '#ffffff'};"></span>
+                  </div>
+                  <div>
+                    <strong style="font-size:14px; color:var(--text-main); display:block;">💎 Esmeralda Jurídico</strong>
+                    <small style="color:var(--text-muted); font-size:11px;">Verde esmeralda com toques âmbar de lei seca.</small>
+                  </div>
+                </div>
+
+                <!-- Preset 3: Polícia & Tático -->
+                <div class="m2-theme-preset-card ${activeColors.theme_preset === 'police' ? 'is-active' : ''}" data-action="select-theme-preset" data-preset="police">
+                  <div class="m2-theme-dots-row">
+                    <span class="m2-theme-dot" style="background:#2563eb;"></span>
+                    <span class="m2-theme-dot" style="background:#06b6d4;"></span>
+                    <span class="m2-theme-dot" style="background:${colorEditScheme === 'dark' ? '#0f172a' : '#f0f9ff'};"></span>
+                    <span class="m2-theme-dot" style="background:${colorEditScheme === 'dark' ? '#0a0f1d' : '#ffffff'};"></span>
+                  </div>
+                  <div>
+                    <strong style="font-size:14px; color:var(--text-main); display:block;">⚡ Polícia & Tático</strong>
+                    <small style="color:var(--text-muted); font-size:11px;">Azul royal, ciano elétrico e azul marinho.</small>
+                  </div>
+                </div>
+
+                <!-- Preset 4: Clean Minimalista -->
+                <div class="m2-theme-preset-card ${activeColors.theme_preset === 'clean_light' ? 'is-active' : ''}" data-action="select-theme-preset" data-preset="clean_light">
+                  <div class="m2-theme-dots-row">
+                    <span class="m2-theme-dot" style="background:#2563eb;"></span>
+                    <span class="m2-theme-dot" style="background:#6366f1;"></span>
+                    <span class="m2-theme-dot" style="background:${colorEditScheme === 'dark' ? '#0f172a' : '#f8fafc'};"></span>
+                    <span class="m2-theme-dot" style="background:${colorEditScheme === 'dark' ? '#0b0f19' : '#ffffff'};"></span>
+                  </div>
+                  <div>
+                    <strong style="font-size:14px; color:var(--text-main); display:block;">☀️ Clean Minimalista</strong>
+                    <small style="color:var(--text-muted); font-size:11px;">Alto contraste e foco absoluto em leitura.</small>
+                  </div>
+                </div>
+
+                <!-- Preset 5: Tech Violet -->
+                <div class="m2-theme-preset-card ${activeColors.theme_preset === 'violet' ? 'is-active' : ''}" data-action="select-theme-preset" data-preset="violet">
+                  <div class="m2-theme-dots-row">
+                    <span class="m2-theme-dot" style="background:#7c3aed;"></span>
+                    <span class="m2-theme-dot" style="background:#ec4899;"></span>
+                    <span class="m2-theme-dot" style="background:${colorEditScheme === 'dark' ? '#1e1b4b' : '#faf5ff'};"></span>
+                    <span class="m2-theme-dot" style="background:${colorEditScheme === 'dark' ? '#0f0d24' : '#ffffff'};"></span>
+                  </div>
+                  <div>
+                    <strong style="font-size:14px; color:var(--text-main); display:block;">🟣 Tech Violet</strong>
+                    <small style="color:var(--text-muted); font-size:11px;">Violeta vibrante e rosa neon envolvente.</small>
+                  </div>
+                </div>
+
+                <!-- Preset 6: Noturno Âmbar -->
+                <div class="m2-theme-preset-card ${activeColors.theme_preset === 'amber_focus' ? 'is-active' : ''}" data-action="select-theme-preset" data-preset="amber_focus">
+                  <div class="m2-theme-dots-row">
+                    <span class="m2-theme-dot" style="background:#d97706;"></span>
+                    <span class="m2-theme-dot" style="background:#ea580c;"></span>
+                    <span class="m2-theme-dot" style="background:${colorEditScheme === 'dark' ? '#1c1917' : '#fefce8'};"></span>
+                    <span class="m2-theme-dot" style="background:${colorEditScheme === 'dark' ? '#0c0a09' : '#fffbeb'};"></span>
+                  </div>
+                  <div>
+                    <strong style="font-size:14px; color:var(--text-main); display:block;">🍁 Foco Noturno (Warm Âmbar)</strong>
+                    <small style="color:var(--text-muted); font-size:11px;">Tons quentes de âmbar e menor fadiga visual.</small>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <!-- Seção 2: Personalização Detalhada de Cores (Separado por Grupos) -->
+            <section class="m2-card">
+              <div class="m2-settings-card-heading">
+                <div>
+                  <h2 class="m2-card-title">${icon('sliders', 18)} Ajuste Fino das Cores (${colorEditScheme === 'dark' ? 'Modo Escuro' : 'Modo Claro'})</h2>
+                  <p>Personalize cada elemento da interface individualmente para alinhar à sua marca no modo selecionado.</p>
+                </div>
+              </div>
+
+              <input type="hidden" id="m2-platform-theme-preset" value="${escapeHtml(activeColors.theme_preset || 'midnight')}">
+
+              <div class="m2-color-sections-container" style="margin-top:16px;">
+                <!-- Grupo 1: Destaques & Acentos -->
+                <div class="m2-color-group-box">
+                  <div class="m2-color-group-title">
+                    ${icon('sparkles', 15)} 1. Cores Principais & Acentos
+                  </div>
+                  <div class="m2-color-fields-row">
+                    <div class="m2-color-field-item">
+                      <label>Cor Principal (Primária)</label>
+                      <input id="m2-platform-color-primary" class="m2-color-field-input" type="color" data-color-key="primary" value="${escapeHtml(activeColors.primary || '#0f766e')}">
+                    </div>
+                    <div class="m2-color-field-item">
+                      <label>Cor Secundária</label>
+                      <input id="m2-platform-color-secondary" class="m2-color-field-input" type="color" data-color-key="secondary" value="${escapeHtml(activeColors.secondary || '#7c3aed')}">
+                    </div>
+                    <div class="m2-color-field-item">
+                      <label>Sucesso / Acertos</label>
+                      <input id="m2-platform-color-accent_green" class="m2-color-field-input" type="color" data-color-key="accent_green" value="${escapeHtml(activeColors.accent_green || '#10b981')}">
+                    </div>
+                    <div class="m2-color-field-item">
+                      <label>Atenção / Revisões</label>
+                      <input id="m2-platform-color-accent_amber" class="m2-color-field-input" type="color" data-color-key="accent_amber" value="${escapeHtml(activeColors.accent_amber || '#f59e0b')}">
+                    </div>
+                    <div class="m2-color-field-item">
+                      <label>Alerta / Erros</label>
+                      <input id="m2-platform-color-accent_rose" class="m2-color-field-input" type="color" data-color-key="accent_rose" value="${escapeHtml(activeColors.accent_rose || '#ef4444')}">
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Grupo 2: Menu Lateral (Sidebar) -->
+                <div class="m2-color-group-box">
+                  <div class="m2-color-group-title">
+                    ${icon('sidebar', 15)} 2. Barra Lateral & Navegação
+                  </div>
+                  <div class="m2-color-fields-row">
+                    <div class="m2-color-field-item">
+                      <label>Fundo da Barra Lateral</label>
+                      <input id="m2-platform-color-sidebar" class="m2-color-field-input" type="color" data-color-key="sidebar" value="${escapeHtml(activeColors.sidebar || (colorEditScheme === 'light' ? '#f8fafc' : '#0f172a'))}">
+                    </div>
+                    <div class="m2-color-field-item">
+                      <label>Texto dos Links</label>
+                      <input id="m2-platform-color-sidebar_text" class="m2-color-field-input" type="color" data-color-key="sidebar_text" value="${escapeHtml(activeColors.sidebar_text || (colorEditScheme === 'light' ? '#475569' : '#94a3b8'))}">
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Grupo 3: Ambiente & Superfícies -->
+                <div class="m2-color-group-box">
+                  <div class="m2-color-group-title">
+                    ${icon('layers', 15)} 3. Fundo & Superfícies da Plataforma
+                  </div>
+                  <div class="m2-color-fields-row">
+                    <div class="m2-color-field-item">
+                      <label>Fundo Geral da Aplicação</label>
+                      <input id="m2-platform-color-bg_app" class="m2-color-field-input" type="color" data-color-key="bg_app" value="${escapeHtml(activeColors.bg_app || (colorEditScheme === 'light' ? '#f1f5f9' : '#090d16'))}">
+                    </div>
+                    <div class="m2-color-field-item">
+                      <label>Fundo dos Cards / Painéis</label>
+                      <input id="m2-platform-color-bg_card" class="m2-color-field-input" type="color" data-color-key="bg_card" value="${escapeHtml(activeColors.bg_card || (colorEditScheme === 'light' ? '#ffffff' : '#111827'))}">
+                    </div>
+                    <div class="m2-color-field-item">
+                      <label>Bordas e Divisórias</label>
+                      <input id="m2-platform-color-border_color" class="m2-color-field-input" type="color" data-color-key="border_color" value="${escapeHtml(activeColors.border_color || (colorEditScheme === 'light' ? '#e2e8f0' : '#1e293b'))}">
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Grupo 4: Tipografia -->
+                <div class="m2-color-group-box">
+                  <div class="m2-color-group-title">
+                    ${icon('type', 15)} 4. Tipografia & Textos
+                  </div>
+                  <div class="m2-color-fields-row">
+                    <div class="m2-color-field-item">
+                      <label>Texto Principal (Títulos/Corpo)</label>
+                      <input id="m2-platform-color-text_main" class="m2-color-field-input" type="color" data-color-key="text_main" value="${escapeHtml(activeColors.text_main || (colorEditScheme === 'light' ? '#0f172a' : '#f8fafc'))}">
+                    </div>
+                    <div class="m2-color-field-item">
+                      <label>Texto Secundário / Legendas</label>
+                      <input id="m2-platform-color-text_muted" class="m2-color-field-input" type="color" data-color-key="text_muted" value="${escapeHtml(activeColors.text_muted || (colorEditScheme === 'light' ? '#64748b' : '#94a3b8'))}">
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Live Preview do Tema -->
+              <div style="margin-top:20px;">
+                <label style="font-size:12px; font-weight:700; text-transform:uppercase; color:var(--text-muted); letter-spacing:0.5px; display:block; margin-bottom:8px;">
+                  Pré-visualização do Tema (${colorEditScheme === 'dark' ? 'Modo Escuro' : 'Modo Claro'}):
+                </label>
+                <div class="m2-theme-preview-card" id="m2-theme-preview-container" style="background:${escapeHtml(activeColors.bg_card || (colorEditScheme === 'light' ? '#ffffff' : '#111827'))}; border:1px solid ${escapeHtml(activeColors.border_color || (colorEditScheme === 'light' ? '#e2e8f0' : '#1e293b'))}; color:${escapeHtml(activeColors.text_main || (colorEditScheme === 'light' ? '#0f172a' : '#f8fafc'))};">
+                  <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <div>
+                      <span class="m2-pill" style="background:${escapeHtml(activeColors.primary || '#0f766e')}; color:#fff; font-weight:700;">Destaque Ativo</span>
+                      <span class="m2-pill" style="background:${escapeHtml(activeColors.secondary || '#7c3aed')}; color:#fff; font-weight:700; margin-left:6px;">Secundário</span>
+                    </div>
+                    <span style="font-size:11px; color:${escapeHtml(activeColors.text_muted || (colorEditScheme === 'light' ? '#64748b' : '#94a3b8'))};">Exemplo de Card (${colorEditScheme === 'dark' ? 'Dark' : 'Light'})</span>
+                  </div>
+                  <h3 style="margin:8px 0 4px 0; font-size:17px; font-weight:700; color:${escapeHtml(activeColors.text_main || (colorEditScheme === 'light' ? '#0f172a' : '#f8fafc'))};">
+                    Título do Edital ou Disciplina
+                  </h3>
+                  <p style="margin:0 0 12px 0; font-size:13px; color:${escapeHtml(activeColors.text_muted || (colorEditScheme === 'light' ? '#64748b' : '#94a3b8'))};">
+                    Este texto reflete as cores de leitura, botões e bordas em tempo real antes de salvar.
+                  </p>
+                  <div style="display:flex; gap:8px;">
+                    <button type="button" class="m2-btn" style="background:${escapeHtml(activeColors.primary || '#0f766e')}; color:#fff; border:none; padding:6px 14px; border-radius:6px; font-weight:600;">
+                      Botão Primário
+                    </button>
+                    <button type="button" class="m2-btn" style="background:${escapeHtml(activeColors.bg_app || (colorEditScheme === 'light' ? '#f1f5f9' : '#090d16'))}; border:1px solid ${escapeHtml(activeColors.border_color || (colorEditScheme === 'light' ? '#e2e8f0' : '#1e293b'))}; color:${escapeHtml(activeColors.text_main || (colorEditScheme === 'light' ? '#0f172a' : '#f8fafc'))}; padding:6px 14px; border-radius:6px; font-weight:600;">
+                      Botão Secundário
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <!-- Ações de Salvar Tema -->
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-top:20px; flex-wrap:wrap; gap:12px; border-top:1px solid var(--border-color); padding-top:16px;">
+                <button type="button" class="m2-btn m2-btn-secondary" data-action="reset-platform-colors">
+                  ${icon('rotate-ccw', 15)} Restaurar Tema Padrão
+                </button>
+                <button type="button" class="m2-btn m2-btn-primary m2-btn-lg" data-action="save-platform-colors">
+                  ${icon('save', 16)} Salvar Tema & Paleta de Cores
+                </button>
+              </div>
+            </section>
+          </div>
+        ` : `
+          <!-- CONTEÚDO DA ABA 3: BANNERS PROMOCIONAIS -->
+          <div style="display:flex; flex-direction:column; gap:20px;">
+            <div class="m2-card" style="padding:22px;">
+              <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:16px; flex-wrap:wrap;">
+                <div>
+                  <div style="display:flex; align-items:center; gap:8px;">
+                    <div style="width:36px; height:36px; border-radius:var(--radius-md); background:var(--accent-amber-soft); color:var(--accent-amber); display:grid; place-items:center;">
+                      ${icon('tag', 20)}
+                    </div>
+                    <div>
+                      <h2 class="m2-card-title" style="margin:0;">Banners Promocionais & Ofertas</h2>
+                      <span style="font-size:12px; color:var(--text-muted);">
+                        Configure campanhas com imagem, chamada e link de checkout para exibir no topo da área do aluno.
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                <button type="button" class="m2-btn m2-btn-primary" data-action="open-promotional-banner-modal">
+                  ${icon('plus', 16)} Novo Banner Promocional
+                </button>
+              </div>
+            </div>
+
+            <!-- Lista de Banners Configurados -->
+            <div style="display:flex; flex-direction:column; gap:14px;">
+              ${(window.M2Data.mentorship?.promotional_banners || []).length === 0 ? `
+                <div class="m2-card" style="text-align:center; padding:56px 24px; border:1px dashed var(--border-color);">
+                  <div style="width:52px; height:52px; border-radius:50%; background:var(--bg-surface); display:grid; place-items:center; margin:0 auto 14px; color:var(--accent-amber);">
+                    ${icon('tag', 24)}
+                  </div>
+                  <h3 style="font-size:17px; font-weight:700;">Nenhum banner promocional cadastrado</h3>
+                  <p style="font-size:13px; color:var(--text-muted); margin:6px auto 16px; max-width:440px;">
+                    Crie banners promocionais (ex: Black Friday, Planos Anuais, Mentorias VIP) para direcionar os alunos para seus checkouts.
+                  </p>
+                  <button type="button" class="m2-btn m2-btn-primary" data-action="open-promotional-banner-modal">
+                    ${icon('plus', 16)} Criar Primeiro Banner
+                  </button>
+                </div>
+              ` : (window.M2Data.mentorship?.promotional_banners || []).map(b => {
+                const contests = window.M2Data.contests || [];
+                const contestName = b.contest_id ? (contests.find(c => String(c.id) === String(b.contest_id))?.name || 'Concurso Específico') : '';
+                return `
+                  <div class="m2-card" style="display:flex; flex-direction:column; gap:14px; border-left:4px solid ${b.is_active ? 'var(--accent-amber)' : 'var(--border-color)'};">
+                    <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:16px; flex-wrap:wrap;">
+                      <div style="display:flex; gap:16px; flex:1; min-width:280px;">
+                        ${b.image_url ? `
+                          <div style="width:120px; height:72px; border-radius:var(--radius-md); overflow:hidden; border:1px solid var(--border-color); flex-shrink:0; background:var(--bg-surface);">
+                            <img src="${escapeHtml(b.image_url)}" alt="${escapeHtml(b.title)}" style="width:100%; height:100%; object-fit:cover;">
+                          </div>
+                        ` : `
+                          <div style="width:72px; height:72px; border-radius:var(--radius-md); border:1px dashed var(--border-color); display:grid; place-items:center; flex-shrink:0; color:var(--accent-amber); background:var(--accent-amber-soft);">
+                            ${icon('tag', 24)}
+                          </div>
+                        `}
+                        <div>
+                          <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
+                            <strong style="font-size:16px; color:var(--text-main);">${escapeHtml(b.title)}</strong>
+                            <span class="m2-pill ${b.is_active ? 'm2-pill-green' : 'm2-pill-gray'}">${b.is_active ? 'Ativo' : 'Inativo'}</span>
+                            <span class="m2-pill ${b.target === 'all' ? 'm2-pill-teal' : 'm2-pill-violet'}">
+                              ${b.target === 'all' ? 'Todos os Alunos' : `Edital: ${escapeHtml(contestName)}`}
+                            </span>
+                          </div>
+                          ${b.link_url ? `
+                            <a href="${escapeHtml(b.link_url)}" target="_blank" rel="noopener noreferrer" style="font-size:12px; color:var(--accent-teal); display:inline-flex; align-items:center; gap:4px; text-decoration:none;">
+                              ${icon('link', 12)} ${escapeHtml(b.link_url)}
+                            </a>
+                          ` : '<span style="font-size:12px; color:var(--text-muted);">Sem link configurado</span>'}
+                          <span style="font-size:11px; color:var(--text-muted); display:block; margin-top:4px;">
+                            Texto do Botão: <strong>${escapeHtml(b.link_text || 'Clique aqui')}</strong>
+                          </span>
+                        </div>
+                      </div>
+
+                      <div style="display:flex; align-items:center; gap:8px;">
+                        <button type="button" class="m2-btn m2-btn-secondary m2-btn-sm" data-action="toggle-promo-banner-active" data-id="${escapeHtml(b.id)}">
+                          ${b.is_active ? 'Desativar' : 'Ativar'}
+                        </button>
+                        <button type="button" class="m2-btn m2-btn-secondary m2-btn-sm" data-action="edit-promotional-banner" data-id="${escapeHtml(b.id)}">
+                          ${icon('edit', 14)} Editar
+                        </button>
+                        <button type="button" class="m2-btn m2-btn-secondary m2-btn-sm" style="color:var(--accent-rose);" data-action="delete-promotional-banner" data-id="${escapeHtml(b.id)}">
+                          ${icon('trash-2', 14)}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          </div>
+        `}
       </div>
     `;
   }
@@ -1362,7 +2064,7 @@ export function viewMentorAudit() {
       <div class="m2-content">
         <div class="m2-page-header">
           <div class="m2-page-title-group">
-            <span class="m2-eyebrow">M20 · Segurança & Rastreabilidade</span>
+            <span class="m2-eyebrow">Segurança & Rastreabilidade</span>
             <h1 class="m2-page-title">Trilha de Auditoria</h1>
             <p class="m2-page-subtitle">Registro cronológico e imutável de todas as ações de mentores, alunos e jobs automáticos.</p>
           </div>
