@@ -138,8 +138,13 @@ class SpreadsheetImportController extends Controller
         }
 
         $contestId = $validated['contest_id'] ?? null;
+        $examDate = ! empty($validated['exam_date']) ? $validated['exam_date'] : null;
+        $contestName = trim((string) ($validated['new_contest_name'] ?? '')) ?: 'Novo Concurso';
+        $organization = trim((string) ($validated['organization'] ?? '')) ?: null;
+        $board = trim((string) ($validated['board'] ?? '')) ?: null;
+        $role = trim((string) ($validated['role'] ?? '')) ?: null;
 
-        return DB::transaction(function () use ($tenantId, $user, $validated, $rows, $contestId) {
+        return DB::transaction(function () use ($tenantId, $user, $rows, $contestId, $examDate, $contestName, $organization, $board, $role) {
             if (! empty($contestId)) {
                 $contest = DB::table('mentoria2_contests')
                     ->where('tenant_id', $tenantId)
@@ -150,23 +155,23 @@ class SpreadsheetImportController extends Controller
                     return response()->json(['message' => 'Concurso selecionado não encontrado.'], 404);
                 }
 
-                if (! empty($validated['exam_date'])) {
+                if ($examDate) {
                     DB::table('mentoria2_contests')
                         ->where('tenant_id', $tenantId)
                         ->where('id', $contestId)
-                        ->update(['exam_date' => $validated['exam_date'], 'updated_at' => now()]);
+                        ->update(['exam_date' => $examDate, 'updated_at' => now()]);
                 }
             } else {
                 $contestId = (string) Str::uuid();
                 DB::table('mentoria2_contests')->insert([
                     'id' => $contestId,
                     'tenant_id' => $tenantId,
-                    'name' => $validated['new_contest_name'] ?: 'Novo Concurso',
-                    'organization' => $validated['organization'] ?: null,
-                    'board' => $validated['board'] ?: null,
-                    'position' => $validated['role'] ?: null,
+                    'name' => $contestName,
+                    'organization' => $organization,
+                    'board' => $board,
+                    'position' => $role,
                     'phase' => 'Publicado',
-                    'exam_date' => $validated['exam_date'] ?: null,
+                    'exam_date' => $examDate,
                     'created_by' => $user->id,
                     'is_active' => true,
                     'created_at' => now(),
@@ -304,7 +309,7 @@ class SpreadsheetImportController extends Controller
                 }
             }
 
-            $this->audit->record($tenantId, $user, 'edict.spreadsheet_imported', 'edict', $edictId, [
+            $this->audit->record($tenantId, $user, 'edict.spreadsheet_imported', 'edict', $edictId, null, [
                 'contest_id' => $contestId,
                 'subjects' => $createdSubjects,
                 'topics' => $createdTopics,

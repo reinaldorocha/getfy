@@ -1292,6 +1292,7 @@ export function handleMentorAction({
     formData.append('file', file);
     if (destType === 'existing' && contestSelect) {
       formData.append('contest_id', contestSelect);
+      if (contestExamDate) formData.append('exam_date', contestExamDate);
     } else {
       formData.append('new_contest_name', contestName || 'Novo Concurso');
       if (contestOrg) formData.append('organization', contestOrg);
