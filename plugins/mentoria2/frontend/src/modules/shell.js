@@ -775,7 +775,7 @@ export   function renderFloatingMiniTimer() {
     if (state.modal === 'schedule-completion') {
       const completion = state.scheduleCompletion;
       if (!completion) return '';
-      return `<div class="m2-modal-overlay" data-action="close-modal-backdrop"><div class="m2-modal-content" style="max-width:620px;"><div class="m2-modal-header"><div><h3>Concluir atividade</h3><p>Registre o que foi estudado para atualizar seu desempenho e histórico.</p></div><button type="button" class="m2-btn-icon" data-action="close-modal" aria-label="Fechar">${icon('x', 16)}</button></div><div class="m2-completion-summary"><strong>${escapeHtml(completion.subjectName)}</strong><span>${escapeHtml(completion.topicName)} · ${completion.durationMinutes} min planejados</span></div><div class="m2-completion-grid"><label class="m2-modal-field">Minutos estudados<input id="m2-completion-minutes" type="number" min="1" max="1440" value="${completion.durationMinutes}"></label><label class="m2-modal-field">Questões respondidas<input id="m2-completion-solved" type="number" min="0" value="0"></label><label class="m2-modal-field">Acertos<input id="m2-completion-correct" type="number" min="0" value="0"></label></div><label class="m2-modal-field">Observações<textarea id="m2-completion-notes" maxlength="2000" placeholder="Dificuldades, pontos para revisar ou próximos passos."></textarea></label><div class="m2-modal-actions"><button type="button" class="m2-btn m2-btn-secondary" data-action="close-modal">Cancelar</button><button type="button" class="m2-btn m2-btn-primary" data-action="submit-schedule-completion">${icon('check', 16)} Concluir assunto</button></div></div></div>`;
+      return `<div class="m2-modal-overlay" data-action="close-modal-backdrop"><div class="m2-modal-content" style="max-width:620px;"><div class="m2-modal-header"><div><h3>Concluir atividade</h3><p>Registre o que foi estudado para atualizar seu desempenho e histórico.</p></div><button type="button" class="m2-btn-icon" data-action="close-modal" aria-label="Fechar">${icon('x', 16)}</button></div><div class="m2-completion-summary"><strong>${escapeHtml(completion.subjectName)}</strong><span>${escapeHtml(completion.topicName)} · ${completion.durationMinutes} min planejados${completion.questionsTarget ? ` · meta: ${completion.questionsTarget} questões` : ''}</span></div><div class="m2-completion-grid"><label class="m2-modal-field">Minutos estudados<input id="m2-completion-minutes" type="number" min="1" max="1440" value="${completion.durationMinutes}"></label><label class="m2-modal-field">Questões respondidas<input id="m2-completion-solved" type="number" min="0" value="${completion.questionsTarget || 0}"></label><label class="m2-modal-field">Acertos<input id="m2-completion-correct" type="number" min="0" value="0"></label></div><label class="m2-modal-field">Observações<textarea id="m2-completion-notes" maxlength="2000" placeholder="Dificuldades, pontos para revisar ou próximos passos."></textarea></label><div class="m2-modal-actions"><button type="button" class="m2-btn m2-btn-secondary" data-action="close-modal">Cancelar</button><button type="button" class="m2-btn m2-btn-primary" data-action="submit-schedule-completion">${icon('check', 16)} Concluir assunto</button></div></div></div>`;
     }
 
     if (state.modal === 'calendar-day') {
@@ -783,7 +783,7 @@ export   function renderFloatingMiniTimer() {
       const entries = calendarItems.filter(item => day === 'cycle' ? !item.planned_date : String(item.planned_date || '').slice(0, 10) === day);
       const reviewById = Object.fromEntries((window.M2Data.reviews || []).map(review => [String(review.id), review]));
       const title = day === 'cycle' ? 'Fila do ciclo inteligente' : (day ? new Intl.DateTimeFormat('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date(`${day}T12:00:00`)) : 'Atividades');
-      return `<div class="m2-modal-overlay" data-action="close-modal-backdrop"><div class="m2-modal-content" style="max-width:700px;"><div class="m2-modal-header"><div><h3>${escapeHtml(title)}</h3><p>Execute ou atualize as atividades planejadas para este período.</p></div><button type="button" class="m2-btn-icon" data-action="close-modal" aria-label="Fechar">${icon('x', 16)}</button></div><div class="m2-calendar-day-list">${entries.length ? entries.map(item => { const review = reviewById[String(item.scheduled_review_id)] || null; const reviewItem = Boolean(item.scheduled_review_id); const completed = item.status === 'concluido' || Boolean(review?.completed); return `<article class="m2-calendar-day-item ${reviewItem ? 'review' : ''}"><div class="m2-calendar-day-item__main"><span class="m2-pill ${reviewItem ? 'm2-pill-violet' : completed ? 'm2-pill-green' : 'm2-pill-teal'}">${reviewItem ? 'Revisão' : completed ? 'Concluído' : 'Estudo'}</span><strong>${escapeHtml(subjectFor(item.subject_id))}</strong><small>${escapeHtml(topicFor(item.topic_id))} · ${Number(item.duration_minutes || 60)} min${item.cycle_position ? ` · ciclo ${item.cycle_position}` : ''}</small></div><div class="m2-calendar-day-item__actions">${reviewItem ? (completed ? '<span class="m2-pill m2-pill-green">Concluída</span>' : `<button type="button" class="m2-btn m2-btn-secondary m2-btn-sm" data-action="start-schedule-item" data-subject-id="${item.subject_id || ''}">${icon('timer', 14)} Timer</button><button type="button" class="m2-btn m2-btn-primary m2-btn-sm" data-action="complete-calendar-review" data-review-id="${item.scheduled_review_id}">Revisar</button><button type="button" class="m2-btn m2-btn-quiet m2-btn-sm" data-action="postpone-calendar-review" data-review-id="${item.scheduled_review_id}">Adiar</button>`) : `<button type="button" class="m2-btn m2-btn-secondary m2-btn-sm" data-action="start-schedule-item" data-subject-id="${item.subject_id || ''}">${icon('timer', 14)} Timer</button><button type="button" class="m2-btn ${completed ? 'm2-btn-secondary' : 'm2-btn-primary'} m2-btn-sm" data-action="${completed ? 'reopen-schedule-item' : 'open-schedule-completion'}" data-item-id="${item.id}">${completed ? 'Reabrir' : 'Concluir'}</button>`}</div></article>`; }).join('') : '<p class="m2-empty-inline">Nenhuma atividade foi encontrada neste dia.</p>'}</div><div style="display:flex; justify-content:flex-end;"><button type="button" class="m2-btn m2-btn-secondary" data-action="close-modal">Fechar</button></div></div></div>`;
+      return `<div class="m2-modal-overlay" data-action="close-modal-backdrop"><div class="m2-modal-content" style="max-width:700px;"><div class="m2-modal-header"><div><h3>${escapeHtml(title)}</h3><p>Execute ou atualize as atividades planejadas para este período.</p></div><button type="button" class="m2-btn-icon" data-action="close-modal" aria-label="Fechar">${icon('x', 16)}</button></div><div class="m2-calendar-day-list">${entries.length ? entries.map(item => { const review = reviewById[String(item.scheduled_review_id)] || null; const reviewItem = Boolean(item.scheduled_review_id); const completed = item.status === 'concluido' || Boolean(review?.completed); return `<article class="m2-calendar-day-item ${reviewItem ? 'review' : ''}"><div class="m2-calendar-day-item__main"><span class="m2-pill ${reviewItem ? 'm2-pill-violet' : completed ? 'm2-pill-green' : 'm2-pill-teal'}">${reviewItem ? 'Revisão' : completed ? 'Concluído' : 'Estudo'}</span><strong>${escapeHtml(subjectFor(item.subject_id))}</strong><small>${escapeHtml(topicFor(item.topic_id))} · ${Number(item.duration_minutes || 60)} min${item.questions_target ? ` · ${item.questions_target} questões` : ''}${item.cycle_position ? ` · ciclo ${item.cycle_position}` : ''}</small></div><div class="m2-calendar-day-item__actions">${reviewItem ? (completed ? '<span class="m2-pill m2-pill-green">Concluída</span>' : `<button type="button" class="m2-btn m2-btn-secondary m2-btn-sm" data-action="start-schedule-item" data-subject-id="${item.subject_id || ''}">${icon('timer', 14)} Timer</button><button type="button" class="m2-btn m2-btn-primary m2-btn-sm" data-action="complete-calendar-review" data-review-id="${item.scheduled_review_id}">Revisar</button><button type="button" class="m2-btn m2-btn-quiet m2-btn-sm" data-action="postpone-calendar-review" data-review-id="${item.scheduled_review_id}">Adiar</button>`) : `<button type="button" class="m2-btn m2-btn-secondary m2-btn-sm" data-action="start-schedule-item" data-subject-id="${item.subject_id || ''}">${icon('timer', 14)} Timer</button><button type="button" class="m2-btn ${completed ? 'm2-btn-secondary' : 'm2-btn-primary'} m2-btn-sm" data-action="${completed ? 'reopen-schedule-item' : 'open-schedule-completion'}" data-item-id="${item.id}">${completed ? 'Reabrir' : 'Concluir'}</button>`}</div></article>`; }).join('') : '<p class="m2-empty-inline">Nenhuma atividade foi encontrada neste dia.</p>'}</div><div style="display:flex; justify-content:flex-end;"><button type="button" class="m2-btn m2-btn-secondary" data-action="close-modal">Fechar</button></div></div></div>`;
     }
 
     if (state.modal === 'replan-schedule') {
@@ -1013,7 +1013,7 @@ export   function renderFloatingMiniTimer() {
       const modeTitles = {
         questions: 'Questões Inéditas',
         flashcards: 'Baralho de Flashcards',
-        catalog: 'Edital / Concurso Completo'
+        // catalog removed
       };
 
       return `
@@ -1040,9 +1040,7 @@ export   function renderFloatingMiniTimer() {
               <button type="button" class="m2-btn ${mode === 'flashcards' ? 'm2-btn-primary' : 'm2-btn-secondary'} m2-btn-sm" data-action="set-json-import-mode" data-mode="flashcards">
                 ${icon('rotate-3d', 14)} 2. Flashcards
               </button>
-              <button type="button" class="m2-btn ${mode === 'catalog' ? 'm2-btn-primary' : 'm2-btn-secondary'} m2-btn-sm" data-action="set-json-import-mode" data-mode="catalog">
-                ${icon('file-text', 14)} 3. Edital / Concurso
-              </button>
+
             </div>
 
             <!-- Passo 1: Copiar Prompt -->
@@ -1075,50 +1073,133 @@ export   function renderFloatingMiniTimer() {
             </div>
 
             <!-- Passo 3: Destino -->
-            ${mode === 'catalog' ? `
-              <div style="margin-top:14px; background:var(--bg-card); padding:14px; border-radius:var(--radius-md); border:1px solid var(--border-color);">
-                <label style="font-size:12px; font-weight:700; color:var(--text-main); display:block; margin-bottom:8px;">3. Destino do Edital:</label>
-                <div style="display:flex; gap:16px; margin-bottom:12px;">
-                  <label style="font-size:12px; display:flex; align-items:center; gap:6px; cursor:pointer; color:var(--text-main);">
-                    <input type="radio" name="m2-import-contest-dest" value="new" checked data-action="toggle-import-dest">
-                    <strong>Criar Novo Concurso</strong>
-                  </label>
-                  <label style="font-size:12px; display:flex; align-items:center; gap:6px; cursor:pointer; color:var(--text-main);">
-                    <input type="radio" name="m2-import-contest-dest" value="existing" data-action="toggle-import-dest">
-                    <span>Vincular a Concurso Existente</span>
-                  </label>
-                </div>
-
-                <div id="m2-import-new-contest-fields" style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
-                  <div style="grid-column: 1 / -1;">
-                    <label style="font-size:11px; color:var(--text-muted); display:block; margin-bottom:2px;">Nome do Novo Concurso (ou deixe em branco se informado no JSON):</label>
-                    <input type="text" id="m2-import-contest-name" class="m2-field-input" placeholder="Ex: Tribunal de Justiça SP - Escrevente Técnico" style="width:100%; padding:7px 10px; font-size:12px;">
-                  </div>
-                  <div>
-                    <label style="font-size:11px; color:var(--text-muted); display:block; margin-bottom:2px;">Banca Examinadora:</label>
-                    <input type="text" id="m2-import-contest-board" class="m2-field-input" placeholder="Ex: Vunesp, Cebraspe, FGV" style="width:100%; padding:7px 10px; font-size:12px;">
-                  </div>
-                  <div>
-                    <label style="font-size:11px; color:var(--text-muted); display:block; margin-bottom:2px;">Cargo / Função:</label>
-                    <input type="text" id="m2-import-contest-role" class="m2-field-input" placeholder="Ex: Escrevente Técnico" style="width:100%; padding:7px 10px; font-size:12px;">
-                  </div>
-                </div>
-
-                <div id="m2-import-existing-contest-field" style="display:none; margin-top:8px;">
-                  <label style="font-size:11px; color:var(--text-muted); display:block; margin-bottom:2px;">Selecione o Concurso Existente:</label>
-                  <select id="m2-import-contest-select" class="m2-field-input" style="width:100%; padding:7px 10px; font-size:12px;">
-                    ${contests.map(c => `<option value="${c.id}" ${c.id === state.contestId ? 'selected' : ''}>${escapeHtml(c.name)}</option>`).join('')}
-                  </select>
-                </div>
-              </div>
-            ` : `
-              ${renderAudienceSelector(state.currentTargets, '3. Disponibilização / Público-Alvo dos Itens Importados')}
-            `}
+            ${renderAudienceSelector(state.currentTargets, '3. Disponibilização / Público-Alvo dos Itens Importados')}
 
             <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:16px;">
               <button type="button" class="m2-btn m2-btn-secondary" data-action="close-modal">Cancelar</button>
               <button type="button" class="m2-btn m2-btn-primary" data-action="submit-json-import">
                 ${icon('check', 16)} Processar e Importar JSON
+              </button>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    
+    // Modal: Importação de Edital Verticalizado por Planilha (.xlsx/.csv)
+    if (state.modal === 'spreadsheet-import') {
+      const contests = window.M2Data.contests || [];
+      const preview = state.spreadsheetPreview || null;
+
+      return `
+        <div class="m2-modal-overlay" data-action="close-modal-backdrop">
+          <div class="m2-modal-content" style="max-width:740px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border-color); padding-bottom:12px;">
+              <div style="display:flex; align-items:center; gap:10px;">
+                <div style="width:36px; height:36px; border-radius:var(--radius-md); background:var(--accent-teal-soft); color:var(--accent-teal); display:grid; place-items:center;">
+                  ${icon('file-spreadsheet', 20)}
+                </div>
+                <div>
+                  <h3 style="font-size:16px; font-weight:700; color:var(--text-main);">Importar Edital Verticalizado por Planilha</h3>
+                  <span style="font-size:11px; color:var(--text-muted);">Suporta arquivos .xlsx e .csv com disciplinas, tópicos, subtópicos, prioridades e estimativas</span>
+                </div>
+              </div>
+              <button type="button" class="m2-btn-icon" data-action="close-modal">${icon('x', 16)}</button>
+            </div>
+
+            <!-- Passo 1: Baixar Planilha Modelo -->
+            <div style="margin-top:14px; background:var(--bg-card); border:1px solid var(--border-color); border-radius:var(--radius-md); padding:14px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+              <div>
+                <strong style="font-size:13px; color:var(--text-main); display:block;">1. Baixe o Modelo Oficial de Planilha</strong>
+                <span style="font-size:11px; color:var(--text-muted);">Arquivo padronizado com colunas de Disciplina, Tópico, Subtópico, Prioridade, Tempo Estimado e Questões</span>
+              </div>
+              <a href="/mentoria2/edicts/spreadsheet-template" download="modelo_edital_verticalizado.csv" class="m2-btn m2-btn-secondary m2-btn-sm" style="text-decoration:none;">
+                ${icon('download', 14)} Baixar Modelo (.csv)
+              </a>
+            </div>
+
+            <!-- Passo 2: Seleção do Arquivo -->
+            <div style="margin-top:14px;">
+              <label style="font-size:12px; font-weight:700; color:var(--text-main); display:block; margin-bottom:6px;">2. Selecione sua Planilha Preenchida (.xlsx ou .csv):</label>
+              <input type="file" id="m2-spreadsheet-file-input" accept=".xlsx,.xls,.csv,.tsv" class="m2-field-input" data-action="change-spreadsheet-file" style="width:100%; padding:8px 10px; font-size:12px;">
+            </div>
+
+            <!-- Passo 3: Destino do Concurso -->
+            <div style="margin-top:14px; background:var(--bg-card); padding:14px; border-radius:var(--radius-md); border:1px solid var(--border-color);">
+              <label style="font-size:12px; font-weight:700; color:var(--text-main); display:block; margin-bottom:8px;">3. Destino do Edital:</label>
+              <div style="display:flex; gap:16px; margin-bottom:12px;">
+                <label style="font-size:12px; display:flex; align-items:center; gap:6px; cursor:pointer; color:var(--text-main);">
+                  <input type="radio" name="m2-import-contest-dest" value="new" checked data-action="toggle-spreadsheet-dest">
+                  <strong>Criar Novo Concurso</strong>
+                </label>
+                <label style="font-size:12px; display:flex; align-items:center; gap:6px; cursor:pointer; color:var(--text-main);">
+                  <input type="radio" name="m2-import-contest-dest" value="existing" data-action="toggle-spreadsheet-dest">
+                  <span>Vincular a Concurso Existente</span>
+                </label>
+              </div>
+
+              <div id="m2-spreadsheet-new-fields" style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+                <div style="grid-column: 1 / -1;">
+                  <label style="font-size:11px; color:var(--text-muted); display:block; margin-bottom:2px;">Nome do Novo Concurso:</label>
+                  <input type="text" id="m2-spreadsheet-contest-name" class="m2-field-input" placeholder="Ex: PM-PI Soldado 2026" style="width:100%; padding:7px 10px; font-size:12px;">
+                </div>
+                <div>
+                  <label style="font-size:11px; color:var(--text-muted); display:block; margin-bottom:2px;">Órgão / Instituição:</label>
+                  <input type="text" id="m2-spreadsheet-contest-org" class="m2-field-input" placeholder="Ex: Polícia Militar" style="width:100%; padding:7px 10px; font-size:12px;">
+                </div>
+                <div>
+                  <label style="font-size:11px; color:var(--text-muted); display:block; margin-bottom:2px;">Banca Examinadora:</label>
+                  <input type="text" id="m2-spreadsheet-contest-board" class="m2-field-input" placeholder="Ex: Cebraspe, FGV, Vunesp" style="width:100%; padding:7px 10px; font-size:12px;">
+                </div>
+                <div>
+                  <label style="font-size:11px; color:var(--text-muted); display:block; margin-bottom:2px;">Cargo / Função:</label>
+                  <input type="text" id="m2-spreadsheet-contest-role" class="m2-field-input" placeholder="Ex: Soldado Combatente" style="width:100%; padding:7px 10px; font-size:12px;">
+                </div>
+                <div>
+                  <label style="font-size:11px; color:var(--text-muted); display:block; margin-bottom:2px;">Data da Prova (Opcional):</label>
+                  <input type="date" id="m2-spreadsheet-contest-exam-date" class="m2-field-input" style="width:100%; padding:7px 10px; font-size:12px;">
+                </div>
+              </div>
+
+              <div id="m2-spreadsheet-existing-field" style="display:none; margin-top:8px;">
+                <label style="font-size:11px; color:var(--text-muted); display:block; margin-bottom:2px;">Selecione o Concurso Existente:</label>
+                <select id="m2-spreadsheet-contest-select" class="m2-field-input" style="width:100%; padding:7px 10px; font-size:12px;">
+                  ${contests.map(c => `<option value="${c.id}" ${c.id === state.contestId ? 'selected' : ''}>${escapeHtml(c.name)}</option>`).join('')}
+                </select>
+              </div>
+            </div>
+
+            <!-- Preview Card -->
+            ${preview ? `
+              <div style="margin-top:14px; background:var(--accent-teal-soft); border:1px solid var(--accent-teal); border-radius:var(--radius-md); padding:14px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                  <strong style="font-size:13px; color:var(--accent-teal); display:flex; align-items:center; gap:6px;">
+                    ${icon('check-circle', 16)} Planilha analisada com sucesso!
+                  </strong>
+                  <span style="font-size:12px; font-weight:700; color:var(--text-main);">${preview.summary?.total_rows || 0} assuntos encontrados</span>
+                </div>
+                <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:8px; text-align:center; margin-top:10px;">
+                  <div style="background:var(--bg-card); padding:8px; border-radius:var(--radius-sm);">
+                    <span style="font-size:10px; color:var(--text-muted); display:block;">Disciplinas</span>
+                    <strong style="font-size:14px; color:var(--text-main);">${preview.summary?.total_subjects || 0}</strong>
+                  </div>
+                  <div style="background:var(--bg-card); padding:8px; border-radius:var(--radius-sm);">
+                    <span style="font-size:10px; color:var(--text-muted); display:block;">Carga Estimada</span>
+                    <strong style="font-size:14px; color:var(--text-main);">${preview.summary?.total_estimated_hours || 0}h</strong>
+                  </div>
+                  <div style="background:var(--bg-card); padding:8px; border-radius:var(--radius-sm);">
+                    <span style="font-size:10px; color:var(--text-muted); display:block;">Meta de Questões</span>
+                    <strong style="font-size:14px; color:var(--text-main);">${preview.summary?.total_questions_target || 0}</strong>
+                  </div>
+                </div>
+              </div>
+            ` : ''}
+
+            <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:16px;">
+              <button type="button" class="m2-btn m2-btn-secondary" data-action="close-modal">Cancelar</button>
+              <button type="button" class="m2-btn m2-btn-primary" data-action="submit-spreadsheet-import">
+                ${icon('check', 16)} Processar e Salvar Edital
               </button>
             </div>
           </div>

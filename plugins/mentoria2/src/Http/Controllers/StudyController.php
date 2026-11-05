@@ -1593,6 +1593,7 @@ class StudyController extends Controller
             'topic_id' => $item['topic_id'] ?? $item['topicoId'] ?? null,
             'subtopic_id' => $item['subtopic_id'] ?? $item['subtopicoId'] ?? null,
             'duration_minutes' => max(1, (int) ($item['duration_minutes'] ?? $item['duracaoMinutos'] ?? 60)),
+            'questions_target' => isset($item['questions_target']) ? (int) $item['questions_target'] : null,
             'priority' => max(0, min(100, (int) ($item['priority'] ?? $item['prioridade'] ?? 0))),
             'position' => (int) ($item['position'] ?? $item['ordem'] ?? $defaultPosition),
             'status' => $item['status'] ?? $item['situacao'] ?? 'pendente',

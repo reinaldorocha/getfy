@@ -1,9 +1,9 @@
 import { h, onMounted, onUnmounted, ref } from 'vue';
-import { initMentoria2App, destroyMentoria2App, state, navigate, showToast, toggleTheme, render } from './m2-app.js?v=b93e67d2d013';
-import { M2Data } from './m2-data.js?v=b93e67d2d013';
-import { icon, ICONS } from './m2-icons.js?v=b93e67d2d013';
-import { EDITAL_PROMPT, QUESTIONS_PROMPT, FLASHCARDS_PROMPT } from './prompts.js?v=b93e67d2d013';
-import { field, renderIcon, btn } from './shared.js?v=b93e67d2d013';
+import { initMentoria2App, destroyMentoria2App, state, navigate, showToast, toggleTheme, render } from './m2-app.js?v=c291614a33af';
+import { M2Data } from './m2-data.js?v=c291614a33af';
+import { icon, ICONS } from './m2-icons.js?v=c291614a33af';
+import { EDITAL_PROMPT, QUESTIONS_PROMPT, FLASHCARDS_PROMPT } from './prompts.js?v=c291614a33af';
+import { field, renderIcon, btn } from './shared.js?v=c291614a33af';
 
 export const Mentoria2Index = {
     name: 'Mentoria2Index',

@@ -376,6 +376,8 @@ class ContentController extends Controller
             'final_score' => ['sometimes', 'nullable', 'numeric'],
             'appointed' => ['sometimes', 'boolean'],
             'appointment_date' => ['sometimes', 'nullable', 'date'],
+            'allowed_schedule_mode' => ['sometimes', 'in:calendar,fixed_days'],
+            'fixed_days_duration' => ['sometimes', 'nullable', 'integer'],
             'is_active' => ['sometimes', 'boolean'],
         ]);
         $data['updated_at'] = now();

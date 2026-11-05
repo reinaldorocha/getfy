@@ -4,7 +4,7 @@
  * themes, sidebar states, loading flags, and notifications.
  */
 
-import { state } from '../core.js?v=b93e67d2d013';
+import { state } from '../core.js?v=c291614a33af';
 
 class UiStore {
   // Navigation & Screens

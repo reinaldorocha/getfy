@@ -343,6 +343,7 @@ class StudentController extends Controller
                     'c.pre_notice', 'c.review_intervals', 'c.logo',
                     'sc.group', 'sc.position as order', 'sc.include_in_stats',
                     'sc.result', 'sc.ranking', 'sc.final_score', 'sc.appointed', 'sc.appointment_date',
+                    'sc.allowed_schedule_mode', 'sc.fixed_days_duration',
                 )
                 ->orderByRaw($groupOrderRaw)
                 ->orderBy('sc.position')

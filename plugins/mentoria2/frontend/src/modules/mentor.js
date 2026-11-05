@@ -308,6 +308,38 @@ export function viewMentorStudentProfile() {
           </div>
         </div>
 
+        <div class="m2-card" style="margin-bottom:16px;">
+          <div class="m2-card-header">
+            <div>
+              <h2 class="m2-card-title">${icon('calendar', 18, 'text-teal')} Modalidade de Cronograma Liberada</h2>
+              <span style="font-size:12px; color:var(--text-muted);">Defina o modelo de estudos que este aluno pode utilizar na plataforma.</span>
+            </div>
+          </div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:12px;">
+            <div>
+              <label style="font-size:11px; color:var(--text-muted); display:block; margin-bottom:4px;">Tipo de Cronograma Autorizado:</label>
+              <select id="m2-student-schedule-mode" class="m2-field-input" style="width:100%; padding:8px 10px; font-size:12px;" data-action="change-student-plan-mode">
+                <option value="calendar" ${(!st.allowed_schedule_mode || st.allowed_schedule_mode === 'calendar') ? 'selected' : ''}>📅 Calendário Semanal / Até a Prova (Padrão)</option>
+                <option value="fixed_days" ${st.allowed_schedule_mode === 'fixed_days' ? 'selected' : ''}>⏱️ Dias Corridos (Ciclo Fixo)</option>
+              </select>
+            </div>
+            <div id="m2-student-fixed-duration-wrap" style="display:${st.allowed_schedule_mode === 'fixed_days' ? 'block' : 'none'};">
+              <label style="font-size:11px; color:var(--text-muted); display:block; margin-bottom:4px;">Duração do Ciclo Fixo:</label>
+              <select id="m2-student-fixed-duration" class="m2-field-input" style="width:100%; padding:8px 10px; font-size:12px;">
+                <option value="30" ${st.fixed_days_duration == 30 ? 'selected' : ''}>30 Dias Corridos</option>
+                <option value="40" ${st.fixed_days_duration == 40 ? 'selected' : ''}>40 Dias Corridos</option>
+                <option value="60" ${(!st.fixed_days_duration || st.fixed_days_duration == 60) ? 'selected' : ''}>60 Dias Corridos</option>
+                <option value="90" ${st.fixed_days_duration == 90 ? 'selected' : ''}>90 Dias Corridos</option>
+              </select>
+            </div>
+          </div>
+          <div style="display:flex; justify-content:flex-end; margin-top:14px;">
+            <button type="button" class="m2-btn m2-btn-primary m2-btn-sm" data-action="save-student-plan-settings" data-student-id="${st.id}">
+              ${icon('check', 14)} Salvar Modalidade de Plano
+            </button>
+          </div>
+        </div>
+
         <div class="m2-card">
           <h2 class="m2-card-title">${icon('activity', 18, 'text-teal')} Histórico de Intervenções Pedagógicas</h2>
           <p style="font-size:13px; color:var(--text-muted);">
@@ -489,9 +521,14 @@ export function viewMentorContests() {
             <h1 class="m2-page-title">Gestão de Concursos & Editais</h1>
             <p class="m2-page-subtitle">Um concurso contém seu edital oficial, matérias, tópicos e pesos.</p>
           </div>
-          <button type="button" class="m2-btn m2-btn-primary" data-action="create-contest">
-            ${icon('plus', 16)} Cadastrar Novo Concurso
-          </button>
+          <div style="display:flex; gap:8px;">
+            <button type="button" class="m2-btn m2-btn-secondary" data-action="open-spreadsheet-import-modal">
+              ${icon('file-spreadsheet', 16)} Importar por Planilha (.xlsx/.csv)
+            </button>
+            <button type="button" class="m2-btn m2-btn-primary" data-action="create-contest">
+              ${icon('plus', 16)} Cadastrar Novo Concurso
+            </button>
+          </div>
         </div>
 
         <div style="display:flex; gap:10px; align-items:center; margin-bottom:16px; background:var(--bg-card); padding:12px 16px; border-radius:var(--radius-md); border:1px solid var(--border-color);">
@@ -513,8 +550,8 @@ export function viewMentorContests() {
               <button type="button" class="m2-btn m2-btn-primary" data-action="create-contest">
                 ${icon('plus', 16)} Cadastrar Concurso
               </button>
-              <button type="button" class="m2-btn m2-btn-secondary" data-nav="mentor-import-review">
-                ${icon('upload-cloud', 16)} Importar Edital com IA
+              <button type="button" class="m2-btn m2-btn-secondary" data-action="open-spreadsheet-import-modal">
+                ${icon('file-spreadsheet', 16)} Importar Edital por Planilha
               </button>
             </div>
           </div>
@@ -600,6 +637,32 @@ export function viewMentorContestDetail() {
             <p class="m2-page-subtitle">Configure disciplinas, pesos, relevância e ordem dos tópicos.</p>
           </div>
           <button type="button" class="m2-btn m2-btn-secondary" data-nav="mentor-contests">Voltar aos Concursos</button>
+        </div>
+
+        <!-- Card: Data da Prova Oficial e Limites do Cronograma -->
+        <div class="m2-contest-setting-card" style="margin-bottom:16px;">
+          <div class="m2-contest-setting-heading">
+            <div class="m2-contest-setting-icon">${icon('calendar', 20)}</div>
+            <div>
+              <span class="m2-contest-setting-kicker">PRAZOS & LIMITE RÍGIDO</span>
+              <h2>Data da Prova do Concurso</h2>
+            </div>
+          </div>
+          <p class="m2-contest-setting-description">
+            Se preenchida, o cronograma do aluno não ultrapassará esta data. Caso não haja tempo suficiente para cobrir 100% do edital, o motor matemático selecionará automaticamente os tópicos de maior potencial de pontuação.
+          </p>
+          <div style="display:flex; align-items:center; gap:12px; margin-top:12px; flex-wrap:wrap;">
+            <label style="font-size:12px; font-weight:600; color:var(--text-main); display:flex; align-items:center; gap:6px;">
+              Data da Prova Oficial:
+              <input type="date" id="m2-contest-exam-date" class="m2-field-input" value="${c.examDate || c.exam_date || ''}" style="padding:6px 10px; font-size:12px;">
+            </label>
+            <button type="button" class="m2-btn m2-btn-primary m2-btn-sm" data-action="save-contest-exam-date" data-id="${c.id}">
+              ${icon('check', 14)} Salvar Data da Prova
+            </button>
+            <button type="button" class="m2-btn m2-btn-secondary m2-btn-sm" data-action="open-spreadsheet-import-modal">
+              ${icon('file-spreadsheet', 14)} Importar/Atualizar por Planilha
+            </button>
+          </div>
         </div>
 
         <!-- M08.1: Automações do Concurso (Revisões Personalizadas & Metas Fixas) -->
@@ -765,16 +828,16 @@ export function viewMentorImportReview() {
           <div style="width:48px; height:48px; border-radius:var(--radius-full); background:var(--accent-teal-soft); color:var(--accent-teal); display:grid; place-items:center; margin:0 auto 12px;">
             ${icon('upload', 24)}
           </div>
-          <h2 style="font-size:16px; font-weight:700;">Arraste o PDF do Edital ou Importe via JSON Externo</h2>
+          <h2 style="font-size:16px; font-weight:700;">Arraste o PDF do Edital ou Importe via Planilha</h2>
           <p style="font-size:12px; color:var(--text-muted); max-width:440px; margin:4px auto 16px;">
-            Suporta extração digital direta de Diários Oficiais e importação de JSON hierárquico com disciplinas, tópicos e pesos.
+            Suporta extração digital de editais e importação estruturada por planilha (.xlsx / .csv) com disciplinas, tópicos, subtópicos, prioridades, tempo estimado e questões.
           </p>
-          <div style="display:flex; justify-content:center; gap:8px;">
-            <button type="button" class="m2-btn m2-btn-primary" data-action="simulate-upload-edital">
-              ${icon('sparkles', 16)} Processar com IA (Demonstração)
-            </button>
-            <button type="button" class="m2-btn m2-btn-secondary" data-action="open-json-import-modal" data-mode="catalog">
-              ${icon('download', 16)} Colar JSON de Edital
+          <div style="display:flex; justify-content:center; gap:8px; flex-wrap:wrap;">
+            <a href="/mentoria2/edicts/spreadsheet-template" download="modelo_edital_verticalizado.csv" class="m2-btn m2-btn-secondary" style="text-decoration:none;">
+              ${icon('download', 16)} Baixar Planilha Modelo (.csv)
+            </a>
+            <button type="button" class="m2-btn m2-btn-primary" data-action="open-spreadsheet-import-modal">
+              ${icon('file-spreadsheet', 16)} Importar por Planilha (.xlsx/.csv)
             </button>
           </div>
         </div>

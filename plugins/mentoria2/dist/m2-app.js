@@ -25,7 +25,7 @@ import {
   hydrateDataFromPayload,
   icon,
   escapeHtml
-} from './modules/core.js?v=b93e67d2d013';
+} from './modules/core.js?v=c291614a33af';
 
 import {
   renderSidebar,
@@ -35,20 +35,20 @@ import {
   renderFloatingMiniTimer,
   renderFloatingAiChat,
   renderModals
-} from './modules/shell.js?v=b93e67d2d013';
+} from './modules/shell.js?v=c291614a33af';
 
 import {
   viewEntry,
   viewOnboarding,
   viewToday,
   viewPlanning
-} from './modules/routine.js?v=b93e67d2d013';
+} from './modules/routine.js?v=c291614a33af';
 
 import {
   viewSyllabus,
   viewCalculadora,
   viewRadarEditais
-} from './modules/curriculum.js?v=b93e67d2d013';
+} from './modules/curriculum.js?v=c291614a33af';
 
 import {
   viewQuestions,
@@ -65,13 +65,13 @@ import {
   viewMaterials,
   viewCourses,
   viewRedacao
-} from './modules/study.js?v=b93e67d2d013';
+} from './modules/study.js?v=c291614a33af';
 
 import {
   viewProgress,
   viewGoals,
   viewRanking
-} from './modules/metrics.js?v=b93e67d2d013';
+} from './modules/metrics.js?v=c291614a33af';
 
 import {
   viewMentorOverview,
@@ -98,20 +98,20 @@ import {
   viewMentorPrompts,
   viewMentorAiCosts,
   viewMentorRadarEditais
-} from './modules/mentor.js?v=b93e67d2d013';
+} from './modules/mentor.js?v=c291614a33af';
 
 import {
   viewTutor,
   viewAiMemory,
   viewSettings,
   viewHelp
-} from './modules/ai.js?v=b93e67d2d013';
+} from './modules/ai.js?v=c291614a33af';
 
 import {
   setupEvents,
   destroyEvents
-} from './modules/events.js?v=b93e67d2d013';
-import { sanitizeRenderedHtml } from './utils/escape-html.js?v=b93e67d2d013';
+} from './modules/events.js?v=c291614a33af';
+import { sanitizeRenderedHtml } from './utils/escape-html.js?v=c291614a33af';
 
 /**
  * Router Principal que seleciona a tela conforme state.mode e state.screen

@@ -12,7 +12,8 @@ export function handleNavigationEvent(event, {
   loadContestSyllabus,
   loadMentorResource,
   loadRadarEditais,
-  loadMentorRadarEditais
+  loadMentorRadarEditais,
+  loadPlanningCalendar,
 }) {
   const navBtn = event.target.closest('[data-nav]');
   if (!navBtn) return false;
@@ -58,6 +59,10 @@ export function handleNavigationEvent(event, {
   }
 
   navigate(targetScreen, targetMode);
+
+  if (targetScreen === 'planning' && typeof loadPlanningCalendar === 'function') {
+    loadPlanningCalendar().catch(() => {});
+  }
 
   if (targetScreen === 'radar-editais') {
     loadRadarEditais().catch(() => showToast('Não foi possível carregar o Radar de Editais.', 'error'));

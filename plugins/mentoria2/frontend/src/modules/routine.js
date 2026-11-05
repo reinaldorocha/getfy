@@ -138,6 +138,11 @@ export function calendarCard(item) {
         <span class="m2-cal-card__duration">
           ${icon('clock', 11)} ${durLabel}
         </span>
+        ${item.questions_target ? `
+          <span class="m2-cal-card__questions" style="display:inline-flex; align-items:center; gap:2px; font-weight:600; color:var(--accent-violet, #8b5cf6);" title="Meta: ${item.questions_target} questões">
+            ${icon('circle-help', 11)} ${item.questions_target} q
+          </span>
+        ` : ''}
       </div>
     </article>
   `;
@@ -633,7 +638,7 @@ export function viewToday() {
                     </span>
                     <div class="m2-today-schedule-item-info">
                       <h4 class="m2-today-schedule-item-title">${escapeHtml(item.subjectLabel || 'Estudo')}</h4>
-                      <p class="m2-today-schedule-item-sub">${escapeHtml(item.topicLabel || 'Conteúdo do Edital')}</p>
+                      <p class="m2-today-schedule-item-sub">${escapeHtml(item.topicLabel || 'Conteúdo do Edital')}${item.questions_target ? ` · <span style="color:var(--accent-violet, #8b5cf6); font-weight:600;">${item.questions_target} questões</span>` : ''}</p>
                     </div>
                   </div>
                   <div class="m2-today-schedule-item-actions">
@@ -871,7 +876,11 @@ export function viewPlanning() {
   const minutes = dated.reduce((sum, item) => sum + item.duration_minutes, 0);
   const completed = dated.filter(item => item.status === 'concluido').length;
   const pendingReviews = dated.filter(item => item.isReview && item.status !== 'concluido').length;
-  const overdue = items.filter(item => item.planned_date && item.planned_date < dateKey(new Date()) && item.status === 'pendente' && !item.isReview).length;
+  const allRawItems = window.M2Data.scheduleItems || [];
+  const overdue = (allRawItems.length > 0 ? allRawItems : items).filter(item => {
+    const pDate = item.planned_date ? String(item.planned_date).slice(0, 10) : null;
+    return pDate && pDate < dateKey(new Date()) && item.status === 'pendente' && !item.scheduled_review_id && !item.isReview;
+  }).length;
   const label = isWeek ? `${fmtDate(start)} - ${fmtDate(end)}, ${start.getFullYear()}` : new Intl.DateTimeFormat('pt-BR', { month: 'long', year: 'numeric' }).format(cursor);
 
   // Progresso semanal em percentual (Gamificação)
@@ -888,6 +897,20 @@ export function viewPlanning() {
 
   return `
     <div class="m2-content m2-planning-view">
+      ${overdue > 0 ? `
+        <div class="m2-banner-alert m2-banner-alert--warning" style="display:flex; align-items:center; justify-content:space-between; gap:16px; margin-bottom:16px; padding:12px 18px; border-radius:10px; background:var(--m2-amber-50, #fffbeb); border:1px solid var(--m2-amber-200, #fde68a); color:var(--m2-amber-900, #78350f);">
+          <div style="display:flex; align-items:center; gap:10px;">
+            <span style="display:flex; color:var(--m2-amber-600, #d97706); flex-shrink:0;">${icon('alert-triangle', 20)}</span>
+            <div>
+              <strong style="font-size:13px;">Você possui ${overdue} ${overdue === 1 ? 'estudo atrasado' : 'estudos atrasados'}</strong>
+              <p style="margin:2px 0 0 0; font-size:12px; color:var(--m2-amber-800, #92400e);">O cronograma mantém seus tópicos pendentes. Clique para redistribuir as pendências a partir de hoje.</p>
+            </div>
+          </div>
+          <button type="button" class="m2-btn m2-btn-sm" data-action="reprogram-schedule" style="white-space:nowrap; background:#d97706; border-color:#d97706; color:#fff; font-weight:700; display:inline-flex; align-items:center; gap:6px;">
+            ${icon('refresh-cw', 13)} Recalcular Cronograma
+          </button>
+        </div>
+      ` : ''}
       <!-- TOPBAR UNIFICADA (FASE 2) -->
       <div class="m2-plan-topbar">
         <!-- 1. Progresso Semanal Gamificado -->

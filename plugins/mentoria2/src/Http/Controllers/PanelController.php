@@ -205,6 +205,7 @@ class PanelController extends Controller
                 'c.id', 'c.name', 'c.board', 'c.position', 'c.exam_date',
                 'sc.group', 'sc.position as order', 'sc.include_in_stats', 'sc.result', 'sc.ranking',
                 'sc.final_score', 'sc.appointed', 'sc.appointment_date',
+                'sc.allowed_schedule_mode', 'sc.fixed_days_duration',
             )
             ->orderBy('sc.position')
             ->get();

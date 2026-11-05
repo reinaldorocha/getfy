@@ -13,6 +13,7 @@ use Plugins\Mentoria2\Http\Controllers\AiMemoryController;
 use Plugins\Mentoria2\Http\Controllers\QuestionReportController;
 use Plugins\Mentoria2\Http\Controllers\ContestRadarController;
 use Plugins\Mentoria2\Http\Controllers\ExternalImportController;
+use Plugins\Mentoria2\Http\Controllers\SpreadsheetImportController;
 use Plugins\Mentoria2\Http\Controllers\FlashcardController;
 use Plugins\Mentoria2\Http\Controllers\GoalController;
 use Plugins\Mentoria2\Http\Controllers\MaterialController;
@@ -77,7 +78,10 @@ Route::patch('/contests/{contest}/students/{student}', [ContentController::class
 Route::delete('/contests/{contest}/students/{student}', [ContentController::class, 'unassignContest'])->whereNumber('student')->name('mentoria2.contests.student.destroy');
 Route::put('/students/{student}/contests/order', [ContentController::class, 'reorderStudentContests'])->whereNumber('student')->name('mentoria2.contests.order');
 
-Route::post('/catalog/import', [ContentController::class, 'importCatalog'])->name('mentoria2.catalog.import');
+/* Importação de Edital Verticalizado por Planilha (.xlsx/.csv) */
+Route::get('/edicts/spreadsheet-template', [SpreadsheetImportController::class, 'downloadTemplate'])->name('mentoria2.edicts.spreadsheet-template');
+Route::post('/edicts/spreadsheet-preview', [SpreadsheetImportController::class, 'parsePreview'])->name('mentoria2.edicts.spreadsheet-preview');
+Route::post('/edicts/spreadsheet-import', [SpreadsheetImportController::class, 'import'])->name('mentoria2.edicts.spreadsheet-import');
 Route::post('/edicts', [ContentController::class, 'storeEdict'])->name('mentoria2.edicts.store');
 Route::patch('/edicts/{edict}', [ContentController::class, 'updateEdict'])->name('mentoria2.edicts.update');
 Route::delete('/edicts/{edict}', [ContentController::class, 'destroyEdict'])->name('mentoria2.edicts.destroy');

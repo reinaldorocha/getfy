@@ -214,6 +214,23 @@ export function handlePlanningAction({
     return true;
   }
 
+  if (action === 'reprogram-schedule') {
+    const fromDate = calendarKey(new Date());
+    showToast('Recalculando cronograma a partir de hoje...', 'info');
+    api(`${planningBase()}/schedules/reprogram`, { method: 'POST', body: JSON.stringify({ contest_id: state.contestId || null, from_date: fromDate }) })
+      .then(result => {
+        state.modal = null;
+        state.replanned = true;
+        return api(`${planningBase()}/data?contest_id=${encodeURIComponent(state.contestId || '')}`)
+          .then(hydrateDataFromPayload)
+          .then(() => loadPlanningCalendar())
+          .then(() => result);
+      })
+      .then(result => showToast(`${result.reprogrammed || 0} tarefa(s) foram recalculadas a partir de hoje.`, 'success'))
+      .catch(() => showToast('Nao foi possivel recalcular o cronograma.', 'error'));
+    return true;
+  }
+
   if (action === 'open-schedule-completion' || action === 'complete-schedule-item') {
     const itemId = actionBtn.dataset.itemId;
     const items = state.calendarRangeKey ? state.calendarItems : (window.M2Data.scheduleItems || []);
@@ -224,6 +241,7 @@ export function handlePlanningAction({
       subjectId: item.subject_id || null,
       topicId: item.topic_id || null,
       durationMinutes: Number(item.duration_minutes || 60),
+      questionsTarget: Number(item.questions_target || 0),
       subjectName: (window.M2Data.subjects || []).find(subject => String(subject.id) === String(item.subject_id))?.name || 'Estudo dirigido',
       topicName: (window.M2Data.topics || []).find(topic => String(topic.id) === String(item.topic_id))?.name || 'Conteudo do edital',
     };

@@ -1228,6 +1228,171 @@ export function handleMentorAction({
     return true;
   }
 
+  // Importação por Planilha (.xlsx/.csv)
+  if (action === 'open-spreadsheet-import-modal') {
+    state.modal = 'spreadsheet-import';
+    state.spreadsheetPreview = null;
+    state.spreadsheetFile = null;
+    render();
+    return true;
+  }
+
+  if (action === 'toggle-spreadsheet-dest') {
+    const val = event?.target?.value || (actionBtn?.checked ? actionBtn.value : 'new');
+    const newFields = document.getElementById('m2-spreadsheet-new-fields');
+    const existingField = document.getElementById('m2-spreadsheet-existing-field');
+    if (newFields) newFields.style.display = (val === 'new') ? 'grid' : 'none';
+    if (existingField) existingField.style.display = (val === 'existing') ? 'block' : 'none';
+    return true;
+  }
+
+  if (action === 'change-spreadsheet-file') {
+    const fileInput = document.getElementById('m2-spreadsheet-file-input');
+    const file = fileInput?.files?.[0];
+    if (!file) return true;
+    state.spreadsheetFile = file;
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    api('/mentoria2/edicts/spreadsheet-preview', {
+      method: 'POST',
+      body: formData
+    }).then(res => {
+      if (res && res.ok) {
+        state.spreadsheetPreview = res;
+        render();
+        showToast('Planilha analisada: ' + (res.summary?.total_rows || 0) + ' assuntos identificados!', 'success');
+      } else {
+        showToast(res?.message || 'Erro ao validar planilha.', 'error');
+      }
+    }).catch(err => {
+      showToast('Erro ao processar arquivo: formato inválido ou corrompido.', 'error');
+    });
+    return true;
+  }
+
+  if (action === 'submit-spreadsheet-import') {
+    const fileInput = document.getElementById('m2-spreadsheet-file-input');
+    const file = fileInput?.files?.[0] || state.spreadsheetFile;
+    if (!file) {
+      showToast('Por favor, selecione um arquivo de planilha (.xlsx ou .csv).', 'warning');
+      return true;
+    }
+
+    const destType = document.querySelector('input[name="m2-import-contest-dest"]:checked')?.value || 'new';
+    const contestName = document.getElementById('m2-spreadsheet-contest-name')?.value?.trim() || '';
+    const contestOrg = document.getElementById('m2-spreadsheet-contest-org')?.value?.trim() || '';
+    const contestBoard = document.getElementById('m2-spreadsheet-contest-board')?.value?.trim() || '';
+    const contestRole = document.getElementById('m2-spreadsheet-contest-role')?.value?.trim() || '';
+    const contestExamDate = document.getElementById('m2-spreadsheet-contest-exam-date')?.value?.trim() || '';
+    const contestSelect = document.getElementById('m2-spreadsheet-contest-select')?.value || '';
+
+    const formData = new FormData();
+    formData.append('file', file);
+    if (destType === 'existing' && contestSelect) {
+      formData.append('contest_id', contestSelect);
+    } else {
+      formData.append('new_contest_name', contestName || 'Novo Concurso');
+      if (contestOrg) formData.append('organization', contestOrg);
+      if (contestBoard) formData.append('board', contestBoard);
+      if (contestRole) formData.append('role', contestRole);
+      if (contestExamDate) formData.append('exam_date', contestExamDate);
+    }
+
+    showToast('Processando e importando edital...', 'info');
+
+    api('/mentoria2/edicts/spreadsheet-import', {
+      method: 'POST',
+      body: formData
+    }).then(res => {
+      if (res && res.ok) {
+        state.modal = null;
+        state.spreadsheetPreview = null;
+        state.spreadsheetFile = null;
+        showToast('Edital verticalizado importado com sucesso via planilha!', 'success');
+        if (res.contest_id) {
+          state.contestId = res.contest_id;
+        }
+        if (typeof loadMentorResource === 'function') {
+          loadMentorResource('contests').then(() => {
+            state.currentView = 'mentor-syllabus';
+            render();
+          });
+        } else {
+          render();
+        }
+      } else {
+        showToast(res?.message || 'Erro ao importar planilha.', 'error');
+      }
+    }).catch(err => {
+      showToast('Falha na importação da planilha.', 'error');
+    });
+    return true;
+  }
+
+  // Data da Prova do Concurso
+  if (action === 'save-contest-exam-date') {
+    const contestId = actionBtn?.dataset?.id || state.contestId;
+    const input = document.getElementById('m2-contest-exam-date');
+    const examDate = input?.value?.trim() || null;
+
+    api(`/mentoria2/contests/${contestId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ exam_date: examDate })
+    }).then(res => {
+      const target = (window.M2Data.contests || []).find(c => String(c.id) === String(contestId));
+      if (target) {
+        target.examDate = examDate;
+        target.exam_date = examDate;
+      }
+      showToast('Data da prova oficial salva com sucesso!', 'success');
+      render();
+    }).catch(err => {
+      showToast('Erro ao salvar data da prova.', 'error');
+    });
+    return true;
+  }
+
+  // Modalidade de Plano do Aluno (Calendário vs. Dias Corridos)
+  if (action === 'change-student-plan-mode') {
+    const val = event?.target?.value || actionBtn?.value;
+    const wrap = document.getElementById('m2-student-fixed-duration-wrap');
+    if (wrap) wrap.style.display = (val === 'fixed_days') ? 'block' : 'none';
+    return true;
+  }
+
+  if (action === 'save-student-plan-settings') {
+    const studentId = actionBtn?.dataset?.studentId || window.M2Data.student?.id;
+    const contestId = state.contestId || window.M2Data.contests?.[0]?.id;
+    const modeSelect = document.getElementById('m2-student-schedule-mode');
+    const durationSelect = document.getElementById('m2-student-fixed-duration');
+    const mode = modeSelect?.value || 'calendar';
+    const duration = mode === 'fixed_days' ? Number(durationSelect?.value || 60) : null;
+
+    if (contestId && studentId) {
+      api(`/mentoria2/contests/${contestId}/students/${studentId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          allowed_schedule_mode: mode,
+          fixed_days_duration: duration
+        })
+      }).then(res => {
+        if (window.M2Data.student) {
+          window.M2Data.student.allowed_schedule_mode = mode;
+          window.M2Data.student.fixed_days_duration = duration;
+        }
+        showToast('Modalidade de plano salva com sucesso!', 'success');
+        render();
+      }).catch(err => {
+        showToast('Erro ao salvar configuração do aluno.', 'error');
+      });
+    } else {
+      showToast('Selecione um concurso e aluno válidos.', 'warning');
+    }
+    return true;
+  }
+
   // Contests
   if (action === 'create-contest') {
     state.quickPrompt = {

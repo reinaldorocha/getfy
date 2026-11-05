@@ -29,7 +29,7 @@ class ScheduleEngineService
             return $this->generateCycle($subjects, $units, $configuration);
         }
 
-        return $this->generateAgenda($subjects, $units, $configuration, $this->fixedPlanItems($tenantId, $contestId));
+        return $this->generateAgenda($subjects, $units, $configuration, $this->fixedPlanItems($tenantId, $contestId), $contestId);
     }
 
     public function reprogram(int $tenantId, int $studentId, string $scheduleId, ?string $fromDate = null): int
@@ -72,12 +72,23 @@ class ScheduleEngineService
         $cursor = $start;
         $dayPosition = [];
 
+        $examDate = $configuration['data_prova'] ?? $configuration['exam_date'] ?? null;
+        if (! $examDate && ! empty($schedule->contest_id)) {
+            $contest = DB::table('mentoria2_contests')->where('id', $schedule->contest_id)->first();
+            $examDate = $contest?->exam_date;
+        }
+        $examCutoff = $examDate ? CarbonImmutable::parse($examDate)->startOfDay() : null;
+
         $updates = [];
         foreach ($items as $item) {
             $duration = max(1, (int) ($item->duration_minutes ?: ($configuration['minutosTopico'] ?? 60)));
             $placed = false;
 
             for ($guard = 0; $guard < 1095; $guard++) {
+                if ($examCutoff && $cursor->gte($examCutoff)) {
+                    break;
+                }
+
                 $key = $cursor->toDateString();
                 $capacity = (int) round(($hours[$this->weekdayKey($cursor)] ?? 0) * 60);
                 $used = $occupied[$key] ?? ['minutes' => 0, 'count' => 0];
@@ -103,7 +114,12 @@ class ScheduleEngineService
             }
 
             if (! $placed) {
-                throw new RuntimeException('Não foi possível reprogramar todas as atividades com a carga horária atual.');
+                // If it exceeds exam date or maximum horizon, leave unassigned for review
+                $updates[] = [
+                    'id' => $item->id,
+                    'planned_date' => null,
+                    'position' => 0,
+                ];
             }
         }
 
@@ -188,6 +204,9 @@ class ScheduleEngineService
                         'subtopic_id' => null,
                         'name' => (string) $topic->name,
                         'relevance' => (int) ($topic->relevance ?? $subject->relevance ?? 50),
+                        'estimated_minutes' => isset($topic->estimated_minutes) ? (int) $topic->estimated_minutes : null,
+                        'questions_target' => isset($topic->questions_target) ? (int) $topic->questions_target : null,
+                        'weight' => (float) ($topic->weight ?? $subject->weight ?? 1.0),
                     ];
                     continue;
                 }
@@ -199,6 +218,9 @@ class ScheduleEngineService
                         'subtopic_id' => (string) $subtopic->id,
                         'name' => (string) $subtopic->name,
                         'relevance' => (int) ($subtopic->relevance ?? $topic->relevance ?? $subject->relevance ?? 50),
+                        'estimated_minutes' => isset($subtopic->estimated_minutes) ? (int) $subtopic->estimated_minutes : (isset($topic->estimated_minutes) ? (int) $topic->estimated_minutes : null),
+                        'questions_target' => isset($subtopic->questions_target) ? (int) $subtopic->questions_target : (isset($topic->questions_target) ? (int) $topic->questions_target : null),
+                        'weight' => (float) ($subtopic->weight ?? $topic->weight ?? $subject->weight ?? 1.0),
                     ];
                 }
             }
@@ -327,7 +349,7 @@ class ScheduleEngineService
      * @param  array<string, array<int, array<string, mixed>>>  $unitsBySubject
      * @return array<int, array<string, mixed>>
      */
-    private function generateAgenda(array $subjects, array $unitsBySubject, array $configuration, array $fixedPlanItems = []): array
+    private function generateAgenda(array $subjects, array $unitsBySubject, array $configuration, array $fixedPlanItems = [], ?string $contestId = null): array
     {
         if ($subjects === [] && $fixedPlanItems === []) {
             return [];
@@ -339,6 +361,39 @@ class ScheduleEngineService
         $hours = $this->hours($configuration);
         $today = CarbonImmutable::today();
 
+        $examDate = $configuration['data_prova'] ?? $configuration['exam_date'] ?? null;
+        if (! $examDate && ! empty($contestId)) {
+            $contest = DB::table('mentoria2_contests')->where('id', $contestId)->first();
+            $examDate = $contest?->exam_date;
+        }
+
+        $fixedDays = (int) ($configuration['dias_corridos'] ?? $configuration['fixed_days'] ?? $configuration['dias'] ?? 0);
+        $targetDays = max(60, $repetitions * 30);
+        $isConstrained = false;
+
+        if ($fixedDays > 0) {
+            $targetDays = $fixedDays;
+            $isConstrained = true;
+        } elseif (! empty($examDate)) {
+            $daysToExam = (int) $today->diffInDays(CarbonImmutable::parse($examDate)->startOfDay(), false);
+            if ($daysToExam > 0) {
+                $targetDays = $daysToExam;
+                $isConstrained = true;
+            }
+        }
+
+        // Potential score sorting when time is constrained
+        if ($isConstrained) {
+            foreach ($unitsBySubject as $sId => &$sUnits) {
+                usort($sUnits, function ($a, $b) {
+                    $scoreA = ((float) ($a['weight'] ?? 1.0) * 20 * 0.35) + ((int) ($a['priority'] ?? 50) * 0.65);
+                    $scoreB = ((float) ($b['weight'] ?? 1.0) * 20 * 0.35) + ((int) ($b['priority'] ?? 50) * 0.65);
+                    return $scoreB <=> $scoreA;
+                });
+            }
+            unset($sUnits);
+        }
+
         $pointers = [];
         foreach ($subjects as $subject) {
             $pointers[$subject['id']] = 0;
@@ -346,7 +401,6 @@ class ScheduleEngineService
 
         $subjectIndex = 0;
         $items = [];
-        $targetDays = max(60, $repetitions * 30);
 
         for ($day = 0; $day < $targetDays; $day++) {
             $date = $today->addDays($day);
@@ -367,12 +421,14 @@ class ScheduleEngineService
                     'description' => $fixed['description'] ?? null,
                     'is_fixed' => true,
                     'duration_minutes' => $fixed['duration_minutes'],
+                    'questions_target' => null,
                     'priority' => 100,
                     'position' => $positionOffset,
                     'status' => 'pendente',
                 ];
             }
-            $capacity = (int) floor(max(0, ($available * 60) - $fixedMinutes) / $minutes);
+            $availableStudyMinutes = max(0, (int) round(($available * 60) - $fixedMinutes));
+            $capacity = (int) floor($availableStudyMinutes / $minutes);
             if ($maxPerDay > 0) {
                 $capacity = min($capacity, max(0, $maxPerDay - $positionOffset));
             }
@@ -422,6 +478,9 @@ class ScheduleEngineService
                 $unit = $units[$pointers[$subjectId] % count($units)];
                 $pointers[$subjectId]++;
 
+                $unitDuration = max(10, (int) ($unit['estimated_minutes'] ?: $minutes));
+                $unitQuestionsTarget = isset($unit['questions_target']) && (int) $unit['questions_target'] > 0 ? (int) $unit['questions_target'] : null;
+
                 $items[] = [
                     'planned_date' => $date->toDateString(),
                     'cycle_position' => count($items) + 1,
@@ -430,7 +489,8 @@ class ScheduleEngineService
                     'subtopic_id' => $unit['subtopic_id'],
                     'label' => $unit['name'],
                     'description' => $chosen['name'] . ' · ' . $unit['name'],
-                    'duration_minutes' => $minutes,
+                    'duration_minutes' => $unitDuration,
+                    'questions_target' => $unitQuestionsTarget,
                     'priority' => max((int) $chosen['priority'], (int) $unit['priority']),
                     'position' => $position + $positionOffset,
                     'status' => 'pendente',

@@ -224,7 +224,8 @@ export function setupEvents() {
       loadContestSyllabus,
       loadMentorResource,
       loadRadarEditais,
-      loadMentorRadarEditais
+      loadMentorRadarEditais,
+      loadPlanningCalendar
     })) return;
 
     // 1.2 Ações interativas via data-action
