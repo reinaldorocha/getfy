@@ -20,13 +20,26 @@ class SpreadsheetImportController extends Controller
         private readonly SpreadsheetParserService $parser,
     ) {}
 
-    public function downloadTemplate(): Response
+    public function downloadTemplate(Request $request): Response
     {
-        $csv = $this->parser->generateCsvTemplate();
+        $format = strtolower((string) $request->query('format', 'xlsx'));
 
-        return response($csv, 200, [
-            'Content-Type' => 'text/csv; charset=UTF-8',
-            'Content-Disposition' => 'attachment; filename="modelo_edital_verticalizado.csv"',
+        if ($format === 'csv') {
+            $csv = $this->parser->generateCsvTemplate();
+
+            return response($csv, 200, [
+                'Content-Type' => 'text/csv; charset=UTF-8',
+                'Content-Disposition' => 'attachment; filename="modelo_edital_verticalizado.csv"',
+            ]);
+        }
+
+        $xlsx = $this->parser->generateXlsxTemplate();
+
+        return response($xlsx, 200, [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'Content-Disposition' => 'attachment; filename="modelo_edital_verticalizado.xlsx"',
+            'Cache-Control' => 'max-age=0, no-cache, no-store, must-revalidate',
+            'Pragma' => 'public',
         ]);
     }
 
@@ -310,3 +323,4 @@ class SpreadsheetImportController extends Controller
         });
     }
 }
+

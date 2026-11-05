@@ -182,9 +182,12 @@ class SpreadsheetParserService
         return $result;
     }
 
-    public function generateCsvTemplate(): string
+    /**
+     * @return array<int, string>
+     */
+    public function getTemplateHeaders(): array
     {
-        $headers = [
+        return [
             'Disciplina',
             'Tópico',
             'Subtópico',
@@ -193,68 +196,253 @@ class SpreadsheetParserService
             'Questões',
             'Peso',
         ];
+    }
 
-        $sampleRows = [
+    /**
+     * @return array<int, array<int, mixed>>
+     */
+    public function getTemplateSampleRows(): array
+    {
+        return [
             [
                 'Direito Constitucional',
                 'Direitos e Garantias Fundamentais',
                 'Art. 5º - Direitos Individuais e Coletivos',
                 'Alta',
-                '60',
-                '15',
-                '2.0',
+                60,
+                15,
+                2.0,
             ],
             [
                 'Direito Constitucional',
                 'Direitos e Garantias Fundamentais',
                 'Remédios Constitucionais (Habeas Corpus, MS, HD)',
                 'Alta',
-                '50',
-                '10',
-                '2.0',
+                50,
+                10,
+                2.0,
             ],
             [
                 'Direito Administrativo',
                 'Atos Administrativos',
                 'Conceito, Requisitos e Atributos',
                 'Alta',
-                '60',
-                '15',
-                '1.5',
+                60,
+                15,
+                1.5,
             ],
             [
                 'Direito Administrativo',
                 'Atos Administrativos',
                 'Extinção, Anulação e Revogação',
                 'Média',
-                '45',
-                '10',
-                '1.5',
+                45,
+                10,
+                1.5,
             ],
             [
                 'Língua Portuguesa',
                 'Morfossintaxe',
                 'Crase',
                 'Alta',
-                '60',
-                '20',
-                '2.0',
+                60,
+                20,
+                2.0,
             ],
             [
                 'Língua Portuguesa',
                 'Morfossintaxe',
                 'Concordância Verbal e Nominal',
                 'Média',
-                '50',
-                '15',
-                '2.0',
+                50,
+                15,
+                2.0,
+            ],
+            [
+                'Raciocínio Lógico',
+                'Estruturas Lógicas e Tabela Verdade',
+                'Conectivos, Negação e Equivalência',
+                'Média',
+                45,
+                10,
+                1.0,
+            ],
+            [
+                'Legislação Especial',
+                'Estatuto do Desarmamento (Lei 10.826)',
+                'Posse, Porte e Crimes em Espécie',
+                'Alta',
+                50,
+                12,
+                2.0,
             ],
         ];
+    }
+
+    /**
+     * Generates a native OpenXML spreadsheet (.xlsx) template.
+     */
+    public function generateXlsxTemplate(): string
+    {
+        $headers = $this->getTemplateHeaders();
+        $sampleRows = $this->getTemplateSampleRows();
+
+        $tempFile = tempnam(sys_get_temp_dir(), 'xlsx_tpl_');
+        $zip = new ZipArchive();
+        if ($zip->open($tempFile, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {
+            throw new RuntimeException('Não foi possível criar o arquivo XLSX de modelo.');
+        }
+
+        // 1. [Content_Types].xml
+        $contentTypes = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' . "\n" .
+            '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' .
+            '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' .
+            '<Default Extension="xml" ContentType="application/xml"/>' .
+            '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>' .
+            '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>' .
+            '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>' .
+            '<Override PartName="/xl/sharedStrings.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml"/>' .
+            '</Types>';
+        $zip->addFromString('[Content_Types].xml', $contentTypes);
+
+        // 2. _rels/.rels
+        $rels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' . "\n" .
+            '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' .
+            '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>' .
+            '</Relationships>';
+        $zip->addFromString('_rels/.rels', $rels);
+
+        // 3. xl/_rels/workbook.xml.rels
+        $wbRels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' . "\n" .
+            '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' .
+            '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>' .
+            '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>' .
+            '<Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings" Target="sharedStrings.xml"/>' .
+            '</Relationships>';
+        $zip->addFromString('xl/_rels/workbook.xml.rels', $wbRels);
+
+        // 4. xl/workbook.xml
+        $workbook = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' . "\n" .
+            '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">' .
+            '<sheets>' .
+            '<sheet name="Edital Verticalizado" sheetId="1" r:id="rId1"/>' .
+            '</sheets>' .
+            '</workbook>';
+        $zip->addFromString('xl/workbook.xml', $workbook);
+
+        // 5. xl/styles.xml (Calibri 11pt bold, white text on #0D9488 teal fill)
+        $styles = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' . "\n" .
+            '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' .
+            '<fonts count="2">' .
+            '<font><sz val="11"/><name val="Calibri"/></font>' .
+            '<font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font>' .
+            '</fonts>' .
+            '<fills count="3">' .
+            '<fill><patternFill patternType="none"/></fill>' .
+            '<fill><patternFill patternType="gray125"/></fill>' .
+            '<fill><patternFill patternType="solid"><fgColor rgb="FF0D9488"/></patternFill></fill>' .
+            '</fills>' .
+            '<borders count="1">' .
+            '<border><left/><right/><top/><bottom/></border>' .
+            '</borders>' .
+            '<cellStyleXfs count="1">' .
+            '<xf numFmtId="0" fontId="0" fillId="0" borderId="0"/>' .
+            '</cellStyleXfs>' .
+            '<cellXfs count="2">' .
+            '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>' .
+            '<xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1"/>' .
+            '</cellXfs>' .
+            '</styleSheet>';
+        $zip->addFromString('xl/styles.xml', $styles);
+
+        // 6. Build sharedStrings and sheetData
+        $sharedStrings = [];
+        $stringIndexMap = [];
+
+        $getStringIndex = function (string $str) use (&$sharedStrings, &$stringIndexMap): int {
+            if (isset($stringIndexMap[$str])) {
+                return $stringIndexMap[$str];
+            }
+            $idx = count($sharedStrings);
+            $sharedStrings[] = $str;
+            $stringIndexMap[$str] = $idx;
+            return $idx;
+        };
+
+        $colLetters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'];
+
+        $sheetRows = [];
+        // Header row
+        $headerCells = [];
+        foreach ($headers as $colIdx => $headerText) {
+            $cellRef = $colLetters[$colIdx] . '1';
+            $strIdx = $getStringIndex((string) $headerText);
+            $headerCells[] = '<c r="' . $cellRef . '" t="s" s="1"><v>' . $strIdx . '</v></c>';
+        }
+        $sheetRows[] = '<row r="1">' . implode('', $headerCells) . '</row>';
+
+        // Data rows
+        $rowNum = 2;
+        foreach ($sampleRows as $row) {
+            $cells = [];
+            foreach ($row as $colIdx => $val) {
+                $cellRef = $colLetters[$colIdx] . $rowNum;
+                if ($val === null || $val === '') {
+                    continue;
+                }
+                $headerName = $headers[$colIdx] ?? '';
+                if (is_numeric($val) && in_array($headerName, ['Tempo Estimado (min)', 'Questões', 'Peso'])) {
+                    $cells[] = '<c r="' . $cellRef . '"><v>' . (float) $val . '</v></c>';
+                } else {
+                    $strIdx = $getStringIndex((string) $val);
+                    $cells[] = '<c r="' . $cellRef . '" t="s"><v>' . $strIdx . '</v></c>';
+                }
+            }
+            $sheetRows[] = '<row r="' . $rowNum . '">' . implode('', $cells) . '</row>';
+            $rowNum++;
+        }
+
+        // 7. xl/sharedStrings.xml
+        $ssXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' . "\n" .
+            '<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" count="' . count($sharedStrings) . '" uniqueCount="' . count($sharedStrings) . '">';
+        foreach ($sharedStrings as $str) {
+            $ssXml .= '<si><t>' . htmlspecialchars($str, ENT_XML1, 'UTF-8') . '</t></si>';
+        }
+        $ssXml .= '</sst>';
+        $zip->addFromString('xl/sharedStrings.xml', $ssXml);
+
+        // 8. xl/worksheets/sheet1.xml with custom column widths
+        $sheetXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' . "\n" .
+            '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' .
+            '<cols>' .
+            '<col min="1" max="1" width="26" customWidth="1"/>' .
+            '<col min="2" max="2" width="36" customWidth="1"/>' .
+            '<col min="3" max="3" width="46" customWidth="1"/>' .
+            '<col min="4" max="4" width="16" customWidth="1"/>' .
+            '<col min="5" max="5" width="22" customWidth="1"/>' .
+            '<col min="6" max="6" width="14" customWidth="1"/>' .
+            '<col min="7" max="7" width="12" customWidth="1"/>' .
+            '</cols>' .
+            '<sheetData>' . implode('', $sheetRows) . '</sheetData>' .
+            '</worksheet>';
+        $zip->addFromString('xl/worksheets/sheet1.xml', $sheetXml);
+
+        $zip->close();
+        $content = file_get_contents($tempFile);
+        @unlink($tempFile);
+
+        return $content ?: '';
+    }
+
+    public function generateCsvTemplate(): string
+    {
+        $headers = $this->getTemplateHeaders();
+        $sampleRows = $this->getTemplateSampleRows();
 
         $output = "\xEF\xBB\xBF"; // UTF-8 BOM
         $output .= implode(';', array_map([$this, 'escapeCsv'], $headers)) . "\r\n";
         foreach ($sampleRows as $row) {
-            $output .= implode(';', array_map([$this, 'escapeCsv'], $row)) . "\r\n";
+            $output .= implode(';', array_map(fn ($v) => $this->escapeCsv((string) $v), $row)) . "\r\n";
         }
 
         return $output;

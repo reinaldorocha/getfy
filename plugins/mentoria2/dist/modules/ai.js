@@ -1,4 +1,4 @@
-import { state, icon, escapeHtml, plainTextWithBreaks } from './core.js?v=c291614a33af';
+import { state, icon, escapeHtml, plainTextWithBreaks } from './core.js?v=5e6599cddc14';
 
 export function viewTutor() {
     const hasAiAccess = window.M2Data?.has_ai_access !== false;

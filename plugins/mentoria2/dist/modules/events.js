@@ -13,29 +13,29 @@ import {
   hydrateDataFromPayload,
   getAnnouncements,
   saveAnnouncements
-} from './core.js?v=c291614a33af';
-import { loadMentorResource, loadContestSyllabus, loadDeckCards } from './mentor-resources.js?v=c291614a33af';
-import { getFilteredStudyQuestions } from './study.js?v=c291614a33af';
-import { renderAudienceSelector } from './shell.js?v=c291614a33af';
-import { exportDiagrammedPdf } from './curriculum.js?v=c291614a33af';
-import { handleNavigationEvent } from './controllers/navigation-controller.js?v=c291614a33af';
-import { handleRadarAction } from './controllers/radar-controller.js?v=c291614a33af';
-import { handlePlanningAction } from './controllers/planning-controller.js?v=c291614a33af';
-import { handleCurriculumAction } from './controllers/curriculum-controller.js?v=c291614a33af';
-import { handlePracticeAction } from './controllers/practice-controller.js?v=c291614a33af';
-import { handleNotebookAction, setupNotebookEditorEvents } from './controllers/notebook-controller.js?v=c291614a33af';
-import { handleResourcesAction } from './controllers/resources-controller.js?v=c291614a33af';
-import { handleAssessmentAction } from './controllers/assessment-controller.js?v=c291614a33af';
-import { handleEssayAction } from './controllers/essay-controller.js?v=c291614a33af';
-import { handleAiAction } from './controllers/ai-controller.js?v=c291614a33af';
+} from './core.js?v=5e6599cddc14';
+import { loadMentorResource, loadContestSyllabus, loadDeckCards } from './mentor-resources.js?v=5e6599cddc14';
+import { getFilteredStudyQuestions } from './study.js?v=5e6599cddc14';
+import { renderAudienceSelector } from './shell.js?v=5e6599cddc14';
+import { exportDiagrammedPdf } from './curriculum.js?v=5e6599cddc14';
+import { handleNavigationEvent } from './controllers/navigation-controller.js?v=5e6599cddc14';
+import { handleRadarAction } from './controllers/radar-controller.js?v=5e6599cddc14';
+import { handlePlanningAction } from './controllers/planning-controller.js?v=5e6599cddc14';
+import { handleCurriculumAction } from './controllers/curriculum-controller.js?v=5e6599cddc14';
+import { handlePracticeAction } from './controllers/practice-controller.js?v=5e6599cddc14';
+import { handleNotebookAction, setupNotebookEditorEvents } from './controllers/notebook-controller.js?v=5e6599cddc14';
+import { handleResourcesAction } from './controllers/resources-controller.js?v=5e6599cddc14';
+import { handleAssessmentAction } from './controllers/assessment-controller.js?v=5e6599cddc14';
+import { handleEssayAction } from './controllers/essay-controller.js?v=5e6599cddc14';
+import { handleAiAction } from './controllers/ai-controller.js?v=5e6599cddc14';
 import {
   handleMentorAction,
   handleMentorChange,
   handleMentorInput,
   updateAudienceDOM
-} from './controllers/mentor-controller.js?v=c291614a33af';
-import { setupPlanningDragDrop } from './controllers/planning-drag-drop-controller.js?v=c291614a33af';
-import { setupPdfImportEvents } from './controllers/pdf-import-controller.js?v=c291614a33af';
+} from './controllers/mentor-controller.js?v=5e6599cddc14';
+import { setupPlanningDragDrop } from './controllers/planning-drag-drop-controller.js?v=5e6599cddc14';
+import { setupPdfImportEvents } from './controllers/pdf-import-controller.js?v=5e6599cddc14';
 
 function planningBase() {
   const tenantId = state.tenantId || 1;

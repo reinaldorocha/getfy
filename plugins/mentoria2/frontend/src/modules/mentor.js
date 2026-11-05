@@ -833,8 +833,8 @@ export function viewMentorImportReview() {
             Suporta extração digital de editais e importação estruturada por planilha (.xlsx / .csv) com disciplinas, tópicos, subtópicos, prioridades, tempo estimado e questões.
           </p>
           <div style="display:flex; justify-content:center; gap:8px; flex-wrap:wrap;">
-            <a href="/mentoria2/edicts/spreadsheet-template" download="modelo_edital_verticalizado.csv" class="m2-btn m2-btn-secondary" style="text-decoration:none;">
-              ${icon('download', 16)} Baixar Planilha Modelo (.csv)
+            <a href="/mentoria2/edicts/spreadsheet-template" download="modelo_edital_verticalizado.xlsx" class="m2-btn m2-btn-secondary" style="text-decoration:none;">
+              ${icon('download', 16)} Baixar Planilha Modelo (.xlsx)
             </a>
             <button type="button" class="m2-btn m2-btn-primary" data-action="open-spreadsheet-import-modal">
               ${icon('file-spreadsheet', 16)} Importar por Planilha (.xlsx/.csv)

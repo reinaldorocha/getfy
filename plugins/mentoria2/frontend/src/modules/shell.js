@@ -1114,8 +1114,8 @@ export   function renderFloatingMiniTimer() {
                 <strong style="font-size:13px; color:var(--text-main); display:block;">1. Baixe o Modelo Oficial de Planilha</strong>
                 <span style="font-size:11px; color:var(--text-muted);">Arquivo padronizado com colunas de Disciplina, Tópico, Subtópico, Prioridade, Tempo Estimado e Questões</span>
               </div>
-              <a href="/mentoria2/edicts/spreadsheet-template" download="modelo_edital_verticalizado.csv" class="m2-btn m2-btn-secondary m2-btn-sm" style="text-decoration:none;">
-                ${icon('download', 14)} Baixar Modelo (.csv)
+              <a href="/mentoria2/edicts/spreadsheet-template" download="modelo_edital_verticalizado.xlsx" class="m2-btn m2-btn-secondary m2-btn-sm" style="text-decoration:none;">
+                ${icon('download', 14)} Baixar Modelo (.xlsx)
               </a>
             </div>
 

@@ -2886,6 +2886,40 @@ export function handleMentorChange(e, { state, api, render, showToast, loadMento
     return true;
   }
 
+  if (e.target.dataset.action === 'change-spreadsheet-file' || e.target.id === 'm2-spreadsheet-file-input') {
+    const file = e.target.files?.[0];
+    if (!file) return true;
+    state.spreadsheetFile = file;
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    api('/mentoria2/edicts/spreadsheet-preview', {
+      method: 'POST',
+      body: formData
+    }).then(res => {
+      if (res && res.ok) {
+        state.spreadsheetPreview = res;
+        render();
+        showToast('Planilha analisada: ' + (res.summary?.total_rows || 0) + ' assuntos identificados!', 'success');
+      } else {
+        showToast(res?.message || 'Erro ao validar planilha.', 'error');
+      }
+    }).catch(err => {
+      showToast('Erro ao processar arquivo: formato inválido ou corrompido.', 'error');
+    });
+    return true;
+  }
+
+  if (e.target.dataset.action === 'toggle-spreadsheet-dest' || e.target.name === 'm2-import-contest-dest') {
+    const val = e.target.value || 'new';
+    const newFields = document.getElementById('m2-spreadsheet-new-fields');
+    const existingField = document.getElementById('m2-spreadsheet-existing-field');
+    if (newFields) newFields.style.display = (val === 'new') ? 'grid' : 'none';
+    if (existingField) existingField.style.display = (val === 'existing') ? 'block' : 'none';
+    return true;
+  }
+
   return false;
 }
 
