@@ -1383,7 +1383,20 @@ export function handleMentorAction({
           window.M2Data.student.allowed_schedule_mode = mode;
           window.M2Data.student.fixed_days_duration = duration;
         }
-        showToast('Modalidade de plano salva com sucesso!', 'success');
+        const activeContest = (window.M2Data.contests || []).find(c => String(c.id) === String(contestId));
+        if (activeContest) {
+          activeContest.allowed_schedule_mode = mode;
+          activeContest.fixed_days_duration = duration;
+        }
+        const st = (window.M2Data.mentorStudents || []).find(s => String(s.id) === String(studentId));
+        if (st) {
+          st.allowed_schedule_mode = mode;
+          st.fixed_days_duration = duration;
+        }
+        if (res?.items && Array.isArray(res.items)) {
+          window.M2Data.scheduleItems = res.items;
+        }
+        showToast('Modalidade de plano salva e cronograma atualizado com sucesso!', 'success');
         render();
       }).catch(err => {
         showToast('Erro ao salvar configuração do aluno.', 'error');
@@ -2799,6 +2812,13 @@ export function handleMentorAction({
 }
 
 export function handleMentorChange(e, { state, api, render, showToast, loadMentorResource, renderAudienceSelector }) {
+  if (e.target.dataset.action === 'change-student-plan-mode' || e.target.id === 'm2-student-schedule-mode') {
+    const val = e.target.value;
+    const wrap = document.getElementById('m2-student-fixed-duration-wrap');
+    if (wrap) wrap.style.display = (val === 'fixed_days') ? 'block' : 'none';
+    return true;
+  }
+
   if (e.target.dataset.action === 'toggle-qf-type') {
     const altGroup = document.getElementById('m2-qf-alternatives-group');
     const correctSelect = document.getElementById('m2-qf-correct');

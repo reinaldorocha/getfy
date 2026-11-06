@@ -275,9 +275,13 @@ class PanelController extends Controller
             'edicts' => DB::table('mentoria2_edicts')
                 ->where('tenant_id', $tenantId)->whereIn('id', $edictIds)->where('is_active', true)->get(),
             'schedules' => $schedules,
-            'schedule_items' => DB::table('mentoria2_schedule_items')
-                ->where('tenant_id', $tenantId)->whereIn('schedule_id', $schedules->pluck('id'))
-                ->orderByRaw('planned_date IS NULL, planned_date')->orderBy('position')->limit(1000)->get(),
+            'schedule_items' => DB::table('mentoria2_schedule_items as i')
+                ->leftJoin('mentoria2_subjects as sub', 'sub.id', '=', 'i.subject_id')
+                ->leftJoin('mentoria2_topics as top', 'top.id', '=', 'i.topic_id')
+                ->leftJoin('mentoria2_subtopics as subtop', 'subtop.id', '=', 'i.subtopic_id')
+                ->where('i.tenant_id', $tenantId)->whereIn('i.schedule_id', $schedules->pluck('id'))
+                ->select('i.*', 'sub.name as subject_name', 'top.name as topic_name', 'subtop.name as subtopic_name')
+                ->orderByRaw('i.planned_date IS NULL, i.planned_date')->orderBy('i.position')->limit(1000)->get(),
             'reviews' => DB::table('mentoria2_scheduled_reviews')
                 ->where('tenant_id', $tenantId)->where('student_id', $user->id)->where('is_active', true)
                 ->orderByRaw('completed ASC, next_date IS NULL, next_date')->limit(300)->get(),

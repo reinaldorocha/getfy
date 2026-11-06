@@ -1,5 +1,5 @@
-import { state, icon, escapeHtml, plainTextWithBreaks, getAnnouncements } from './core.js?v=d7ba9846a45d';
-import { renderAudienceBadge } from './shell.js?v=d7ba9846a45d';
+import { state, icon, escapeHtml, plainTextWithBreaks, getAnnouncements } from './core.js?v=531b8a943e83';
+import { renderAudienceBadge } from './shell.js?v=531b8a943e83';
 
 function mentorPagination(screen) {
   const meta = window.M2Data.mentorListState?.[screen]?.meta;
@@ -324,13 +324,8 @@ export function viewMentorStudentProfile() {
               </select>
             </div>
             <div id="m2-student-fixed-duration-wrap" style="display:${st.allowed_schedule_mode === 'fixed_days' ? 'block' : 'none'};">
-              <label style="font-size:11px; color:var(--text-muted); display:block; margin-bottom:4px;">Duração do Ciclo Fixo:</label>
-              <select id="m2-student-fixed-duration" class="m2-field-input" style="width:100%; padding:8px 10px; font-size:12px;">
-                <option value="30" ${st.fixed_days_duration == 30 ? 'selected' : ''}>30 Dias Corridos</option>
-                <option value="40" ${st.fixed_days_duration == 40 ? 'selected' : ''}>40 Dias Corridos</option>
-                <option value="60" ${(!st.fixed_days_duration || st.fixed_days_duration == 60) ? 'selected' : ''}>60 Dias Corridos</option>
-                <option value="90" ${st.fixed_days_duration == 90 ? 'selected' : ''}>90 Dias Corridos</option>
-              </select>
+              <label style="font-size:11px; color:var(--text-muted); display:block; margin-bottom:4px;">Duração do Ciclo (Dias Corridos):</label>
+              <input type="number" id="m2-student-fixed-duration" class="m2-field-input" min="1" max="365" placeholder="Ex: 30, 45, 60..." value="${st.fixed_days_duration || 60}" style="width:100%; padding:8px 10px; font-size:12px;">
             </div>
           </div>
           <div style="display:flex; justify-content:flex-end; margin-top:14px;">

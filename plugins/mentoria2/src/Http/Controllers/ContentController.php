@@ -384,7 +384,106 @@ class ContentController extends Controller
         DB::table('mentoria2_student_contests')->where('id', $row->id)->update($data);
         $this->audit->record($tenantId, $actor, 'student_contest.updated', 'student_contest', (string) $row->id, $studentUser->id, $data);
 
-        return response()->json(['ok' => true]);
+        $newScheduleItems = null;
+        if (isset($data['allowed_schedule_mode']) || array_key_exists('fixed_days_duration', $data)) {
+            $mode = $data['allowed_schedule_mode'] ?? $row->allowed_schedule_mode ?? 'calendar';
+            $duration = isset($data['fixed_days_duration']) ? (int) $data['fixed_days_duration'] : (int) ($row->fixed_days_duration ?? 60);
+
+            $activeSchedule = DB::table('mentoria2_schedules')
+                ->where('tenant_id', $tenantId)
+                ->where('student_id', $studentUser->id)
+                ->where('contest_id', $contest)
+                ->where('is_active', true)
+                ->first();
+
+            if ($activeSchedule) {
+                $config = json_decode($activeSchedule->configuration ?? '{}', true) ?: [];
+                $config['schedule_mode'] = $mode;
+                $config['allowed_schedule_mode'] = $mode;
+                if ($mode === 'fixed_days') {
+                    $config['tipo'] = 'agendado';
+                    $config['fixed_days'] = $duration;
+                    $config['dias_corridos'] = $duration;
+                } else {
+                    unset($config['fixed_days'], $config['dias_corridos']);
+                }
+
+                $engine = app(\Plugins\Mentoria2\Services\ScheduleEngineService::class);
+                $generated = $engine->generate($studentUser, $tenantId, $contest, $config);
+
+                $newVersion = ((int) $activeSchedule->version) + 1;
+                $newScheduleId = (string) Str::uuid();
+
+                DB::transaction(function () use ($tenantId, $studentUser, $contest, $actor, $newVersion, $newScheduleId, $config, $generated, $activeSchedule): void {
+                    DB::table('mentoria2_schedules')->where('id', $activeSchedule->id)->update([
+                        'is_active' => false,
+                        'state' => 'substituido',
+                        'updated_at' => now(),
+                    ]);
+
+                    DB::table('mentoria2_schedules')->insert([
+                        'id' => $newScheduleId,
+                        'tenant_id' => $tenantId,
+                        'student_id' => $studentUser->id,
+                        'contest_id' => $contest,
+                        'type' => 'agendado',
+                        'created_by' => $actor->id,
+                        'version' => $newVersion,
+                        'state' => 'ativo',
+                        'configuration' => json_encode($config, JSON_UNESCAPED_UNICODE),
+                        'is_active' => true,
+                        'created_at' => now(),
+                        'updated_at' => now(),
+                    ]);
+
+                    foreach ($generated as $idx => $item) {
+                        if (! is_array($item)) {
+                            continue;
+                        }
+                        DB::table('mentoria2_schedule_items')->insert([
+                            'id' => (string) Str::uuid(),
+                            'tenant_id' => $tenantId,
+                            'schedule_id' => $newScheduleId,
+                            'label' => (string) ($item['label'] ?? 'Estudo'),
+                            'description' => $item['description'] ?? null,
+                            'is_fixed' => ! empty($item['is_fixed']),
+                            'scheduled_review_id' => $item['scheduled_review_id'] ?? null,
+                            'planned_date' => ! empty($item['planned_date']) ? \Carbon\CarbonImmutable::parse($item['planned_date'])->toDateString() : null,
+                            'cycle_position' => isset($item['cycle_position']) ? (int) $item['cycle_position'] : null,
+                            'subject_id' => $item['subject_id'] ?? null,
+                            'topic_id' => $item['topic_id'] ?? null,
+                            'subtopic_id' => $item['subtopic_id'] ?? null,
+                            'duration_minutes' => max(1, (int) ($item['duration_minutes'] ?? 60)),
+                            'questions_target' => isset($item['questions_target']) && (int) $item['questions_target'] > 0 ? (int) $item['questions_target'] : null,
+                            'priority' => (int) ($item['priority'] ?? 50),
+                            'position' => $idx + 1,
+                            'status' => 'pendente',
+                            'completed_at' => null,
+                            'created_at' => now(),
+                            'updated_at' => now(),
+                        ]);
+                    }
+                });
+
+                $newScheduleItems = DB::table('mentoria2_schedule_items as i')
+                    ->leftJoin('mentoria2_subjects as sub', 'sub.id', '=', 'i.subject_id')
+                    ->leftJoin('mentoria2_topics as top', 'top.id', '=', 'i.topic_id')
+                    ->leftJoin('mentoria2_subtopics as subtop', 'subtop.id', '=', 'i.subtopic_id')
+                    ->where('i.tenant_id', $tenantId)
+                    ->where('i.schedule_id', $newScheduleId)
+                    ->select('i.*', 'sub.name as subject_name', 'top.name as topic_name', 'subtop.name as subtopic_name')
+                    ->orderByRaw('i.planned_date IS NULL, i.planned_date')
+                    ->orderBy('i.position')
+                    ->get();
+            }
+        }
+
+        return response()->json([
+            'ok' => true,
+            'items' => $newScheduleItems,
+            'allowed_schedule_mode' => $data['allowed_schedule_mode'] ?? $row->allowed_schedule_mode,
+            'fixed_days_duration' => $data['fixed_days_duration'] ?? $row->fixed_days_duration,
+        ]);
     }
 
     public function unassignContest(Request $request, string $contest, int $student): JsonResponse

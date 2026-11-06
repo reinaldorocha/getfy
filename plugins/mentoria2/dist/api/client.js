@@ -10,4 +10,4 @@ export {
   buildQuery,
   sanitizeErrorMessage,
   unwrap
-} from '../modules/api/client.js?v=d7ba9846a45d';
+} from '../modules/api/client.js?v=531b8a943e83';

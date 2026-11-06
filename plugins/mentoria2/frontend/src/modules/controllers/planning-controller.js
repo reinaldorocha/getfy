@@ -236,14 +236,24 @@ export function handlePlanningAction({
     const items = state.calendarRangeKey ? state.calendarItems : (window.M2Data.scheduleItems || []);
     const item = items.find(candidate => String(candidate.id) === String(itemId));
     if (!item) { showToast('Nao foi possivel localizar a atividade do cronograma.', 'error'); return true; }
+    const sName = item.subject_name || (window.M2Data.subjects || []).find(subject => String(subject.id) === String(item.subject_id))?.name || 'Estudo dirigido';
+    const tName = item.topic_name || (window.M2Data.topics || []).find(topic => String(topic.id) === String(item.topic_id))?.name || 'Conteúdo do edital';
+    const subName = item.subtopic_name || null;
+    let fullTopic = tName;
+    if (subName && subName !== tName) {
+      fullTopic = `${tName} › ${subName}`;
+    } else if (item.label && item.label !== tName) {
+      fullTopic = item.label;
+    }
+
     state.scheduleCompletion = {
       itemId: item.id,
       subjectId: item.subject_id || null,
       topicId: item.topic_id || null,
       durationMinutes: Number(item.duration_minutes || 60),
       questionsTarget: Number(item.questions_target || 0),
-      subjectName: (window.M2Data.subjects || []).find(subject => String(subject.id) === String(item.subject_id))?.name || 'Estudo dirigido',
-      topicName: (window.M2Data.topics || []).find(topic => String(topic.id) === String(item.topic_id))?.name || 'Conteudo do edital',
+      subjectName: sName,
+      topicName: fullTopic,
     };
     state.modal = 'schedule-completion';
     render();

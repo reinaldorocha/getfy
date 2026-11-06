@@ -207,7 +207,7 @@ class SpreadsheetParserService
             [
                 'Direito Constitucional',
                 'Direitos e Garantias Fundamentais',
-                'Art. 5º - Direitos Individuais e Coletivos',
+                '',
                 'Alta',
                 60,
                 15,
@@ -215,8 +215,8 @@ class SpreadsheetParserService
             ],
             [
                 'Direito Constitucional',
-                'Direitos e Garantias Fundamentais',
                 'Remédios Constitucionais (Habeas Corpus, MS, HD)',
+                '',
                 'Alta',
                 50,
                 10,
@@ -224,8 +224,8 @@ class SpreadsheetParserService
             ],
             [
                 'Direito Administrativo',
-                'Atos Administrativos',
-                'Conceito, Requisitos e Atributos',
+                'Atos Administrativos (Conceito e Atributos)',
+                '',
                 'Alta',
                 60,
                 15,
@@ -233,8 +233,8 @@ class SpreadsheetParserService
             ],
             [
                 'Direito Administrativo',
-                'Atos Administrativos',
-                'Extinção, Anulação e Revogação',
+                'Extinção, Anulação e Revogação de Atos',
+                '',
                 'Média',
                 45,
                 10,
@@ -242,8 +242,8 @@ class SpreadsheetParserService
             ],
             [
                 'Língua Portuguesa',
-                'Morfossintaxe',
                 'Crase',
+                '',
                 'Alta',
                 60,
                 20,
@@ -251,8 +251,8 @@ class SpreadsheetParserService
             ],
             [
                 'Língua Portuguesa',
-                'Morfossintaxe',
                 'Concordância Verbal e Nominal',
+                '',
                 'Média',
                 50,
                 15,
@@ -260,8 +260,8 @@ class SpreadsheetParserService
             ],
             [
                 'Raciocínio Lógico',
-                'Estruturas Lógicas e Tabela Verdade',
-                'Conectivos, Negação e Equivalência',
+                'Estruturas Lógicas e Conectivos',
+                '',
                 'Média',
                 45,
                 10,
@@ -270,7 +270,7 @@ class SpreadsheetParserService
             [
                 'Legislação Especial',
                 'Estatuto do Desarmamento (Lei 10.826)',
-                'Posse, Porte e Crimes em Espécie',
+                '',
                 'Alta',
                 50,
                 12,

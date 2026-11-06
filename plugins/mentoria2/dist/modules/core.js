@@ -1,8 +1,8 @@
-import { icon as renderIconSvg } from '../m2-icons.js?v=d7ba9846a45d';
-import { M2Data } from '../m2-data.js?v=d7ba9846a45d';
-import { requestJson as api, http, buildQuery, sanitizeErrorMessage, unwrap } from './api/client.js?v=d7ba9846a45d';
-import { createMentoriaContext } from '../app/context.js?v=d7ba9846a45d';
-import { escapeHtml, escapeRegExp, plainTextWithBreaks } from '../utils/escape-html.js?v=d7ba9846a45d';
+import { icon as renderIconSvg } from '../m2-icons.js?v=531b8a943e83';
+import { M2Data } from '../m2-data.js?v=531b8a943e83';
+import { requestJson as api, http, buildQuery, sanitizeErrorMessage, unwrap } from './api/client.js?v=531b8a943e83';
+import { createMentoriaContext } from '../app/context.js?v=531b8a943e83';
+import { escapeHtml, escapeRegExp, plainTextWithBreaks } from '../utils/escape-html.js?v=531b8a943e83';
 
 if (typeof window === 'undefined') {
   globalThis.window = globalThis;
@@ -254,6 +254,8 @@ function hydrateDataFromPayload(payload) {
       totalQuestions: payload.questions?.length || 0,
       isDefault: Boolean(c.is_default || (payload.active_contest_id && String(c.id) === String(payload.active_contest_id))),
       reviewIntervals: c.review_intervals || '1,7,30',
+      allowed_schedule_mode: c.allowed_schedule_mode || 'calendar',
+      fixed_days_duration: c.fixed_days_duration ? Number(c.fixed_days_duration) : null,
       fixedPlanItems: Array.isArray(c.fixed_plan_items) ? c.fixed_plan_items : (() => { try { const parsed = JSON.parse(c.fixed_plan_items || '[]'); return Array.isArray(parsed) ? parsed : []; } catch { return []; } })()
     }));
     state.contestId = payload.active_contest_id || payload.contests[0]?.id;
@@ -692,6 +694,8 @@ function hydrateDataFromPayload(payload) {
     }
     window.M2Data.student.cohort = payload.student.cohort_name || '';
     window.M2Data.student.contest = payload.student.contest_name || '';
+    window.M2Data.student.allowed_schedule_mode = payload.student.allowed_schedule_mode || payload.student_contest?.allowed_schedule_mode || (payload.contests?.[0]?.allowed_schedule_mode) || 'calendar';
+    window.M2Data.student.fixed_days_duration = payload.student.fixed_days_duration || payload.student_contest?.fixed_days_duration || (payload.contests?.[0]?.fixed_days_duration) || null;
   } else if (Array.isArray(window.M2Data.mentorStudents) && window.M2Data.mentorStudents.length > 0) {
     const firstRealStudent = window.M2Data.mentorStudents[0];
     window.M2Data.student.id = firstRealStudent.id;

@@ -1,5 +1,5 @@
-import { state, icon, escapeHtml, getAnnouncements } from './core.js?v=d7ba9846a45d';
-import { isSafeHtmlUrl } from '../utils/escape-html.js?v=d7ba9846a45d';
+import { state, icon, escapeHtml, getAnnouncements } from './core.js?v=531b8a943e83';
+import { isSafeHtmlUrl } from '../utils/escape-html.js?v=531b8a943e83';
 
 const WEEKDAYS = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo'];
 const WEEKDAY_KEYS = ['seg', 'ter', 'qua', 'qui', 'sex', 'sab', 'dom'];
@@ -32,17 +32,33 @@ function topicName(id) {
 
 function scheduleItems({ calendar = false } = {}) {
   const loaded = calendar && state.calendarRangeKey ? state.calendarItems : (window.M2Data.scheduleItems || []);
-  return loaded.map(item => ({
-    ...item,
-    planned_date: item.planned_date ? String(item.planned_date).slice(0, 10) : null,
-    duration_minutes: Number(item.duration_minutes || 60),
-    status: item.status || 'pendente',
-    isReview: Boolean(item.scheduled_review_id),
-    subjectLabel: item.is_fixed && item.label ? item.label : (item.subject_name || subjectName(item.subject_id)),
-    topicLabel: item.is_fixed
-      ? (item.description || item.label || 'Meta fixa semanal')
-      : (item.subtopic_name || item.topic_name || item.label || topicName(item.topic_id))
-  }));
+  return loaded.map(item => {
+    const subj = item.is_fixed && item.label ? item.label : (item.subject_name || subjectName(item.subject_id));
+    const top = item.topic_name || topicName(item.topic_id);
+    const subtop = item.subtopic_name || null;
+    let label = item.label || top;
+    if (item.is_fixed) {
+      label = item.description || item.label || 'Meta fixa semanal';
+    } else if (subtop && top && subtop !== top) {
+      label = `${top} › ${subtop}`;
+    } else if (subtop) {
+      label = subtop;
+    } else if (top) {
+      label = top;
+    }
+
+    return {
+      ...item,
+      planned_date: item.planned_date ? String(item.planned_date).slice(0, 10) : null,
+      duration_minutes: Number(item.duration_minutes || 60),
+      status: item.status || 'pendente',
+      isReview: Boolean(item.scheduled_review_id),
+      subjectLabel: subj,
+      topicLabel: label,
+      resolvedTopic: top,
+      resolvedSubtopic: subtop
+    };
+  });
 }
 
 function planDraft() {
@@ -883,8 +899,19 @@ export function viewPlanning() {
   }).length;
   const label = isWeek ? `${fmtDate(start)} - ${fmtDate(end)}, ${start.getFullYear()}` : new Intl.DateTimeFormat('pt-BR', { month: 'long', year: 'numeric' }).format(cursor);
 
-  // Progresso semanal em percentual (Gamificação)
-  const progressPct = dated.length > 0 ? Math.round((completed / dated.length) * 100) : 0;
+  const activeContest = (window.M2Data.contests || []).find(c => String(c.id) === String(state.contestId)) || window.M2Data.contests?.[0];
+  const isFixedMode = (activeContest?.allowed_schedule_mode === 'fixed_days') || (window.M2Data.student?.allowed_schedule_mode === 'fixed_days');
+  const fixedDays = activeContest?.fixed_days_duration || window.M2Data.student?.fixed_days_duration || 60;
+
+  // Progresso em percentual (Gamificação)
+  const allCompletedCount = allRawItems.filter(i => i.status === 'concluido').length;
+  const progressPct = isFixedMode && allRawItems.length > 0
+    ? Math.round((allCompletedCount / allRawItems.length) * 100)
+    : (dated.length > 0 ? Math.round((completed / dated.length) * 100) : 0);
+  const progressLabel = isFixedMode ? `Progresso do Ciclo (${fixedDays} dias)` : 'Progresso da Semana';
+  const progressSub = isFixedMode && allRawItems.length > 0
+    ? `${allCompletedCount} de ${allRawItems.length} blocos do ciclo concluídos`
+    : `${completed} de ${dated.length} blocos concluídos · ${(minutes / 60).toFixed(1)}h planejadas`;
 
   const dates = [];
   if (isWeek) {
@@ -897,6 +924,19 @@ export function viewPlanning() {
 
   return `
     <div class="m2-content m2-planning-view">
+      ${isFixedMode ? `
+        <div class="m2-fixed-mode-header" style="display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:14px; padding:10px 16px; border-radius:10px; background:rgba(13, 148, 136, 0.08); border:1px solid rgba(13, 148, 136, 0.25); color:var(--text-main);">
+          <div style="display:flex; align-items:center; gap:10px;">
+            <span style="display:flex; color:#0d9488;">${icon('clock', 18)}</span>
+            <div>
+              <strong style="font-size:13px; color:#0d9488;">Cronograma Fixo · ${fixedDays} Dias Corridos (Ciclo)</strong>
+              <p style="margin:2px 0 0 0; font-size:12px; color:var(--text-muted);">Seu plano está organizado em um ciclo contínuo de ${fixedDays} dias corridos com as matérias e tópicos priorizados.</p>
+            </div>
+          </div>
+          <span class="m2-pill m2-pill-teal" style="font-weight:700;">Modo Ciclo Fixo</span>
+        </div>
+      ` : ''}
+
       ${overdue > 0 ? `
         <div class="m2-banner-alert m2-banner-alert--warning" style="display:flex; align-items:center; justify-content:space-between; gap:16px; margin-bottom:16px; padding:12px 18px; border-radius:10px; background:var(--m2-amber-50, #fffbeb); border:1px solid var(--m2-amber-200, #fde68a); color:var(--m2-amber-900, #78350f);">
           <div style="display:flex; align-items:center; gap:10px;">
@@ -913,17 +953,17 @@ export function viewPlanning() {
       ` : ''}
       <!-- TOPBAR UNIFICADA (FASE 2) -->
       <div class="m2-plan-topbar">
-        <!-- 1. Progresso Semanal Gamificado -->
+        <!-- 1. Progresso Semanal / Ciclo Gamificado -->
         <div class="m2-plan-progress-box">
           <div class="m2-plan-progress-header">
-            <span class="m2-plan-progress-label">Progresso da Semana</span>
+            <span class="m2-plan-progress-label">${progressLabel}</span>
             <strong class="m2-plan-progress-pct">${progressPct}%</strong>
           </div>
           <div class="m2-plan-progress-bar-track">
             <div class="m2-plan-progress-bar-fill" style="width: ${progressPct}%;"></div>
           </div>
           <span class="m2-plan-progress-sub">
-            ${completed} de ${dated.length} blocos concluídos · ${(minutes / 60).toFixed(1)}h planejadas
+            ${progressSub}
           </span>
         </div>
 

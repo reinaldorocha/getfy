@@ -20,6 +20,22 @@ class ScheduleEngineService
     {
         $this->assertContestAssigned($student->id, $tenantId, $contestId);
 
+        // Check student contest mode if not explicitly in configuration
+        $studentContest = DB::table('mentoria2_student_contests')
+            ->where('tenant_id', $tenantId)
+            ->where('contest_id', $contestId)
+            ->where('student_id', $student->id)
+            ->first();
+
+        if ($studentContest && $studentContest->allowed_schedule_mode === 'fixed_days') {
+            $configuration['schedule_mode'] = 'fixed_days';
+            $configuration['allowed_schedule_mode'] = 'fixed_days';
+            if ((int) $studentContest->fixed_days_duration > 0) {
+                $configuration['fixed_days'] = (int) $studentContest->fixed_days_duration;
+                $configuration['dias_corridos'] = (int) $studentContest->fixed_days_duration;
+            }
+        }
+
         [$subjects, $units] = $this->diagnostic($student->id, $tenantId, $contestId, $configuration);
         $mode = (string) ($configuration['tipo'] ?? $configuration['type'] ?? 'agendado');
         $hours = $this->hours($configuration);
@@ -79,6 +95,18 @@ class ScheduleEngineService
         }
         $examCutoff = $examDate ? CarbonImmutable::parse($examDate)->startOfDay() : null;
 
+        $fixedCutoff = null;
+        if (! empty($schedule->contest_id)) {
+            $studentContest = DB::table('mentoria2_student_contests')
+                ->where('tenant_id', $tenantId)
+                ->where('contest_id', $schedule->contest_id)
+                ->where('student_id', $studentId)
+                ->first();
+            if ($studentContest && $studentContest->allowed_schedule_mode === 'fixed_days' && (int) $studentContest->fixed_days_duration > 0) {
+                $fixedCutoff = $start->addDays((int) $studentContest->fixed_days_duration);
+            }
+        }
+
         $updates = [];
         foreach ($items as $item) {
             $duration = max(1, (int) ($item->duration_minutes ?: ($configuration['minutosTopico'] ?? 60)));
@@ -86,6 +114,9 @@ class ScheduleEngineService
 
             for ($guard = 0; $guard < 1095; $guard++) {
                 if ($examCutoff && $cursor->gte($examCutoff)) {
+                    break;
+                }
+                if ($fixedCutoff && $cursor->gte($fixedCutoff)) {
                     break;
                 }
 
@@ -203,6 +234,8 @@ class ScheduleEngineService
                         'topic_id' => (string) $topic->id,
                         'subtopic_id' => null,
                         'name' => (string) $topic->name,
+                        'topic_name' => (string) $topic->name,
+                        'subtopic_name' => null,
                         'relevance' => (int) ($topic->relevance ?? $subject->relevance ?? 50),
                         'estimated_minutes' => isset($topic->estimated_minutes) ? (int) $topic->estimated_minutes : null,
                         'questions_target' => isset($topic->questions_target) ? (int) $topic->questions_target : null,
@@ -217,6 +250,8 @@ class ScheduleEngineService
                         'topic_id' => (string) $topic->id,
                         'subtopic_id' => (string) $subtopic->id,
                         'name' => (string) $subtopic->name,
+                        'topic_name' => (string) $topic->name,
+                        'subtopic_name' => (string) $subtopic->name,
                         'relevance' => (int) ($subtopic->relevance ?? $topic->relevance ?? $subject->relevance ?? 50),
                         'estimated_minutes' => isset($subtopic->estimated_minutes) ? (int) $subtopic->estimated_minutes : (isset($topic->estimated_minutes) ? (int) $topic->estimated_minutes : null),
                         'questions_target' => isset($subtopic->questions_target) ? (int) $subtopic->questions_target : (isset($topic->questions_target) ? (int) $topic->questions_target : null),
@@ -297,8 +332,16 @@ class ScheduleEngineService
     {
         $items = [];
         $minutes = max(1, (int) ($configuration['minutosTopico'] ?? $configuration['minutes_per_topic'] ?? 60));
-        $repetitions = max(1, (int) ($configuration['repeticoesEdital'] ?? $configuration['edict_repetitions'] ?? 3));
-        $targetCount = max(60, $repetitions * 20);
+        $repetitions = max(1, (int) ($configuration['repeticoesEdital'] ?? $configuration['edict_repetitions'] ?? 1));
+
+        $totalUnits = 0;
+        foreach ($subjects as $s) {
+            $totalUnits += count($unitsBySubject[$s['id']] ?? []);
+        }
+        $targetCount = $totalUnits * $repetitions;
+        if ($targetCount <= 0) {
+            return [];
+        }
 
         $pointers = [];
         foreach ($subjects as $subject) {
@@ -307,36 +350,49 @@ class ScheduleEngineService
 
         $subjectIndex = 0;
         while (count($items) < $targetCount) {
-            $candidate = $subjects[$subjectIndex % count($subjects)];
-            $subjectId = $candidate['id'];
-            $units = $unitsBySubject[$subjectId] ?? [];
+            $found = false;
+            for ($attempt = 0; $attempt < count($subjects); $attempt++) {
+                $candidate = $subjects[($subjectIndex + $attempt) % count($subjects)];
+                $subjectId = $candidate['id'];
+                $units = $unitsBySubject[$subjectId] ?? [];
+                $pendingForSubject = ! empty($units) && ($pointers[$subjectId] < count($units) * $repetitions);
 
-            if (! empty($units)) {
-                $unit = $units[$pointers[$subjectId] % count($units)];
-                $pointers[$subjectId]++;
-                $priority = (int) ($unit['priority'] ?? $candidate['priority']);
-                $duration = $priority >= 70 ? 90 : ($priority >= 55 ? 70 : ($priority >= 40 ? 50 : 30));
-                if (isset($configuration['minutosTopico'])) {
-                    $duration = $minutes;
+                if ($pendingForSubject) {
+                    $unit = $units[$pointers[$subjectId] % count($units)];
+                    $pointers[$subjectId]++;
+                    $priority = (int) ($unit['priority'] ?? $candidate['priority']);
+                    $duration = max(10, (int) ($unit['estimated_minutes'] ?: ($priority >= 70 ? 90 : ($priority >= 55 ? 70 : ($priority >= 40 ? 50 : 30)))));
+                    if (isset($configuration['minutosTopico'])) {
+                        $duration = $minutes;
+                    }
+                    $pos = count($items) + 1;
+
+                    $desc = $candidate['name'] . ' · ' . $unit['name'];
+                    if (! empty($unit['subtopic_name']) && ! empty($unit['topic_name']) && $unit['subtopic_name'] !== $unit['topic_name']) {
+                        $desc = $candidate['name'] . ' · ' . $unit['topic_name'] . ' > ' . $unit['subtopic_name'];
+                    }
+
+                    $items[] = [
+                        'planned_date' => null,
+                        'cycle_position' => $pos,
+                        'subject_id' => $unit['subject_id'],
+                        'topic_id' => $unit['topic_id'],
+                        'subtopic_id' => $unit['subtopic_id'],
+                        'label' => $unit['name'],
+                        'description' => $desc,
+                        'duration_minutes' => $duration,
+                        'questions_target' => isset($unit['questions_target']) && (int) $unit['questions_target'] > 0 ? (int) $unit['questions_target'] : null,
+                        'priority' => $priority,
+                        'position' => $pos,
+                        'status' => 'pendente',
+                    ];
+                    $subjectIndex = ($subjectIndex + $attempt + 1) % count($subjects);
+                    $found = true;
+                    break;
                 }
-                $pos = count($items) + 1;
-                $items[] = [
-                    'planned_date' => null,
-                    'cycle_position' => $pos,
-                    'subject_id' => $unit['subject_id'],
-                    'topic_id' => $unit['topic_id'],
-                    'subtopic_id' => $unit['subtopic_id'],
-                    'label' => $unit['name'],
-                    'description' => $candidate['name'] . ' · ' . $unit['name'],
-                    'duration_minutes' => $duration,
-                    'priority' => $priority,
-                    'position' => $pos,
-                    'status' => 'pendente',
-                ];
             }
 
-            $subjectIndex++;
-            if ($subjectIndex > $targetCount * 5 && empty($items)) {
+            if (! $found) {
                 break;
             }
         }
@@ -403,6 +459,21 @@ class ScheduleEngineService
         $items = [];
 
         for ($day = 0; $day < $targetDays; $day++) {
+            // Check if all units for all subjects have finished their repetitions
+            $hasPendingUnits = false;
+            foreach ($subjects as $s) {
+                $sId = $s['id'];
+                $sCount = count($unitsBySubject[$sId] ?? []);
+                if (($pointers[$sId] ?? 0) < ($sCount * $repetitions)) {
+                    $hasPendingUnits = true;
+                    break;
+                }
+            }
+            if (! $hasPendingUnits && ! empty($items)) {
+                // All topics across all subjects have been scheduled for the configured repetitions!
+                break;
+            }
+
             $date = $today->addDays($day);
             $available = (float) ($hours[$this->weekdayKey($date)] ?? 0);
             $dayKey = $this->weekdayKey($date);
@@ -441,25 +512,29 @@ class ScheduleEngineService
                 $chosen = null;
                 $chosenIndex = null;
 
+                // 1st pass: Pick subject not yet used today that still has pending units
                 for ($attempt = 0; $attempt < count($subjects); $attempt++) {
                     $candidateIndex = ($subjectIndex + $attempt) % count($subjects);
                     $candidate = $subjects[$candidateIndex];
                     $subjectId = $candidate['id'];
                     $units = $unitsBySubject[$subjectId] ?? [];
-                    if (! empty($units) && ! isset($usedSubjects[$subjectId])) {
+                    $isPending = ! empty($units) && (($pointers[$subjectId] ?? 0) < (count($units) * $repetitions));
+                    if ($isPending && ! isset($usedSubjects[$subjectId])) {
                         $chosen = $candidate;
                         $chosenIndex = $candidateIndex;
                         break;
                     }
                 }
 
+                // 2nd pass: If all candidate subjects were already used today, allow reuse as long as it has pending units
                 if ($chosen === null) {
                     for ($attempt = 0; $attempt < count($subjects); $attempt++) {
                         $candidateIndex = ($subjectIndex + $attempt) % count($subjects);
                         $candidate = $subjects[$candidateIndex];
                         $subjectId = $candidate['id'];
                         $units = $unitsBySubject[$subjectId] ?? [];
-                        if (! empty($units)) {
+                        $isPending = ! empty($units) && (($pointers[$subjectId] ?? 0) < (count($units) * $repetitions));
+                        if ($isPending) {
                             $chosen = $candidate;
                             $chosenIndex = $candidateIndex;
                             break;
@@ -468,6 +543,7 @@ class ScheduleEngineService
                 }
 
                 if ($chosen === null) {
+                    // No subject has any pending units left
                     break;
                 }
 
@@ -481,6 +557,11 @@ class ScheduleEngineService
                 $unitDuration = max(10, (int) ($unit['estimated_minutes'] ?: $minutes));
                 $unitQuestionsTarget = isset($unit['questions_target']) && (int) $unit['questions_target'] > 0 ? (int) $unit['questions_target'] : null;
 
+                $fullDescription = $chosen['name'] . ' · ' . $unit['name'];
+                if (! empty($unit['subtopic_name']) && ! empty($unit['topic_name']) && $unit['subtopic_name'] !== $unit['topic_name']) {
+                    $fullDescription = $chosen['name'] . ' · ' . $unit['topic_name'] . ' > ' . $unit['subtopic_name'];
+                }
+
                 $items[] = [
                     'planned_date' => $date->toDateString(),
                     'cycle_position' => count($items) + 1,
@@ -488,7 +569,7 @@ class ScheduleEngineService
                     'topic_id' => $unit['topic_id'],
                     'subtopic_id' => $unit['subtopic_id'],
                     'label' => $unit['name'],
-                    'description' => $chosen['name'] . ' · ' . $unit['name'],
+                    'description' => $fullDescription,
                     'duration_minutes' => $unitDuration,
                     'questions_target' => $unitQuestionsTarget,
                     'priority' => max((int) $chosen['priority'], (int) $unit['priority']),
