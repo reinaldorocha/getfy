@@ -3,9 +3,9 @@ import {
     api, alertBox, badge, btn, card, checkbox, choiceCard, cn, countdown, empty, field, fmtDate, fmtDateTime,
     fmtHours, input, jsonBody, modal, optionize, progressBar, safeJson, sectionTitle, select,
     stat, textarea, mentoria2Shell, useMentoria2Shell, svgIcon, renderIcon, renderRadarChart,
-} from './shared.js?v=778a843a35b2';
-import { displayAlternative } from './question-alternatives.js?v=778a843a35b2';
-import { initMentoria2App, destroyMentoria2App, state, navigate, showToast, toggleTheme, render } from './m2-app.js?v=778a843a35b2';
+} from './shared.js?v=ab398a02b1f4';
+import { displayAlternative } from './question-alternatives.js?v=ab398a02b1f4';
+import { initMentoria2App, destroyMentoria2App, state, navigate, showToast, toggleTheme, render } from './m2-app.js?v=ab398a02b1f4';
 
 export const Mentoria2Student = {
     name: 'Mentoria2Student',

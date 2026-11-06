@@ -635,6 +635,28 @@ export function setupEvents() {
       }
     }
     // 1.6 Fechamento de Modais
+    
+    else if (action === 'close-promo-modal') {
+      if (state.activePromoBanner && state.activePromoBanner.id) {
+        try { sessionStorage.setItem('m2_promo_dismissed_' + state.activePromoBanner.id, '1'); } catch (_) {}
+      }
+      state.modal = null;
+      state.activePromoBanner = null;
+      render();
+    }
+    else if (action === 'click-promo-modal') {
+      if (state.activePromoBanner && state.activePromoBanner.id) {
+        try { sessionStorage.setItem('m2_promo_dismissed_' + state.activePromoBanner.id, '1'); } catch (_) {}
+      }
+      const targetUrl = actionBtn?.dataset?.url || actionBtn?.getAttribute('href') || state.activePromoBanner?.link_url;
+      state.modal = null;
+      state.activePromoBanner = null;
+      render();
+      if (targetUrl && (!actionBtn.tagName || actionBtn.tagName.toLowerCase() !== 'a')) {
+        window.open(targetUrl, '_blank', 'noopener,noreferrer');
+      }
+    }
+
     else if (action === 'close-modal') {
       if (state.modal === 'schedule-completion') state.scheduleCompletion = null;
       state.modal = null;
@@ -650,7 +672,7 @@ export function setupEvents() {
       render();
     }
     else if (action === 'close-modal-backdrop') {
-      if (e.target && e.target.classList && e.target.classList.contains('m2-modal-overlay')) {
+      if (e.target && e.target.classList && (e.target.classList.contains('m2-modal-overlay') || e.target.classList.contains('m2-promo-modal-overlay'))) {
         if (state.modal === 'schedule-completion') state.scheduleCompletion = null;
         state.modal = null;
         state.questionFormDraft = null;
@@ -922,6 +944,16 @@ export function setupEvents() {
         e.preventDefault();
         const confirmBtn = document.querySelector('.m2-modal-content button.m2-btn-primary[data-action]');
         if (confirmBtn) confirmBtn.click();
+        return;
+      }
+
+      if (e.key === 'Escape' && state.modal) {
+        if (state.activePromoBanner && state.activePromoBanner.id) {
+          try { sessionStorage.setItem('m2_promo_dismissed_' + state.activePromoBanner.id, '1'); } catch (_) {}
+        }
+        state.modal = null;
+        state.activePromoBanner = null;
+        render();
         return;
       }
 

@@ -1,5 +1,5 @@
 import { h } from 'vue';
-import { renderIcon } from '../shared.js?v=778a843a35b2';
+import { renderIcon } from '../shared.js?v=ab398a02b1f4';
 
 export function EmptyState({ icon = 'alertTriangle', title = 'Nenhum registro encontrado', description = '', action = null } = {}) {
     return h('div', { class: 'mentoria2-empty-state' }, [

@@ -13,29 +13,29 @@ import {
   hydrateDataFromPayload,
   getAnnouncements,
   saveAnnouncements
-} from './core.js?v=778a843a35b2';
-import { loadMentorResource, loadContestSyllabus, loadDeckCards } from './mentor-resources.js?v=778a843a35b2';
-import { getFilteredStudyQuestions } from './study.js?v=778a843a35b2';
-import { renderAudienceSelector } from './shell.js?v=778a843a35b2';
-import { exportDiagrammedPdf } from './curriculum.js?v=778a843a35b2';
-import { handleNavigationEvent } from './controllers/navigation-controller.js?v=778a843a35b2';
-import { handleRadarAction } from './controllers/radar-controller.js?v=778a843a35b2';
-import { handlePlanningAction } from './controllers/planning-controller.js?v=778a843a35b2';
-import { handleCurriculumAction } from './controllers/curriculum-controller.js?v=778a843a35b2';
-import { handlePracticeAction } from './controllers/practice-controller.js?v=778a843a35b2';
-import { handleNotebookAction, setupNotebookEditorEvents } from './controllers/notebook-controller.js?v=778a843a35b2';
-import { handleResourcesAction } from './controllers/resources-controller.js?v=778a843a35b2';
-import { handleAssessmentAction } from './controllers/assessment-controller.js?v=778a843a35b2';
-import { handleEssayAction } from './controllers/essay-controller.js?v=778a843a35b2';
-import { handleAiAction } from './controllers/ai-controller.js?v=778a843a35b2';
+} from './core.js?v=ab398a02b1f4';
+import { loadMentorResource, loadContestSyllabus, loadDeckCards } from './mentor-resources.js?v=ab398a02b1f4';
+import { getFilteredStudyQuestions } from './study.js?v=ab398a02b1f4';
+import { renderAudienceSelector } from './shell.js?v=ab398a02b1f4';
+import { exportDiagrammedPdf } from './curriculum.js?v=ab398a02b1f4';
+import { handleNavigationEvent } from './controllers/navigation-controller.js?v=ab398a02b1f4';
+import { handleRadarAction } from './controllers/radar-controller.js?v=ab398a02b1f4';
+import { handlePlanningAction } from './controllers/planning-controller.js?v=ab398a02b1f4';
+import { handleCurriculumAction } from './controllers/curriculum-controller.js?v=ab398a02b1f4';
+import { handlePracticeAction } from './controllers/practice-controller.js?v=ab398a02b1f4';
+import { handleNotebookAction, setupNotebookEditorEvents } from './controllers/notebook-controller.js?v=ab398a02b1f4';
+import { handleResourcesAction } from './controllers/resources-controller.js?v=ab398a02b1f4';
+import { handleAssessmentAction } from './controllers/assessment-controller.js?v=ab398a02b1f4';
+import { handleEssayAction } from './controllers/essay-controller.js?v=ab398a02b1f4';
+import { handleAiAction } from './controllers/ai-controller.js?v=ab398a02b1f4';
 import {
   handleMentorAction,
   handleMentorChange,
   handleMentorInput,
   updateAudienceDOM
-} from './controllers/mentor-controller.js?v=778a843a35b2';
-import { setupPlanningDragDrop } from './controllers/planning-drag-drop-controller.js?v=778a843a35b2';
-import { setupPdfImportEvents } from './controllers/pdf-import-controller.js?v=778a843a35b2';
+} from './controllers/mentor-controller.js?v=ab398a02b1f4';
+import { setupPlanningDragDrop } from './controllers/planning-drag-drop-controller.js?v=ab398a02b1f4';
+import { setupPdfImportEvents } from './controllers/pdf-import-controller.js?v=ab398a02b1f4';
 
 function planningBase() {
   const tenantId = state.tenantId || 1;
@@ -635,6 +635,28 @@ export function setupEvents() {
       }
     }
     // 1.6 Fechamento de Modais
+    
+    else if (action === 'close-promo-modal') {
+      if (state.activePromoBanner && state.activePromoBanner.id) {
+        try { sessionStorage.setItem('m2_promo_dismissed_' + state.activePromoBanner.id, '1'); } catch (_) {}
+      }
+      state.modal = null;
+      state.activePromoBanner = null;
+      render();
+    }
+    else if (action === 'click-promo-modal') {
+      if (state.activePromoBanner && state.activePromoBanner.id) {
+        try { sessionStorage.setItem('m2_promo_dismissed_' + state.activePromoBanner.id, '1'); } catch (_) {}
+      }
+      const targetUrl = actionBtn?.dataset?.url || actionBtn?.getAttribute('href') || state.activePromoBanner?.link_url;
+      state.modal = null;
+      state.activePromoBanner = null;
+      render();
+      if (targetUrl && (!actionBtn.tagName || actionBtn.tagName.toLowerCase() !== 'a')) {
+        window.open(targetUrl, '_blank', 'noopener,noreferrer');
+      }
+    }
+
     else if (action === 'close-modal') {
       if (state.modal === 'schedule-completion') state.scheduleCompletion = null;
       state.modal = null;
@@ -650,7 +672,7 @@ export function setupEvents() {
       render();
     }
     else if (action === 'close-modal-backdrop') {
-      if (e.target && e.target.classList && e.target.classList.contains('m2-modal-overlay')) {
+      if (e.target && e.target.classList && (e.target.classList.contains('m2-modal-overlay') || e.target.classList.contains('m2-promo-modal-overlay'))) {
         if (state.modal === 'schedule-completion') state.scheduleCompletion = null;
         state.modal = null;
         state.questionFormDraft = null;
@@ -922,6 +944,16 @@ export function setupEvents() {
         e.preventDefault();
         const confirmBtn = document.querySelector('.m2-modal-content button.m2-btn-primary[data-action]');
         if (confirmBtn) confirmBtn.click();
+        return;
+      }
+
+      if (e.key === 'Escape' && state.modal) {
+        if (state.activePromoBanner && state.activePromoBanner.id) {
+          try { sessionStorage.setItem('m2_promo_dismissed_' + state.activePromoBanner.id, '1'); } catch (_) {}
+        }
+        state.modal = null;
+        state.activePromoBanner = null;
+        render();
         return;
       }
 

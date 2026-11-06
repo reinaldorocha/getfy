@@ -186,7 +186,8 @@ const state = {
   promptTab: 'questions',
 
   // Modais e Toasts
-  modal: null
+  modal: null,
+  activePromoBanner: null
 };
 
 /**

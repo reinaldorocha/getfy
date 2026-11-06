@@ -489,44 +489,9 @@ export function viewToday() {
     return false;
   });
 
-  // 4. Banners Promocionais da Mentoria
-  const promoBanners = (window.M2Data.mentorship?.promotional_banners || []).filter(b => {
-    if (!b.is_active) return false;
-    if (b.target === 'all') return true;
-    if (b.target === 'contest' && String(b.contest_id) === activeContestId) return true;
-    return false;
-  });
-
-  const promoMarkup = promoBanners.map(pb => `
-    <div class="m2-promo-banner" style="position:relative; margin-bottom:16px; border-radius:var(--radius-lg); overflow:hidden; border:1px solid rgba(234, 179, 8, 0.35); background:linear-gradient(135deg, rgba(20, 184, 166, 0.10) 0%, rgba(234, 179, 8, 0.15) 100%), var(--bg-card); box-shadow:0 10px 25px -5px rgba(0, 0, 0, 0.25);">
-      ${pb.image_url ? `
-        <div style="position:relative; width:100%; max-height:220px; overflow:hidden;">
-          <img src="${escapeHtml(pb.image_url)}" alt="${escapeHtml(pb.title)}" style="width:100%; height:auto; display:block; object-fit:cover;">
-        </div>
-      ` : ''}
-      <div style="display:flex; justify-content:space-between; align-items:center; padding:16px 20px; gap:16px; flex-wrap:wrap;">
-        <div style="display:flex; align-items:center; gap:12px;">
-          <div style="width:40px; height:40px; border-radius:50%; background:var(--accent-amber-soft); color:var(--accent-amber); display:grid; place-items:center; flex-shrink:0;">
-            ${icon('tag', 20)}
-          </div>
-          <div>
-            <span style="font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:0.08em; color:var(--accent-amber);">OFERTA EXCLUSIVA</span>
-            <h2 style="font-size:17px; font-weight:800; margin:2px 0 0; color:var(--text-main); line-height:1.3;">${escapeHtml(pb.title)}</h2>
-          </div>
-        </div>
-        ${pb.link_url ? `
-          <a href="${escapeHtml(pb.link_url)}" target="_blank" rel="noopener noreferrer" class="m2-btn m2-btn-primary" style="background:var(--accent-amber); border-color:var(--accent-amber); color:#000; font-weight:800; padding:10px 20px; text-decoration:none; display:inline-flex; align-items:center; gap:8px;">
-            ${escapeHtml(pb.link_text || 'Clique aqui')} ${icon('arrow-right', 14)}
-          </a>
-        ` : ''}
-      </div>
-    </div>
-  `).join('');
-
   return `
     <div class="m2-content">
       ${bannerMarkup}
-      ${promoMarkup}
 
       <!-- HEADER DE BOAS-VINDAS / BRIEFING DO DIA -->
       <div class="m2-today-hero-header">

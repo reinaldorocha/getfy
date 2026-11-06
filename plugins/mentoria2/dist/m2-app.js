@@ -1,3 +1,30 @@
+
+export function checkAndTriggerPromoModal() {
+  if (typeof window === 'undefined') return;
+  const banners = window.M2Data?.mentorship?.promotional_banners || [];
+  if (!banners.length) return;
+
+  const activeContestId = String(state.contestId || window.M2Data?.contest?.id || window.M2Data?.contests?.[0]?.id || '');
+  const activePromo = banners.find(b => {
+    if (!b.is_active) return false;
+    if (b.target === 'all') return true;
+    if (b.target === 'contest' && String(b.contest_id) === activeContestId) return true;
+    return false;
+  });
+
+  if (activePromo && activePromo.id) {
+    let dismissed = false;
+    try {
+      dismissed = sessionStorage.getItem('m2_promo_dismissed_' + activePromo.id) === '1';
+    } catch (_) {}
+
+    if (!dismissed) {
+      state.activePromoBanner = activePromo;
+      state.modal = 'student-promo-modal';
+    }
+  }
+}
+
 /**
  * Mentoria 2.0 - Motor da Aplicação (Arquitetura Modular)
  * Coordenador central que orquestra módulos por domínio:
@@ -25,7 +52,7 @@ import {
   hydrateDataFromPayload,
   icon,
   escapeHtml
-} from './modules/core.js?v=778a843a35b2';
+} from './modules/core.js?v=ab398a02b1f4';
 
 import {
   renderSidebar,
@@ -35,20 +62,20 @@ import {
   renderFloatingMiniTimer,
   renderFloatingAiChat,
   renderModals
-} from './modules/shell.js?v=778a843a35b2';
+} from './modules/shell.js?v=ab398a02b1f4';
 
 import {
   viewEntry,
   viewOnboarding,
   viewToday,
   viewPlanning
-} from './modules/routine.js?v=778a843a35b2';
+} from './modules/routine.js?v=ab398a02b1f4';
 
 import {
   viewSyllabus,
   viewCalculadora,
   viewRadarEditais
-} from './modules/curriculum.js?v=778a843a35b2';
+} from './modules/curriculum.js?v=ab398a02b1f4';
 
 import {
   viewQuestions,
@@ -65,13 +92,13 @@ import {
   viewMaterials,
   viewCourses,
   viewRedacao
-} from './modules/study.js?v=778a843a35b2';
+} from './modules/study.js?v=ab398a02b1f4';
 
 import {
   viewProgress,
   viewGoals,
   viewRanking
-} from './modules/metrics.js?v=778a843a35b2';
+} from './modules/metrics.js?v=ab398a02b1f4';
 
 import {
   viewMentorOverview,
@@ -98,22 +125,22 @@ import {
   viewMentorPrompts,
   viewMentorAiCosts,
   viewMentorRadarEditais
-} from './modules/mentor.js?v=778a843a35b2';
+} from './modules/mentor.js?v=ab398a02b1f4';
 
 import {
   viewTutor,
   viewAiMemory,
   viewSettings,
   viewHelp
-} from './modules/ai.js?v=778a843a35b2';
+} from './modules/ai.js?v=ab398a02b1f4';
 
 import {
   setupEvents,
   destroyEvents
-} from './modules/events.js?v=778a843a35b2';
-import { loadMentorResource } from './modules/mentor-resources.js?v=778a843a35b2';
-import { api } from './modules/api/client.js?v=778a843a35b2';
-import { sanitizeRenderedHtml } from './utils/escape-html.js?v=778a843a35b2';
+} from './modules/events.js?v=ab398a02b1f4';
+import { loadMentorResource } from './modules/mentor-resources.js?v=ab398a02b1f4';
+import { api } from './modules/api/client.js?v=ab398a02b1f4';
+import { sanitizeRenderedHtml } from './utils/escape-html.js?v=ab398a02b1f4';
 
 /**
  * Router Principal que seleciona a tela conforme state.mode e state.screen
@@ -311,6 +338,12 @@ export function initMentoria2App(options = {}) {
   }
   applyTheme();
   setupEvents();
+
+  // Aciona modal flutuante de oferta promocional quando o aluno entra na plataforma
+  if (context.mode !== 'mentor') {
+    checkAndTriggerPromoModal();
+  }
+
   render();
 
   // Sincroniza dados assíncronos da tela inicial quando vinda do hash

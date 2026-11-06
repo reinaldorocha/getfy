@@ -1,4 +1,4 @@
-import { state, icon, escapeHtml, plainTextWithBreaks, formatTimer } from './core.js?v=778a843a35b2';
+import { state, icon, escapeHtml, plainTextWithBreaks, formatTimer } from './core.js?v=ab398a02b1f4';
 
 export function renderTopbar() {
     const unread = Number(window.M2Data?.notifications?.unread_count || 0);
@@ -672,6 +672,91 @@ export   function renderFloatingMiniTimer() {
    * Renderização de Modais Interativos (Questões Manuais e Simulado Manual)
    */
   export function renderModals() {
+    if (state.modal === 'student-promo-modal') {
+      const pb = state.activePromoBanner || {};
+      const hasImage = Boolean(pb.image_url);
+      const linkUrl = pb.link_url || '';
+      const linkText = pb.link_text || 'Aproveitar Oferta';
+
+      return `
+        <div class="m2-promo-modal-overlay" data-action="close-modal-backdrop">
+          <div class="m2-promo-modal-card" role="dialog" aria-modal="true" aria-labelledby="m2-promo-title">
+            <button
+              type="button"
+              class="m2-promo-modal-close-btn"
+              data-action="close-promo-modal"
+              aria-label="Fechar janela"
+              title="Fechar janela"
+            >
+              ${icon('x', 18)}
+            </button>
+
+            ${hasImage ? `
+              ${linkUrl ? `
+                <a
+                  href="${escapeHtml(linkUrl)}"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="m2-promo-modal-image-wrap"
+                  data-action="click-promo-modal"
+                  data-url="${escapeHtml(linkUrl)}"
+                  title="Clique para ver a oferta"
+                >
+                  <img src="${escapeHtml(pb.image_url)}" alt="${escapeHtml(pb.title || 'Oferta Promocional')}" class="m2-promo-modal-image">
+                </a>
+              ` : `
+                <div class="m2-promo-modal-image-wrap">
+                  <img src="${escapeHtml(pb.image_url)}" alt="${escapeHtml(pb.title || 'Oferta Promocional')}" class="m2-promo-modal-image">
+                </div>
+              `}
+            ` : ''}
+
+            <div class="m2-promo-modal-body">
+              <div class="m2-promo-modal-badge">
+                ${icon('tag', 14)} Oferta Exclusiva
+              </div>
+
+              ${pb.title ? `
+                <h3 id="m2-promo-title" class="m2-promo-modal-title">
+                  ${escapeHtml(pb.title)}
+                </h3>
+              ` : ''}
+
+              <div class="m2-promo-modal-actions">
+                ${linkUrl ? `
+                  <a
+                    href="${escapeHtml(linkUrl)}"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="m2-promo-modal-cta-btn"
+                    data-action="click-promo-modal"
+                    data-url="${escapeHtml(linkUrl)}"
+                  >
+                    ${escapeHtml(linkText)} ${icon('arrow-right', 16)}
+                  </a>
+                ` : `
+                  <button
+                    type="button"
+                    class="m2-promo-modal-cta-btn"
+                    data-action="close-promo-modal"
+                  >
+                    ${escapeHtml(linkText)}
+                  </button>
+                `}
+                <button
+                  type="button"
+                  class="m2-promo-modal-dismiss-btn"
+                  data-action="close-promo-modal"
+                >
+                  Fechar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
     if (!state.modal) return '';
     if (state.modal === 'notifications') {
       const notifications = state.notifications || [];

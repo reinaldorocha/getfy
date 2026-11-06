@@ -1,3 +1,30 @@
+
+export function checkAndTriggerPromoModal() {
+  if (typeof window === 'undefined') return;
+  const banners = window.M2Data?.mentorship?.promotional_banners || [];
+  if (!banners.length) return;
+
+  const activeContestId = String(state.contestId || window.M2Data?.contest?.id || window.M2Data?.contests?.[0]?.id || '');
+  const activePromo = banners.find(b => {
+    if (!b.is_active) return false;
+    if (b.target === 'all') return true;
+    if (b.target === 'contest' && String(b.contest_id) === activeContestId) return true;
+    return false;
+  });
+
+  if (activePromo && activePromo.id) {
+    let dismissed = false;
+    try {
+      dismissed = sessionStorage.getItem('m2_promo_dismissed_' + activePromo.id) === '1';
+    } catch (_) {}
+
+    if (!dismissed) {
+      state.activePromoBanner = activePromo;
+      state.modal = 'student-promo-modal';
+    }
+  }
+}
+
 /**
  * Mentoria 2.0 - Motor da Aplicação (Arquitetura Modular)
  * Coordenador central que orquestra módulos por domínio:
@@ -311,6 +338,12 @@ export function initMentoria2App(options = {}) {
   }
   applyTheme();
   setupEvents();
+
+  // Aciona modal flutuante de oferta promocional quando o aluno entra na plataforma
+  if (context.mode !== 'mentor') {
+    checkAndTriggerPromoModal();
+  }
+
   render();
 
   // Sincroniza dados assíncronos da tela inicial quando vinda do hash

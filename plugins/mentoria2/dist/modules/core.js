@@ -1,8 +1,8 @@
-import { icon as renderIconSvg } from '../m2-icons.js?v=778a843a35b2';
-import { M2Data } from '../m2-data.js?v=778a843a35b2';
-import { requestJson as api, http, buildQuery, sanitizeErrorMessage, unwrap } from './api/client.js?v=778a843a35b2';
-import { createMentoriaContext } from '../app/context.js?v=778a843a35b2';
-import { escapeHtml, escapeRegExp, plainTextWithBreaks } from '../utils/escape-html.js?v=778a843a35b2';
+import { icon as renderIconSvg } from '../m2-icons.js?v=ab398a02b1f4';
+import { M2Data } from '../m2-data.js?v=ab398a02b1f4';
+import { requestJson as api, http, buildQuery, sanitizeErrorMessage, unwrap } from './api/client.js?v=ab398a02b1f4';
+import { createMentoriaContext } from '../app/context.js?v=ab398a02b1f4';
+import { escapeHtml, escapeRegExp, plainTextWithBreaks } from '../utils/escape-html.js?v=ab398a02b1f4';
 
 if (typeof window === 'undefined') {
   globalThis.window = globalThis;
@@ -186,7 +186,8 @@ const state = {
   promptTab: 'questions',
 
   // Modais e Toasts
-  modal: null
+  modal: null,
+  activePromoBanner: null
 };
 
 /**

@@ -1,4 +1,4 @@
-import { state, icon, escapeHtml, plainTextWithBreaks, getSubjectTheme, showToast } from './core.js?v=778a843a35b2';
+import { state, icon, escapeHtml, plainTextWithBreaks, getSubjectTheme, showToast } from './core.js?v=ab398a02b1f4';
 
 export function viewSyllabus() {
     const activeContest = (window.M2Data.contests || []).find(c => String(c.id) === String(state.contestId)) || window.M2Data.contests?.[0];
