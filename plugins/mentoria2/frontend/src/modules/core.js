@@ -1047,8 +1047,13 @@ export function navigate(screenName, newMode = null) {
   }
   state.screen = screenName;
   state.sidebarOpen = false;
-  window.location.hash = `#${state.mode}/${state.screen}`;
-  window.scrollTo({ top: 0, behavior: 'smooth' });
+  const targetHash = `#${state.mode}/${state.screen}`;
+  if (typeof window !== 'undefined' && window.location.hash !== targetHash) {
+    window.location.hash = targetHash;
+  }
+  if (typeof window !== 'undefined') {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
   render();
 }
 

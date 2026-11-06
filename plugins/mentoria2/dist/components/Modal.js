@@ -1,5 +1,5 @@
 import { h, onMounted, onUnmounted } from 'vue';
-import { renderIcon } from '../shared.js?v=981ff9b0919b';
+import { renderIcon } from '../shared.js?v=d7ba9846a45d';
 
 export function Modal({ title, isOpen = true, onClose, footer = null, children, maxWidth = '560px' }) {
     if (!isOpen) return null;

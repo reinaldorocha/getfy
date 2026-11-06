@@ -3,7 +3,7 @@
  * Manages questions, active study sessions, mock exams, and error notebooks.
  */
 
-import { state } from '../core.js?v=981ff9b0919b';
+import { state } from '../core.js?v=d7ba9846a45d';
 
 class PracticeStore {
   get questions() {

@@ -3,7 +3,7 @@
  * Manages calendar, schedule items, cycles, and syllabus progress.
  */
 
-import { state } from '../core.js?v=981ff9b0919b';
+import { state } from '../core.js?v=d7ba9846a45d';
 
 class PlanningStore {
   get calendarItems() {

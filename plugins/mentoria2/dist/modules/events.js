@@ -13,29 +13,29 @@ import {
   hydrateDataFromPayload,
   getAnnouncements,
   saveAnnouncements
-} from './core.js?v=981ff9b0919b';
-import { loadMentorResource, loadContestSyllabus, loadDeckCards } from './mentor-resources.js?v=981ff9b0919b';
-import { getFilteredStudyQuestions } from './study.js?v=981ff9b0919b';
-import { renderAudienceSelector } from './shell.js?v=981ff9b0919b';
-import { exportDiagrammedPdf } from './curriculum.js?v=981ff9b0919b';
-import { handleNavigationEvent } from './controllers/navigation-controller.js?v=981ff9b0919b';
-import { handleRadarAction } from './controllers/radar-controller.js?v=981ff9b0919b';
-import { handlePlanningAction } from './controllers/planning-controller.js?v=981ff9b0919b';
-import { handleCurriculumAction } from './controllers/curriculum-controller.js?v=981ff9b0919b';
-import { handlePracticeAction } from './controllers/practice-controller.js?v=981ff9b0919b';
-import { handleNotebookAction, setupNotebookEditorEvents } from './controllers/notebook-controller.js?v=981ff9b0919b';
-import { handleResourcesAction } from './controllers/resources-controller.js?v=981ff9b0919b';
-import { handleAssessmentAction } from './controllers/assessment-controller.js?v=981ff9b0919b';
-import { handleEssayAction } from './controllers/essay-controller.js?v=981ff9b0919b';
-import { handleAiAction } from './controllers/ai-controller.js?v=981ff9b0919b';
+} from './core.js?v=d7ba9846a45d';
+import { loadMentorResource, loadContestSyllabus, loadDeckCards } from './mentor-resources.js?v=d7ba9846a45d';
+import { getFilteredStudyQuestions } from './study.js?v=d7ba9846a45d';
+import { renderAudienceSelector } from './shell.js?v=d7ba9846a45d';
+import { exportDiagrammedPdf } from './curriculum.js?v=d7ba9846a45d';
+import { handleNavigationEvent } from './controllers/navigation-controller.js?v=d7ba9846a45d';
+import { handleRadarAction } from './controllers/radar-controller.js?v=d7ba9846a45d';
+import { handlePlanningAction } from './controllers/planning-controller.js?v=d7ba9846a45d';
+import { handleCurriculumAction } from './controllers/curriculum-controller.js?v=d7ba9846a45d';
+import { handlePracticeAction } from './controllers/practice-controller.js?v=d7ba9846a45d';
+import { handleNotebookAction, setupNotebookEditorEvents } from './controllers/notebook-controller.js?v=d7ba9846a45d';
+import { handleResourcesAction } from './controllers/resources-controller.js?v=d7ba9846a45d';
+import { handleAssessmentAction } from './controllers/assessment-controller.js?v=d7ba9846a45d';
+import { handleEssayAction } from './controllers/essay-controller.js?v=d7ba9846a45d';
+import { handleAiAction } from './controllers/ai-controller.js?v=d7ba9846a45d';
 import {
   handleMentorAction,
   handleMentorChange,
   handleMentorInput,
   updateAudienceDOM
-} from './controllers/mentor-controller.js?v=981ff9b0919b';
-import { setupPlanningDragDrop } from './controllers/planning-drag-drop-controller.js?v=981ff9b0919b';
-import { setupPdfImportEvents } from './controllers/pdf-import-controller.js?v=981ff9b0919b';
+} from './controllers/mentor-controller.js?v=d7ba9846a45d';
+import { setupPlanningDragDrop } from './controllers/planning-drag-drop-controller.js?v=d7ba9846a45d';
+import { setupPdfImportEvents } from './controllers/pdf-import-controller.js?v=d7ba9846a45d';
 
 function planningBase() {
   const tenantId = state.tenantId || 1;
@@ -210,6 +210,35 @@ export function setupEvents() {
   setupPlanningDragDrop({ state, api, render, showToast, planningBase });
   setupPdfImportEvents({ state, render, showToast });
   setupNotebookEditorEvents({ state, render, saveNote, setNoteSaveStatus });
+
+  // Ouvinte de Histórico e Mudança de Hash na URL (Voltar / Avançar / Deep Links)
+  if (typeof window !== 'undefined' && !window.__m2HashChangeHandler) {
+    const handleHashChange = () => {
+      const raw = window.location.hash.replace(/^#\/?/, '').trim();
+      if (!raw) return;
+      const parts = raw.split('/');
+      let targetMode = state.mode;
+      let targetScreen = null;
+      if (parts.length >= 2) {
+        targetMode = parts[0].toLowerCase();
+        targetScreen = parts[1];
+      } else if (parts.length === 1 && parts[0]) {
+        targetScreen = parts[0];
+      }
+      if (targetScreen && targetMode === state.mode && state.screen !== targetScreen) {
+        navigate(targetScreen);
+        if (state.mode === 'mentor') {
+          loadMentorResource(targetScreen, api).then(loaded => {
+            if (loaded) render();
+          }).catch(() => {});
+        } else if (targetScreen === 'planning' && typeof loadPlanningCalendar === 'function') {
+          loadPlanningCalendar({ renderAfter: true }).catch(() => {});
+        }
+      }
+    };
+    window.addEventListener('hashchange', handleHashChange);
+    window.__m2HashChangeHandler = handleHashChange;
+  }
 
   // 1. Delegador Principal de Eventos de Clique
   document.addEventListener('click', (e) => {
@@ -924,6 +953,10 @@ export function destroyEvents() {
     if (window.__m2KeydownHandler) {
       document.removeEventListener('keydown', window.__m2KeydownHandler);
       window.__m2KeydownHandler = null;
+    }
+    if (window.__m2HashChangeHandler) {
+      window.removeEventListener('hashchange', window.__m2HashChangeHandler);
+      window.__m2HashChangeHandler = null;
     }
     if (typeof document !== 'undefined') {
       document.__m2EventsAttached = false;

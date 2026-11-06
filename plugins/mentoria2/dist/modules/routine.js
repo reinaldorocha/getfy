@@ -1,5 +1,5 @@
-import { state, icon, escapeHtml, getAnnouncements } from './core.js?v=981ff9b0919b';
-import { isSafeHtmlUrl } from '../utils/escape-html.js?v=981ff9b0919b';
+import { state, icon, escapeHtml, getAnnouncements } from './core.js?v=d7ba9846a45d';
+import { isSafeHtmlUrl } from '../utils/escape-html.js?v=d7ba9846a45d';
 
 const WEEKDAYS = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo'];
 const WEEKDAY_KEYS = ['seg', 'ter', 'qua', 'qui', 'sex', 'sab', 'dom'];

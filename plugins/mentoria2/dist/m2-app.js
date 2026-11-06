@@ -25,7 +25,7 @@ import {
   hydrateDataFromPayload,
   icon,
   escapeHtml
-} from './modules/core.js?v=981ff9b0919b';
+} from './modules/core.js?v=d7ba9846a45d';
 
 import {
   renderSidebar,
@@ -35,20 +35,20 @@ import {
   renderFloatingMiniTimer,
   renderFloatingAiChat,
   renderModals
-} from './modules/shell.js?v=981ff9b0919b';
+} from './modules/shell.js?v=d7ba9846a45d';
 
 import {
   viewEntry,
   viewOnboarding,
   viewToday,
   viewPlanning
-} from './modules/routine.js?v=981ff9b0919b';
+} from './modules/routine.js?v=d7ba9846a45d';
 
 import {
   viewSyllabus,
   viewCalculadora,
   viewRadarEditais
-} from './modules/curriculum.js?v=981ff9b0919b';
+} from './modules/curriculum.js?v=d7ba9846a45d';
 
 import {
   viewQuestions,
@@ -65,13 +65,13 @@ import {
   viewMaterials,
   viewCourses,
   viewRedacao
-} from './modules/study.js?v=981ff9b0919b';
+} from './modules/study.js?v=d7ba9846a45d';
 
 import {
   viewProgress,
   viewGoals,
   viewRanking
-} from './modules/metrics.js?v=981ff9b0919b';
+} from './modules/metrics.js?v=d7ba9846a45d';
 
 import {
   viewMentorOverview,
@@ -98,20 +98,22 @@ import {
   viewMentorPrompts,
   viewMentorAiCosts,
   viewMentorRadarEditais
-} from './modules/mentor.js?v=981ff9b0919b';
+} from './modules/mentor.js?v=d7ba9846a45d';
 
 import {
   viewTutor,
   viewAiMemory,
   viewSettings,
   viewHelp
-} from './modules/ai.js?v=981ff9b0919b';
+} from './modules/ai.js?v=d7ba9846a45d';
 
 import {
   setupEvents,
   destroyEvents
-} from './modules/events.js?v=981ff9b0919b';
-import { sanitizeRenderedHtml } from './utils/escape-html.js?v=981ff9b0919b';
+} from './modules/events.js?v=d7ba9846a45d';
+import { loadMentorResource } from './modules/mentor-resources.js?v=d7ba9846a45d';
+import { api } from './modules/api/client.js?v=d7ba9846a45d';
+import { sanitizeRenderedHtml } from './utils/escape-html.js?v=d7ba9846a45d';
 
 /**
  * Router Principal que seleciona a tela conforme state.mode e state.screen
@@ -264,6 +266,27 @@ export function destroyMentoria2App() {
   destroyEvents();
 }
 
+function resolveScreenFromHash(mode) {
+  if (typeof window === 'undefined' || !window.location.hash) return null;
+  const raw = window.location.hash.replace(/^#\/?/, '').trim();
+  if (!raw) return null;
+  const parts = raw.split('/');
+  if (parts.length >= 2) {
+    const hashMode = parts[0].toLowerCase();
+    const hashScreen = parts[1];
+    if (hashMode === mode.toLowerCase()) {
+      return hashScreen;
+    }
+  }
+  if (parts.length === 1 && parts[0]) {
+    const candidate = parts[0];
+    if (mode === 'mentor' && candidate.startsWith('mentor-')) return candidate;
+    if (mode === 'student' && !candidate.startsWith('mentor-') && !candidate.startsWith('workspace-')) return candidate;
+    if (mode === 'workspace' && candidate.startsWith('workspace-')) return candidate;
+  }
+  return null;
+}
+
 /**
  * Inicialização e Bootstrapping
  */
@@ -275,21 +298,27 @@ export function initMentoria2App(options = {}) {
   state.mode = context.mode;
   if (context.tenantId) state.tenantId = context.tenantId;
   state.workspaceBase = context.workspaceBase;
-  if (options.screen) state.screen = options.screen;
-  else if (typeof window !== 'undefined') {
-    const match = window.location.hash.match(/^#(student|mentor|workspace)\/([a-z0-9-]+)$/i);
-    // O hash é somente uma preferência de tela. O contexto do servidor continua
-    // definindo o perfil e impede que um link troque a área autorizada.
-    if (match && match[1] === context.mode) {
-      state.screen = match[2];
-    }
-  }
+
+  // Resolução da tela inicial respeitando a URL:
+  // 1. Se houver hash na URL compatível com o modo autorizado, ele tem prioridade máxima
+  // 2. Caso contrário, usa options.screen se fornecido explicitamente
+  // 3. Fallback padrão: 'mentor-overview' para mentor, 'today' para student/workspace
+  const hashScreen = resolveScreenFromHash(context.mode);
+  state.screen = hashScreen || options.screen || (context.mode === 'mentor' ? 'mentor-overview' : 'today');
+
   if (options.payload) {
     hydrateDataFromPayload(options.payload);
   }
   applyTheme();
   setupEvents();
   render();
+
+  // Sincroniza dados assíncronos da tela inicial quando vinda do hash
+  if (typeof window !== 'undefined' && context.mode === 'mentor' && state.screen !== 'mentor-overview') {
+    loadMentorResource(state.screen, api).then(loaded => {
+      if (loaded) render();
+    }).catch(() => {});
+  }
 }
 
 export { state, navigate, showToast, toggleTheme };

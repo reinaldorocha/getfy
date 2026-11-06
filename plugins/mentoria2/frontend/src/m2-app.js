@@ -111,6 +111,8 @@ import {
   setupEvents,
   destroyEvents
 } from './modules/events.js';
+import { loadMentorResource } from './modules/mentor-resources.js';
+import { api } from './modules/api/client.js';
 import { sanitizeRenderedHtml } from './utils/escape-html.js';
 
 /**
@@ -264,6 +266,27 @@ export function destroyMentoria2App() {
   destroyEvents();
 }
 
+function resolveScreenFromHash(mode) {
+  if (typeof window === 'undefined' || !window.location.hash) return null;
+  const raw = window.location.hash.replace(/^#\/?/, '').trim();
+  if (!raw) return null;
+  const parts = raw.split('/');
+  if (parts.length >= 2) {
+    const hashMode = parts[0].toLowerCase();
+    const hashScreen = parts[1];
+    if (hashMode === mode.toLowerCase()) {
+      return hashScreen;
+    }
+  }
+  if (parts.length === 1 && parts[0]) {
+    const candidate = parts[0];
+    if (mode === 'mentor' && candidate.startsWith('mentor-')) return candidate;
+    if (mode === 'student' && !candidate.startsWith('mentor-') && !candidate.startsWith('workspace-')) return candidate;
+    if (mode === 'workspace' && candidate.startsWith('workspace-')) return candidate;
+  }
+  return null;
+}
+
 /**
  * Inicialização e Bootstrapping
  */
@@ -275,21 +298,27 @@ export function initMentoria2App(options = {}) {
   state.mode = context.mode;
   if (context.tenantId) state.tenantId = context.tenantId;
   state.workspaceBase = context.workspaceBase;
-  if (options.screen) state.screen = options.screen;
-  else if (typeof window !== 'undefined') {
-    const match = window.location.hash.match(/^#(student|mentor|workspace)\/([a-z0-9-]+)$/i);
-    // O hash é somente uma preferência de tela. O contexto do servidor continua
-    // definindo o perfil e impede que um link troque a área autorizada.
-    if (match && match[1] === context.mode) {
-      state.screen = match[2];
-    }
-  }
+
+  // Resolução da tela inicial respeitando a URL:
+  // 1. Se houver hash na URL compatível com o modo autorizado, ele tem prioridade máxima
+  // 2. Caso contrário, usa options.screen se fornecido explicitamente
+  // 3. Fallback padrão: 'mentor-overview' para mentor, 'today' para student/workspace
+  const hashScreen = resolveScreenFromHash(context.mode);
+  state.screen = hashScreen || options.screen || (context.mode === 'mentor' ? 'mentor-overview' : 'today');
+
   if (options.payload) {
     hydrateDataFromPayload(options.payload);
   }
   applyTheme();
   setupEvents();
   render();
+
+  // Sincroniza dados assíncronos da tela inicial quando vinda do hash
+  if (typeof window !== 'undefined' && context.mode === 'mentor' && state.screen !== 'mentor-overview') {
+    loadMentorResource(state.screen, api).then(loaded => {
+      if (loaded) render();
+    }).catch(() => {});
+  }
 }
 
 export { state, navigate, showToast, toggleTheme };

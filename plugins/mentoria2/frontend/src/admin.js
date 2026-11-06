@@ -19,7 +19,6 @@ export const Mentoria2Index = {
         onMounted(() => {
             initMentoria2App({
                 mode: 'mentor',
-                screen: 'mentor-overview',
                 payload: props.plugin_ui_page,
             });
         });

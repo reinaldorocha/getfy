@@ -3,7 +3,7 @@
  * Manages student domain state: student profile, gamification, notebooks, notifications, and announcements.
  */
 
-import { state } from '../core.js?v=981ff9b0919b';
+import { state } from '../core.js?v=d7ba9846a45d';
 
 class StudentStore {
   get student() {

@@ -1,5 +1,5 @@
 import { h, ref } from 'vue';
-import { csrfToken, requestJson } from './api/client.js?v=981ff9b0919b';
+import { csrfToken, requestJson } from './api/client.js?v=d7ba9846a45d';
 
 export const csrf = csrfToken;
 export const api = requestJson;

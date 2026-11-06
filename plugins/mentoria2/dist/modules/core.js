@@ -1,8 +1,8 @@
-import { icon as renderIconSvg } from '../m2-icons.js?v=981ff9b0919b';
-import { M2Data } from '../m2-data.js?v=981ff9b0919b';
-import { requestJson as api, http, buildQuery, sanitizeErrorMessage, unwrap } from './api/client.js?v=981ff9b0919b';
-import { createMentoriaContext } from '../app/context.js?v=981ff9b0919b';
-import { escapeHtml, escapeRegExp, plainTextWithBreaks } from '../utils/escape-html.js?v=981ff9b0919b';
+import { icon as renderIconSvg } from '../m2-icons.js?v=d7ba9846a45d';
+import { M2Data } from '../m2-data.js?v=d7ba9846a45d';
+import { requestJson as api, http, buildQuery, sanitizeErrorMessage, unwrap } from './api/client.js?v=d7ba9846a45d';
+import { createMentoriaContext } from '../app/context.js?v=d7ba9846a45d';
+import { escapeHtml, escapeRegExp, plainTextWithBreaks } from '../utils/escape-html.js?v=d7ba9846a45d';
 
 if (typeof window === 'undefined') {
   globalThis.window = globalThis;
@@ -1047,8 +1047,13 @@ export function navigate(screenName, newMode = null) {
   }
   state.screen = screenName;
   state.sidebarOpen = false;
-  window.location.hash = `#${state.mode}/${state.screen}`;
-  window.scrollTo({ top: 0, behavior: 'smooth' });
+  const targetHash = `#${state.mode}/${state.screen}`;
+  if (typeof window !== 'undefined' && window.location.hash !== targetHash) {
+    window.location.hash = targetHash;
+  }
+  if (typeof window !== 'undefined') {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
   render();
 }
 
