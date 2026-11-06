@@ -1,11 +1,11 @@
-import { Mentoria2Index } from './admin.js?v=531b8a943e83';
-import { Mentoria2Student } from './student.js?v=531b8a943e83';
-import { Mentoria2CourseBuilder, Mentoria2LessonExercises } from './course.js?v=531b8a943e83';
+import { Mentoria2Index } from './admin.js?v=778a843a35b2';
+import { Mentoria2Student } from './student.js?v=778a843a35b2';
+import { Mentoria2CourseBuilder, Mentoria2LessonExercises } from './course.js?v=778a843a35b2';
 
 const styleId = 'mentoria2-plugin-style';
 
 if (typeof document !== 'undefined') {
-    const stylesheetHref = new URL('./plugin-ui.css?v=531b8a943e83', import.meta.url).href;
+    const stylesheetHref = new URL('./plugin-ui.css?v=778a843a35b2', import.meta.url).href;
     const link = document.getElementById(styleId) || document.createElement('link');
     link.id = styleId;
     link.rel = 'stylesheet';

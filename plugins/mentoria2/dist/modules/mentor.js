@@ -1,5 +1,5 @@
-import { state, icon, escapeHtml, plainTextWithBreaks, getAnnouncements } from './core.js?v=531b8a943e83';
-import { renderAudienceBadge } from './shell.js?v=531b8a943e83';
+import { state, icon, escapeHtml, plainTextWithBreaks, getAnnouncements } from './core.js?v=778a843a35b2';
+import { renderAudienceBadge } from './shell.js?v=778a843a35b2';
 
 function mentorPagination(screen) {
   const meta = window.M2Data.mentorListState?.[screen]?.meta;

@@ -1,5 +1,5 @@
 import { h } from 'vue';
-import { renderIcon } from '../shared.js?v=531b8a943e83';
+import { renderIcon } from '../shared.js?v=778a843a35b2';
 
 export function WorkspaceBanner({ studentName = 'Aluno', onReturn = null }) {
     return h('div', {

@@ -169,6 +169,33 @@ export function handlePlanningAction({
     return true;
   }
 
+  if (action === 'fixed-schedule-prev-week') {
+    state.fixedScheduleWeek = Math.max(1, (state.fixedScheduleWeek || 1) - 1);
+    render();
+    return true;
+  }
+
+  if (action === 'fixed-schedule-next-week') {
+    const maxWeeks = Number(actionBtn.dataset.maxWeeks || 1);
+    state.fixedScheduleWeek = Math.min(maxWeeks, (state.fixedScheduleWeek || 1) + 1);
+    render();
+    return true;
+  }
+
+  if (action === 'fixed-schedule-today') {
+    const targetWeek = Number(actionBtn.dataset.targetWeek || 1);
+    state.fixedScheduleWeek = targetWeek;
+    state.fixedScheduleViewMode = 'week';
+    render();
+    return true;
+  }
+
+  if (action === 'set-fixed-schedule-mode') {
+    state.fixedScheduleViewMode = actionBtn.dataset.view || 'week';
+    render();
+    return true;
+  }
+
   if (action === 'open-calendar-day') {
     state.calendarDay = actionBtn.dataset.date || calendarKey(new Date());
     state.modal = 'calendar-day';

@@ -1,4 +1,4 @@
-import { state, icon, escapeHtml, plainTextWithBreaks, formatTimer, render } from './core.js?v=531b8a943e83';
+import { state, icon, escapeHtml, plainTextWithBreaks, formatTimer, render } from './core.js?v=778a843a35b2';
 
 export function formatDateTime(isoString) {
   if (!isoString) return '';

@@ -1,7 +1,8 @@
-import { state, icon, escapeHtml, getAnnouncements } from './core.js?v=531b8a943e83';
-import { isSafeHtmlUrl } from '../utils/escape-html.js?v=531b8a943e83';
+import { state, icon, escapeHtml, getAnnouncements } from './core.js?v=778a843a35b2';
+import { isSafeHtmlUrl } from '../utils/escape-html.js?v=778a843a35b2';
 
 const WEEKDAYS = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo'];
+const FULL_WEEKDAYS = ['Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado', 'Domingo'];
 const WEEKDAY_KEYS = ['seg', 'ter', 'qua', 'qui', 'sex', 'sab', 'dom'];
 
 function dateKey(date) {
@@ -879,7 +880,349 @@ export function viewToday() {
   `;
 }
 
+
+export function renderFixedStudyCard(item, dayKey) {
+  const color = getSubjectColor(item.subjectLabel);
+  const durLabel = formatCardDuration(item.duration_minutes);
+  const isConcluido = item.status === 'concluido';
+  const isReview = Boolean(item.isReview || item.scheduled_review_id);
+
+  return `
+    <article
+      class="m2-fixed-study-card ${isConcluido ? 'is-done' : ''} ${isReview ? 'is-review' : ''}"
+      style="--card-accent: ${color.border};"
+      data-item-id="${item.id}"
+      data-date="${dayKey || item.planned_date || ''}"
+    >
+      <div class="m2-fixed-study-card__body">
+        <div class="m2-fixed-study-card__header">
+          <span class="m2-fixed-study-card__subject" style="color: ${color.border};">
+            <span style="display:inline-block; width:6px; height:6px; border-radius:50%; background:${color.border};"></span>
+            ${escapeHtml(item.subjectLabel)}
+          </span>
+          ${isConcluido ? `<span class="m2-pill m2-pill-green" style="font-size:11px; padding:2px 6px;">${icon('check', 11)} Concluído</span>` : ''}
+        </div>
+
+        <div class="m2-fixed-study-card__title" style="font-size:15px; font-weight:600; color:var(--text-main); margin-bottom:6px;">
+          ${escapeHtml(item.topicLabel)}
+        </div>
+
+        <div class="m2-fixed-study-card__meta">
+          <span class="m2-badge ${isReview ? 'm2-badge-purple' : 'm2-badge-teal'}" style="font-size:11px;">
+            ${isReview ? 'Revisão' : 'Estudo'}
+          </span>
+          <span style="display:inline-flex; align-items:center; gap:4px;">
+            ${icon('clock', 12)} ${durLabel}
+          </span>
+          ${item.questions_target ? `
+            <span style="display:inline-flex; align-items:center; gap:4px; font-weight:600; color:var(--accent-violet, #8b5cf6);" title="Meta: ${item.questions_target} questões">
+              ${icon('circle-help', 12)} ${item.questions_target} questões
+            </span>
+          ` : ''}
+          ${item.priority ? `<span style="color:var(--text-muted); font-size:11px;">Prioridade ${item.priority}</span>` : ''}
+        </div>
+      </div>
+
+      <div class="m2-fixed-study-card__actions">
+        ${!isConcluido ? `
+          <button
+            type="button"
+            class="m2-btn m2-btn-sm m2-btn-primary"
+            data-action="start-schedule-item"
+            data-subject-id="${item.subject_id || ''}"
+            data-topic-id="${item.topic_id || ''}"
+            data-subtopic-id="${item.subtopic_id || ''}"
+            title="Iniciar estudo com cronômetro"
+            style="gap:4px;"
+          >
+            ${icon('play', 12)} Estudar
+          </button>
+          <button
+            type="button"
+            class="m2-btn m2-btn-sm m2-btn-outline"
+            data-action="open-schedule-completion"
+            data-item-id="${item.id}"
+            title="Concluir este bloco"
+            style="gap:4px;"
+          >
+            ${icon('check', 12)} Concluir
+          </button>
+        ` : `
+          <button
+            type="button"
+            class="m2-btn m2-btn-sm m2-btn-quiet"
+            data-action="reopen-schedule-item"
+            data-item-id="${item.id}"
+            title="Reabrir este bloco de estudo"
+            style="gap:4px;"
+          >
+            ${icon('rotate-ccw', 12)} Reabrir
+          </button>
+        `}
+        <button
+          type="button"
+          class="m2-btn m2-btn-sm m2-btn-quiet"
+          data-action="open-calendar-day"
+          data-date="${dayKey || item.planned_date || ''}"
+          title="Ver detalhes do dia"
+        >
+          ${icon('eye', 13)} Detalhes
+        </button>
+      </div>
+    </article>
+  `;
+}
+
+export function viewFixedSchedule({ fixedDays, activeContest }) {
+  const items = scheduleItems({ calendar: false });
+  const allRawItems = window.M2Data.scheduleItems || [];
+  const todayKey = dateKey(new Date());
+
+  // Data de início do ciclo (menor planned_date dos itens agendados ou hoje)
+  const datedItems = items
+    .filter(i => i.planned_date && /^\d{4}-\d{2}-\d{2}/.test(String(i.planned_date)))
+    .map(i => String(i.planned_date).slice(0, 10))
+    .sort();
+  const cycleStartDate = datedItems.length > 0 ? (parseDate(datedItems[0]) || new Date()) : new Date();
+
+  const totalDays = Math.max(1, Number(fixedDays) || 60);
+  const totalWeeks = Math.ceil(totalDays / 7);
+
+  const days = [];
+  for (let i = 0; i < totalDays; i += 1) {
+    const dayNumber = i + 1;
+    const dayDate = addDays(cycleStartDate, i);
+    const dayKey = dateKey(dayDate);
+    const weekdayIndex = (dayDate.getDay() + 6) % 7;
+    const weekdayName = FULL_WEEKDAYS[weekdayIndex];
+    const dayTitle = `${weekdayName} - Dia ${dayNumber}`;
+    const isToday = (dayKey === todayKey);
+    const dayItems = items.filter(it => it.planned_date && String(it.planned_date).slice(0, 10) === dayKey);
+    const isCompletedDay = dayItems.length > 0 && dayItems.every(it => it.status === 'concluido');
+    const dayMinutes = dayItems.reduce((acc, it) => acc + (Number(it.duration_minutes) || 0), 0);
+
+    days.push({
+      index: i,
+      dayNumber,
+      dayDate,
+      dayKey,
+      weekdayName,
+      dayTitle,
+      isToday,
+      dayItems,
+      isCompletedDay,
+      dayMinutes,
+      weekNumber: Math.floor(i / 7) + 1,
+    });
+  }
+
+  // Identificar semana atual
+  const todayDayIndex = days.findIndex(d => d.isToday);
+  const todayWeek = todayDayIndex >= 0 ? days[todayDayIndex].weekNumber : 1;
+  const currentWeek = Math.max(1, Math.min(totalWeeks, Number(state.fixedScheduleWeek) || todayWeek || 1));
+  const viewMode = state.fixedScheduleViewMode || 'week';
+
+  const visibleDays = viewMode === 'all'
+    ? days
+    : days.filter(d => d.weekNumber === currentWeek);
+
+  const weekFirstDay = visibleDays[0]?.dayNumber || 1;
+  const weekLastDay = visibleDays[visibleDays.length - 1]?.dayNumber || totalDays;
+  const weekLabel = viewMode === 'all'
+    ? `Todo o Ciclo (${totalDays} Dias)`
+    : `Semana ${currentWeek} de ${totalWeeks} (Dia ${weekFirstDay} ao ${weekLastDay})`;
+
+  // Progresso do ciclo
+  const allCompletedCount = allRawItems.filter(i => i.status === 'concluido').length;
+  const totalBlocks = allRawItems.length;
+  const progressPct = totalBlocks > 0 ? Math.round((allCompletedCount / totalBlocks) * 100) : 0;
+
+  // Atrasos
+  const overdue = (allRawItems.length > 0 ? allRawItems : items).filter(item => {
+    const pDate = item.planned_date ? String(item.planned_date).slice(0, 10) : null;
+    return pDate && pDate < todayKey && item.status === 'pendente' && !item.scheduled_review_id && !item.isReview;
+  }).length;
+
+  return `
+    <div class="m2-content m2-planning-view">
+      <!-- Banner informativo de cronograma fixo -->
+      <div class="m2-fixed-mode-header" style="display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:14px; padding:12px 18px; border-radius:10px; background:rgba(13, 148, 136, 0.08); border:1px solid rgba(13, 148, 136, 0.25); color:var(--text-main);">
+        <div style="display:flex; align-items:center; gap:12px;">
+          <span style="display:flex; color:#0d9488;">${icon('clock', 20)}</span>
+          <div>
+            <strong style="font-size:14px; color:#0d9488;">Cronograma Fixo · ${totalDays} Dias Corridos (Ciclo)</strong>
+            <p style="margin:2px 0 0 0; font-size:12px; color:var(--text-muted);">
+              Visualização sequencial por dia da semana e dia do cronograma com matérias e tópicos priorizados.
+            </p>
+          </div>
+        </div>
+        <span class="m2-pill m2-pill-teal" style="font-weight:700;">Modo Ciclo Fixo</span>
+      </div>
+
+      ${overdue > 0 ? `
+        <div class="m2-banner-alert m2-banner-alert--warning" style="display:flex; align-items:center; justify-content:space-between; gap:16px; margin-bottom:16px; padding:12px 18px; border-radius:10px; background:var(--m2-amber-50, #fffbeb); border:1px solid var(--m2-amber-200, #fde68a); color:var(--m2-amber-900, #78350f);">
+          <div style="display:flex; align-items:center; gap:10px;">
+            <span style="display:flex; color:var(--m2-amber-600, #d97706); flex-shrink:0;">${icon('alert-triangle', 20)}</span>
+            <div>
+              <strong style="font-size:13px;">Você possui ${overdue} ${overdue === 1 ? 'estudo atrasado' : 'estudos atrasados'}</strong>
+              <p style="margin:2px 0 0 0; font-size:12px; color:var(--m2-amber-800, #92400e);">O cronograma mantém seus tópicos pendentes. Clique para redistribuir as pendências a partir de hoje.</p>
+            </div>
+          </div>
+          <button type="button" class="m2-btn m2-btn-sm" data-action="reprogram-schedule" style="white-space:nowrap; background:#d97706; border-color:#d97706; color:#fff; font-weight:700; display:inline-flex; align-items:center; gap:6px;">
+            ${icon('refresh-cw', 13)} Recalcular Cronograma
+          </button>
+        </div>
+      ` : ''}
+
+      <!-- Topbar do Cronograma Fixo -->
+      <div class="m2-plan-topbar">
+        <!-- 1. Progresso do Ciclo -->
+        <div class="m2-plan-progress-box">
+          <div class="m2-plan-progress-header">
+            <span class="m2-plan-progress-label">Progresso do Ciclo (${totalDays} dias)</span>
+            <strong class="m2-plan-progress-pct">${progressPct}%</strong>
+          </div>
+          <div class="m2-plan-progress-bar-track">
+            <div class="m2-plan-progress-bar-fill" style="width: ${progressPct}%;"></div>
+          </div>
+          <span class="m2-plan-progress-sub">
+            ${allCompletedCount} de ${totalBlocks} blocos do ciclo concluídos
+          </span>
+        </div>
+
+        <!-- 2. Navegador de Semanas / Dias -->
+        <div class="m2-plan-picker-box">
+          <button
+            type="button"
+            class="m2-plan-nav-arrow"
+            data-action="fixed-schedule-prev-week"
+            ${currentWeek <= 1 ? 'disabled style="opacity:0.4; cursor:not-allowed;"' : ''}
+            title="Semana anterior"
+            aria-label="Semana anterior"
+          >
+            ${icon('chevron-left', 16)}
+          </button>
+          <div class="m2-plan-picker-label" style="font-weight:600;">
+            ${icon('calendar-days', 15)}
+            <span>${escapeHtml(weekLabel)}</span>
+          </div>
+          <button
+            type="button"
+            class="m2-plan-nav-arrow"
+            data-action="fixed-schedule-next-week"
+            data-max-weeks="${totalWeeks}"
+            ${currentWeek >= totalWeeks ? 'disabled style="opacity:0.4; cursor:not-allowed;"' : ''}
+            title="Próxima semana"
+            aria-label="Próxima semana"
+          >
+            ${icon('chevron-right', 16)}
+          </button>
+          <button
+            type="button"
+            class="m2-plan-today-btn"
+            data-action="fixed-schedule-today"
+            data-target-week="${todayWeek}"
+            title="Ir para o dia de hoje"
+          >
+            Hoje ${todayDayIndex >= 0 ? `(Dia ${todayDayIndex + 1})` : ''}
+          </button>
+        </div>
+
+        <!-- 3. Controles de Visão & Replanejar -->
+        <div class="m2-plan-controls-box">
+          <div class="m2-segmented-control">
+            <button
+              type="button"
+              class="m2-segmented-btn ${viewMode === 'week' ? 'active' : ''}"
+              data-action="set-fixed-schedule-mode"
+              data-view="week"
+            >
+              Por Semana
+            </button>
+            <button
+              type="button"
+              class="m2-segmented-btn ${viewMode === 'all' ? 'active' : ''}"
+              data-action="set-fixed-schedule-mode"
+              data-view="all"
+            >
+              Ver Todos
+            </button>
+          </div>
+          <button
+            type="button"
+            class="m2-btn m2-btn-secondary m2-btn-sm"
+            data-action="reprogram-schedule"
+            title="Recalcular cronograma"
+            style="display:inline-flex; align-items:center; gap:6px;"
+          >
+            ${icon('refresh-cw', 13)} Recalcular
+          </button>
+          <button
+            type="button"
+            class="m2-btn m2-btn-secondary m2-btn-sm m2-plan-replan-btn"
+            data-action="open-replan-modal"
+            style="display:inline-flex; align-items:center; gap:6px;"
+          >
+            ${icon('calendar-sync', 14)} Replanejar
+          </button>
+        </div>
+      </div>
+
+      <!-- Lista Sequencial de Dias (Sem Calendário) -->
+      <div class="m2-fixed-schedule-container">
+        ${visibleDays.map(day => `
+          <section
+            class="m2-fixed-day-section ${day.isToday ? 'is-current-day' : ''} ${day.isCompletedDay ? 'is-completed-day' : ''}"
+            data-day-index="${day.index}"
+            data-date="${day.dayKey}"
+          >
+            <div class="m2-fixed-day-header">
+              <div class="m2-fixed-day-header__left">
+                <span class="m2-fixed-day-title-tag ${day.isToday ? 'active' : ''}">
+                  ${icon(day.isToday ? 'calendar-check' : 'calendar', 16)}
+                  ${escapeHtml(day.dayTitle)}
+                </span>
+                ${day.isToday ? `<span class="m2-pill m2-pill-teal" style="font-size:11px; font-weight:700;">Hoje</span>` : ''}
+                ${day.isCompletedDay && day.dayItems.length > 0 ? `<span class="m2-pill m2-pill-green" style="font-size:11px; font-weight:700;">${icon('check', 11)} Concluído</span>` : ''}
+              </div>
+              <div class="m2-fixed-day-header__right">
+                ${day.dayItems.length > 0
+                  ? `<span>${day.dayItems.filter(x => x.status === 'concluido').length}/${day.dayItems.length} concluídos · ${formatCardDuration(day.dayMinutes)}</span>`
+                  : `<span style="color:var(--text-muted);">Dia Livre</span>`
+                }
+              </div>
+            </div>
+
+            <div class="m2-fixed-day-cards">
+              ${day.dayItems.length > 0
+                ? day.dayItems.map(item => renderFixedStudyCard(item, day.dayKey)).join('')
+                : `
+                  <div class="m2-fixed-day-empty">
+                    <span style="font-size:18px;">☕</span>
+                    <div>
+                      <strong style="display:block; font-size:13px; color:var(--text-main);">Descanso / Dia Livre</strong>
+                      <small style="font-size:12px; color:var(--text-muted);">Nenhum bloco de estudo programado para este dia.</small>
+                    </div>
+                  </div>
+                `
+              }
+            </div>
+          </section>
+        `).join('')}
+      </div>
+    </div>
+  `;
+}
+
 export function viewPlanning() {
+  const activeContest = (window.M2Data.contests || []).find(c => String(c.id) === String(state.contestId)) || window.M2Data.contests?.[0];
+  const isFixedMode = (activeContest?.allowed_schedule_mode === 'fixed_days') || (window.M2Data.student?.allowed_schedule_mode === 'fixed_days');
+  const fixedDays = Number(activeContest?.fixed_days_duration || window.M2Data.student?.fixed_days_duration || 60);
+
+  if (isFixedMode) {
+    return viewFixedSchedule({ fixedDays, activeContest });
+  }
+
   const cursor = parseDate(state.calendarCursor) || new Date();
   const items = scheduleItems({ calendar: true });
   const isWeek = state.planningView === 'week';
@@ -897,21 +1240,13 @@ export function viewPlanning() {
     const pDate = item.planned_date ? String(item.planned_date).slice(0, 10) : null;
     return pDate && pDate < dateKey(new Date()) && item.status === 'pendente' && !item.scheduled_review_id && !item.isReview;
   }).length;
-  const label = isWeek ? `${fmtDate(start)} - ${fmtDate(end)}, ${start.getFullYear()}` : new Intl.DateTimeFormat('pt-BR', { month: 'long', year: 'numeric' }).format(cursor);
-
-  const activeContest = (window.M2Data.contests || []).find(c => String(c.id) === String(state.contestId)) || window.M2Data.contests?.[0];
-  const isFixedMode = (activeContest?.allowed_schedule_mode === 'fixed_days') || (window.M2Data.student?.allowed_schedule_mode === 'fixed_days');
-  const fixedDays = activeContest?.fixed_days_duration || window.M2Data.student?.fixed_days_duration || 60;
+    const label = isWeek ? `${fmtDate(start)} - ${fmtDate(end)}, ${start.getFullYear()}` : new Intl.DateTimeFormat('pt-BR', { month: 'long', year: 'numeric' }).format(cursor);
 
   // Progresso em percentual (Gamificação)
   const allCompletedCount = allRawItems.filter(i => i.status === 'concluido').length;
-  const progressPct = isFixedMode && allRawItems.length > 0
-    ? Math.round((allCompletedCount / allRawItems.length) * 100)
-    : (dated.length > 0 ? Math.round((completed / dated.length) * 100) : 0);
-  const progressLabel = isFixedMode ? `Progresso do Ciclo (${fixedDays} dias)` : 'Progresso da Semana';
-  const progressSub = isFixedMode && allRawItems.length > 0
-    ? `${allCompletedCount} de ${allRawItems.length} blocos do ciclo concluídos`
-    : `${completed} de ${dated.length} blocos concluídos · ${(minutes / 60).toFixed(1)}h planejadas`;
+  const progressPct = dated.length > 0 ? Math.round((completed / dated.length) * 100) : 0;
+  const progressLabel = 'Progresso da Semana';
+  const progressSub = `${completed} de ${dated.length} blocos concluídos · ${(minutes / 60).toFixed(1)}h planejadas`;
 
   const dates = [];
   if (isWeek) {
@@ -924,18 +1259,7 @@ export function viewPlanning() {
 
   return `
     <div class="m2-content m2-planning-view">
-      ${isFixedMode ? `
-        <div class="m2-fixed-mode-header" style="display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:14px; padding:10px 16px; border-radius:10px; background:rgba(13, 148, 136, 0.08); border:1px solid rgba(13, 148, 136, 0.25); color:var(--text-main);">
-          <div style="display:flex; align-items:center; gap:10px;">
-            <span style="display:flex; color:#0d9488;">${icon('clock', 18)}</span>
-            <div>
-              <strong style="font-size:13px; color:#0d9488;">Cronograma Fixo · ${fixedDays} Dias Corridos (Ciclo)</strong>
-              <p style="margin:2px 0 0 0; font-size:12px; color:var(--text-muted);">Seu plano está organizado em um ciclo contínuo de ${fixedDays} dias corridos com as matérias e tópicos priorizados.</p>
-            </div>
-          </div>
-          <span class="m2-pill m2-pill-teal" style="font-weight:700;">Modo Ciclo Fixo</span>
-        </div>
-      ` : ''}
+      
 
       ${overdue > 0 ? `
         <div class="m2-banner-alert m2-banner-alert--warning" style="display:flex; align-items:center; justify-content:space-between; gap:16px; margin-bottom:16px; padding:12px 18px; border-radius:10px; background:var(--m2-amber-50, #fffbeb); border:1px solid var(--m2-amber-200, #fde68a); color:var(--m2-amber-900, #78350f);">

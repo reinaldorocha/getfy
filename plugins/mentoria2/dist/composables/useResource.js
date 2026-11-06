@@ -1,5 +1,5 @@
 import { ref, onUnmounted } from 'vue';
-import { requestJson } from '../api/client.js?v=531b8a943e83';
+import { requestJson } from '../api/client.js?v=778a843a35b2';
 
 /**
  * Composable para carregar recursos com controle de estado,
