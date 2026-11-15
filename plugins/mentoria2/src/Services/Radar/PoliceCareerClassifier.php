@@ -42,7 +42,7 @@ final class PoliceCareerClassifier
         ],
         'guarda_municipal' => [
             'label' => 'Guarda Municipal', 'family' => 'seguranca_correlata',
-            'patterns' => ['guarda municipal', 'guarda civil municipal', 'gcm'],
+            'patterns' => ['guarda municipal', 'guarda civil municipal', 'guarda civil metropolitana', 'guarda civil', 'guarda metropolitana', 'guarda portuária', 'guarda portuaria', 'gcm'],
         ],
         'socioeducativo' => [
             'label' => 'Socioeducativo', 'family' => 'seguranca_correlata',

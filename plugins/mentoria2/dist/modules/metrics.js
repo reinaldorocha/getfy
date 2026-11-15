@@ -1,4 +1,4 @@
-import { state, icon, escapeHtml, formatTimer } from './core.js?v=ab398a02b1f4';
+import { state, icon, escapeHtml, formatTimer } from './core.js?v=ea697af2a1b3';
 
 export   function viewProgress() {
     const student = window.M2Data.student || {};

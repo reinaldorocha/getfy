@@ -46,11 +46,26 @@ export function handleRadarAction({ event, action, actionBtn, state, api, render
     return true;
   }
 
+  
+  if (action === 'preset-radar-territory') {
+    const input = document.getElementById('m2-radar-territories-input') || document.querySelector('input[name="territories"]');
+    if (input) {
+      const code = actionBtn.dataset.code || '';
+      const current = input.value.split(',').map(s => s.trim()).filter(Boolean);
+      if (!current.includes(code)) {
+        current.push(code);
+        input.value = current.join(', ');
+      }
+    }
+    return true;
+  }
+
   if (action === 'save-radar-source') {
     const form = actionBtn.closest('form[data-form="radar-source"]');
     if (!form || !form.reportValidity()) return true;
     const fields = new FormData(form);
     const territories = String(fields.get('territories') || '').split(',').map(value => value.trim()).filter(Boolean);
+    const query = String(fields.get('query') || '').trim();
     actionBtn.disabled = true;
     api('/mentoria2/radar/sources', {
       method: 'POST',
@@ -59,6 +74,7 @@ export function handleRadarAction({ event, action, actionBtn, state, api, render
         kind: String(fields.get('kind') || ''),
         origin_url: String(fields.get('origin_url') || '').trim() || null,
         territories,
+        settings: query ? { query } : {},
         is_active: fields.get('is_active') === '1'
       })
     }).then(() => {

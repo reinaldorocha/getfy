@@ -221,6 +221,7 @@ export function setupEvents() {
       let targetScreen = null;
       if (parts.length >= 2) {
         targetMode = parts[0].toLowerCase();
+        if (targetMode === 'aluno') targetMode = 'student';
         targetScreen = parts[1];
       } else if (parts.length === 1 && parts[0]) {
         targetScreen = parts[0];

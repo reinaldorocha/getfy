@@ -95,7 +95,7 @@ class PluginExtensionRegistry
             return null;
         }
         try {
-            return URL::route('plugins.asset', ['slug' => $slug, 'path' => $relativePath]);
+            return URL::route('plugins.asset', ['slug' => $slug, 'path' => $relativePath], false);
         } catch (\Throwable) {
             return null;
         }

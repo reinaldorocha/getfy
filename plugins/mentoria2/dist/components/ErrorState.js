@@ -1,5 +1,5 @@
 import { h } from 'vue';
-import { renderIcon, btn } from '../shared.js?v=ab398a02b1f4';
+import { renderIcon, btn } from '../shared.js?v=ea697af2a1b3';
 
 export function ErrorState({ title = 'Ocorreu um erro', message = 'Não foi possível carregar os dados.', onRetry = null } = {}) {
     return h('div', { class: 'mentoria2-empty-state mentoria2-error-state' }, [

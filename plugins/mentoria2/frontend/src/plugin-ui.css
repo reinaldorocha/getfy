@@ -9830,3 +9830,157 @@ textarea:focus-visible {
     width: 100%;
   }
 }
+
+
+/* ========================================================
+   SISTEMA UNIVERSAL DE INPUTS E FORMULÁRIOS DE ALTA VISIBILIDADE
+   Garante borda nítida, fundo contrastante e foco evidente
+   ======================================================== */
+.m2-input,
+.m2-field-input,
+.m2-select,
+.m2-textarea,
+.m2-field input,
+.m2-field select,
+.m2-field textarea,
+.m2-field-label input,
+.m2-field-label select,
+.m2-field-label textarea,
+.m2-modal-field input,
+.m2-modal-field select,
+.m2-modal-field textarea,
+.m2-form-control,
+input[type="text"].m2-input,
+input[type="url"].m2-input,
+input[type="number"].m2-input,
+input[type="email"].m2-input,
+input[type="password"].m2-input {
+  display: block !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
+  font-family: inherit !important;
+  font-size: 14px !important;
+  line-height: 1.5 !important;
+  color: var(--text-main, #0f172a) !important;
+  background-color: var(--bg-surface, #ffffff) !important;
+  border: 1.5px solid var(--border-color, #cbd5e1) !important;
+  border-radius: var(--radius-md, 8px) !important;
+  padding: 10px 14px !important;
+  min-height: 42px !important;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05) !important;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease !important;
+}
+
+/* Em tema escuro */
+.mentoria2-app--theme-dark .m2-input,
+.mentoria2-app--theme-dark .m2-field-input,
+.mentoria2-app--theme-dark .m2-select,
+.mentoria2-app--theme-dark .m2-textarea,
+.mentoria2-app--theme-dark .m2-field input,
+.mentoria2-app--theme-dark .m2-field select,
+.mentoria2-app--theme-dark .m2-field textarea,
+.mentoria2-app--theme-dark .m2-field-label input,
+.mentoria2-app--theme-dark .m2-field-label select,
+.mentoria2-app--theme-dark .m2-modal-field input,
+.mentoria2-app--theme-dark .m2-modal-field select,
+.mentoria2-app--theme-dark input[type="text"].m2-input,
+.mentoria2-app--theme-dark input[type="url"].m2-input {
+  background-color: #1e293b !important;
+  border-color: #475569 !important;
+  color: #f8fafc !important;
+}
+
+/* Hover nos inputs */
+.m2-input:hover,
+.m2-field-input:hover,
+.m2-field input:hover,
+.m2-field-label input:hover,
+.m2-modal-field input:hover {
+  border-color: #94a3b8 !important;
+}
+
+.mentoria2-app--theme-dark .m2-input:hover,
+.mentoria2-app--theme-dark .m2-field-input:hover,
+.mentoria2-app--theme-dark .m2-field input:hover {
+  border-color: #64748b !important;
+}
+
+/* Foco nítido com anel visual */
+.m2-input:focus,
+.m2-field-input:focus,
+.m2-select:focus,
+.m2-textarea:focus,
+.m2-field input:focus,
+.m2-field select:focus,
+.m2-field textarea:focus,
+.m2-field-label input:focus,
+.m2-field-label select:focus,
+.m2-modal-field input:focus,
+.m2-modal-field select:focus {
+  outline: none !important;
+  border-color: var(--accent-teal, #0d9488) !important;
+  box-shadow: 0 0 0 3px rgba(13, 148, 136, 0.25) !important;
+  background-color: var(--bg-surface, #ffffff) !important;
+}
+
+.mentoria2-app--theme-dark .m2-input:focus,
+.mentoria2-app--theme-dark .m2-field-input:focus,
+.mentoria2-app--theme-dark .m2-select:focus {
+  background-color: #0f172a !important;
+  border-color: #14b8a6 !important;
+  box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.3) !important;
+}
+
+/* Placeholders legíveis */
+.m2-input::placeholder,
+.m2-field-input::placeholder,
+.m2-field input::placeholder,
+.m2-field-label input::placeholder,
+.m2-modal-field input::placeholder {
+  color: #94a3b8 !important;
+  opacity: 0.85 !important;
+}
+
+/* Labels e Agrupamentos */
+.m2-field,
+.m2-field-label {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 6px !important;
+  font-size: 13px !important;
+  font-weight: 700 !important;
+  color: var(--text-main, #0f172a) !important;
+}
+
+.m2-field small,
+.m2-field-label small,
+.m2-form-hint {
+  font-size: 12px !important;
+  font-weight: 400 !important;
+  color: var(--text-muted, #64748b) !important;
+  line-height: 1.4 !important;
+  margin-top: 2px !important;
+}
+
+/* Preset badge buttons para códigos IBGE */
+.m2-preset-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 9999px;
+  font-size: 11px;
+  font-weight: 600;
+  background: var(--bg-surface, #ffffff);
+  border: 1px solid var(--border-color, #cbd5e1);
+  color: var(--text-main, #0f172a);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.m2-preset-pill:hover {
+  background: var(--accent-teal-soft, rgba(13, 148, 136, 0.1));
+  border-color: var(--accent-teal, #0d9488);
+  color: var(--accent-teal, #0d9488);
+  transform: translateY(-1px);
+}

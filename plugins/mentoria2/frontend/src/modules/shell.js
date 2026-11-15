@@ -1893,102 +1893,106 @@ export   function renderFloatingMiniTimer() {
       const isContestTarget = b.target === 'contest';
 
       return `
-        <div class="m2-modal-overlay" data-action="close-modal-backdrop">
-          <div class="m2-modal-content" style="max-width:580px; max-height:90vh; overflow-y:auto;">
-            <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border-color); padding-bottom:12px;">
-              <div style="display:flex; align-items:center; gap:10px;">
-                <div style="width:36px; height:36px; border-radius:var(--radius-md); background:var(--accent-amber-soft); color:var(--accent-amber); display:grid; place-items:center;">
-                  ${icon('tag', 20)}
+        <div class="m2-modal-overlay" data-action="close-modal-backdrop" style="backdrop-filter:blur(5px); background:rgba(15, 23, 42, 0.75); display:flex; align-items:center; justify-content:center; z-index:99999;">
+          <div class="m2-modal-content" style="max-width:620px; width:94%; max-height:92vh; overflow-y:auto; border-radius:16px; border:1px solid var(--border-color); background:var(--bg-card); box-shadow:0 25px 60px -12px rgba(0,0,0,0.5); padding:0;">
+            
+            <!-- Cabeçalho do Modal -->
+            <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border-color); padding:20px 24px;">
+              <div style="display:flex; align-items:center; gap:12px;">
+                <div style="width:40px; height:40px; border-radius:10px; background:var(--accent-amber-soft, rgba(245, 158, 11, 0.12)); color:var(--accent-amber, #d97706); display:grid; place-items:center; flex-shrink:0;">
+                  ${icon('tag', 22)}
                 </div>
                 <div>
-                  <h3 style="font-size:16px; font-weight:700; color:var(--text-main); margin:0;">
-                    ${b.id ? 'Editar Banner Promocional' : 'Novo Banner Promocional'}
+                  <h3 style="font-size:17px; font-weight:800; color:var(--text-main); margin:0;">
+                    ${b.id ? 'Editar Oferta / Banner Promocional' : 'Nova Oferta / Banner Promocional'}
                   </h3>
-                  <span style="font-size:11px; color:var(--text-muted);">
-                    Ofertas especiais exibidas no topo da tela inicial do aluno
+                  <span style="font-size:12px; color:var(--text-muted);">
+                    Janela flutuante exibida aos alunos assim que entrarem na plataforma
                   </span>
                 </div>
               </div>
-              <button type="button" class="m2-btn-icon" data-action="close-modal">${icon('x', 16)}</button>
+              <button type="button" class="m2-btn-icon" data-action="close-modal" aria-label="Fechar" style="cursor:pointer;">
+                ${icon('x', 18)}
+              </button>
             </div>
 
-            <form style="display:flex; flex-direction:column; gap:14px; margin-top:16px;" onsubmit="event.preventDefault();">
-              <div>
-                <label style="font-size:12px; font-weight:700; color:var(--text-main); display:block; margin-bottom:6px;">
-                  Título / Chamada da Oferta *
-                </label>
-                <input type="text" id="m2-pb-title" class="m2-input" value="${escapeHtml(b.title || '')}" placeholder="Ex.: BLACK FRIDAY: PLATAFORMA POR 99 ANUAL" required>
-              </div>
-
-              <div>
-                <label style="font-size:12px; font-weight:700; color:var(--text-main); display:block; margin-bottom:6px;">
-                  Imagem do Banner (Opcional)
-                </label>
-                <div style="display:flex; gap:8px;">
-                  <input type="text" id="m2-pb-image-url" class="m2-input" value="${escapeHtml(b.image_url || '')}" placeholder="https://... ou clique em Upload">
-                  <input type="file" id="m2-pb-image-file" accept="image/*" style="display:none;">
-                  <button type="button" class="m2-btn m2-btn-secondary m2-btn-sm" data-action="choose-promo-banner-image" style="white-space:nowrap;">
-                    ${icon('upload', 14)} Upload
-                  </button>
-                </div>
-                <small style="font-size:11px; color:var(--text-muted); display:block; margin-top:4px;">
-                  Imagem em proporção horizontal (recomendado 1200x300 ou 16:9).
-                </small>
-              </div>
-
-              <div>
-                <label style="font-size:12px; font-weight:700; color:var(--text-main); display:block; margin-bottom:6px;">
-                  Link de Redirecionamento / Checkout *
-                </label>
-                <input type="url" id="m2-pb-link-url" class="m2-input" value="${escapeHtml(b.link_url || '')}" placeholder="https://checkout.getfy.com.br/meu-produto-blackfriday">
-                <small style="font-size:11px; color:var(--text-muted); display:block; margin-top:4px;">
-                  O aluno será redirecionado para este endereço ao clicar no banner ou botão.
-                </small>
-              </div>
-
-              <div>
-                <label style="font-size:12px; font-weight:700; color:var(--text-main); display:block; margin-bottom:6px;">
-                  Texto do Botão
-                </label>
-                <input type="text" id="m2-pb-link-text" class="m2-input" value="${escapeHtml(b.link_text || 'Clique aqui')}" placeholder="Clique aqui">
-              </div>
-
-              <div style="background:var(--bg-surface); border:1px solid var(--border-color); border-radius:var(--radius-md); padding:12px;">
-                <label style="font-size:12px; font-weight:700; color:var(--text-main); display:block; margin-bottom:8px;">
-                  Público-Alvo / Alcance da Oferta:
-                </label>
-                <div style="display:flex; flex-direction:column; gap:8px;">
-                  <label style="display:flex; align-items:center; gap:8px; font-size:13px; color:var(--text-main); cursor:pointer;">
-                    <input type="radio" name="m2-pb-target" value="all" ${!isContestTarget ? 'checked' : ''} onchange="document.getElementById('m2-pb-contest-select-wrap').style.display = 'none';">
-                    <span>🌟 Todos os Alunos (Visível para qualquer estudante da mentoria)</span>
-                  </label>
-                  <label style="display:flex; align-items:center; gap:8px; font-size:13px; color:var(--text-main); cursor:pointer;">
-                    <input type="radio" name="m2-pb-target" value="contest" ${isContestTarget ? 'checked' : ''} onchange="document.getElementById('m2-pb-contest-select-wrap').style.display = 'block';">
-                    <span>🎯 Por Edital Específico (Visível apenas para alunos matriculados neste concurso)</span>
-                  </label>
-                </div>
-
-                <div id="m2-pb-contest-select-wrap" style="margin-top:10px; ${isContestTarget ? '' : 'display:none;'}">
-                  <select id="m2-pb-contest-id" class="m2-input" style="font-size:12px;">
-                    <option value="">Selecione o concurso alvo...</option>
-                    ${contests.map(c => `
-                      <option value="${c.id}" ${String(b.contest_id) === String(c.id) ? 'selected' : ''}>
-                        ${escapeHtml(c.name)} ${c.organization ? `(${escapeHtml(c.organization)})` : ''}
-                      </option>
-                    `).join('')}
-                  </select>
-                </div>
-              </div>
-
-              <label style="display:flex; align-items:center; gap:8px; font-size:13px; color:var(--text-main); cursor:pointer; margin-top:2px;">
-                <input type="checkbox" id="m2-pb-is-active" ${b.is_active !== false ? 'checked' : ''}>
-                <strong>Banner ativo e visível para os alunos</strong>
+            <form style="display:flex; flex-direction:column; gap:18px; padding:22px 24px 26px;" onsubmit="event.preventDefault();">
+              
+              <!-- Título da Oferta -->
+              <label class="m2-field-label">
+                <span style="font-size:13px; font-weight:700; color:var(--text-main);">Título / Chamada da Oferta *</span>
+                <input type="text" id="m2-pb-title" class="m2-input" value="${escapeHtml(b.title || '')}" placeholder="Ex.: BLACK FRIDAY: 50% OFF NO PLANO ANUAL" required>
+                <small>Texto em destaque que resume a oportunidade ou benefício.</small>
               </label>
 
-              <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:12px; border-top:1px solid var(--border-color); padding-top:14px;">
-                <button type="button" class="m2-btn m2-btn-secondary" data-action="close-modal">Cancelar</button>
-                <button type="button" class="m2-btn m2-btn-primary" data-action="save-promotional-banner" data-id="${escapeHtml(b.id || '')}">
-                  ${icon('check', 16)} Salvar Banner Promocional
+              <!-- Imagem da Oferta -->
+              <label class="m2-field-label">
+                <span style="font-size:13px; font-weight:700; color:var(--text-main);">Imagem de Destaque da Oferta (Exibida no Modal Flutuante)</span>
+                <div style="display:flex; gap:10px; align-items:center;">
+                  <input type="text" id="m2-pb-image-url" class="m2-input" value="${escapeHtml(b.image_url || '')}" placeholder="https://... ou clique em Upload para enviar arquivo">
+                  <input type="file" id="m2-pb-image-file" accept="image/*" style="display:none;">
+                  <button type="button" class="m2-btn m2-btn-secondary" data-action="choose-promo-banner-image" style="white-space:nowrap; min-height:42px; display:inline-flex; align-items:center; gap:6px; font-weight:700;">
+                    ${icon('upload', 15)} Upload Imagem
+                  </button>
+                </div>
+                <small>Recomendado formato horizontal (1200x600 ou 16:9). A imagem é clicável pelo aluno.</small>
+              </label>
+
+              <!-- Link de Redirecionamento -->
+              <label class="m2-field-label">
+                <span style="font-size:13px; font-weight:700; color:var(--text-main);">Link de Destino / Checkout *</span>
+                <input type="url" id="m2-pb-link-url" class="m2-input" value="${escapeHtml(b.link_url || '')}" placeholder="https://checkout.getfy.com.br/meu-produto-blackfriday">
+                <small>Para onde o aluno será direcionado ao clicar no botão de oferta ou na imagem.</small>
+              </label>
+
+              <!-- Texto do Botão -->
+              <label class="m2-field-label">
+                <span style="font-size:13px; font-weight:700; color:var(--text-main);">Texto do Botão de Ação (CTA)</span>
+                <input type="text" id="m2-pb-link-text" class="m2-input" value="${escapeHtml(b.link_text || 'Aproveitar Oferta')}" placeholder="Ex.: Aproveitar Oferta, Quero Minha Vaga, etc.">
+                <small>Texto exibido dentro do botão principal de clique.</small>
+              </label>
+
+              <!-- Público-Alvo -->
+              <div style="background:var(--bg-surface); border:1.5px solid var(--border-color); border-radius:12px; padding:16px;">
+                <span style="font-size:13px; font-weight:700; color:var(--text-main); display:block; margin-bottom:10px;">
+                  Público-Alvo / Alcance da Janela Flutuante:
+                </span>
+                <div style="display:flex; flex-direction:column; gap:10px;">
+                  <label style="display:flex; align-items:center; gap:10px; cursor:pointer; font-size:13px; color:var(--text-main); font-weight:600;">
+                    <input type="radio" name="m2-pb-target" value="all" ${!isContestTarget ? 'checked' : ''} data-action="toggle-promo-banner-target" style="accent-color:var(--accent-teal); width:18px; height:18px;">
+                    <span>🌐 Todos os Alunos (exibir em qualquer concurso ativo)</span>
+                  </label>
+                  <label style="display:flex; align-items:center; gap:10px; cursor:pointer; font-size:13px; color:var(--text-main); font-weight:600;">
+                    <input type="radio" name="m2-pb-target" value="contest" ${isContestTarget ? 'checked' : ''} data-action="toggle-promo-banner-target" style="accent-color:var(--accent-teal); width:18px; height:18px;">
+                    <span>🎯 Alunos de Concurso Específico</span>
+                  </label>
+                </div>
+
+                <div id="m2-pb-contest-select-wrap" style="${isContestTarget ? 'display:block;' : 'display:none;'} margin-top:14px; padding-top:12px; border-top:1px dashed var(--border-color);">
+                  <label class="m2-field-label">
+                    <span style="font-size:12px; font-weight:700;">Selecione o Concurso Alvo:</span>
+                    <select id="m2-pb-contest-id" class="m2-input">
+                      ${contests.map(c => `<option value="${escapeHtml(c.id)}" ${String(c.id) === String(b.contest_id) ? 'selected' : ''}>${escapeHtml(c.name)}</option>`).join('')}
+                    </select>
+                  </label>
+                </div>
+              </div>
+
+              <!-- Switch de Ativação -->
+              <div style="padding:14px 16px; border-radius:10px; background:var(--bg-surface); border:1.5px solid var(--border-color); display:flex; align-items:center; gap:12px;">
+                <input type="checkbox" id="m2-pb-active" ${b.is_active !== false ? 'checked' : ''} style="width:18px; height:18px; cursor:pointer; accent-color:var(--accent-teal);">
+                <label for="m2-pb-active" style="cursor:pointer; font-size:13px; color:var(--text-main); font-weight:600; margin:0;">
+                  Oferta ativa (exibir janela flutuante para os alunos elegíveis)
+                </label>
+              </div>
+
+              <!-- Rodapé de Ações -->
+              <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:8px; padding-top:16px; border-top:1px solid var(--border-color);">
+                <button type="button" class="m2-btn m2-btn-secondary" data-action="close-modal">
+                  Cancelar
+                </button>
+                <button type="button" class="m2-btn m2-btn-primary" data-action="save-promotional-banner" data-id="${escapeHtml(b.id || '')}" style="display:inline-flex; align-items:center; gap:6px; font-weight:700;">
+                  ${icon('check', 15)} Salvar Oferta Promocional
                 </button>
               </div>
             </form>

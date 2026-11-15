@@ -1,4 +1,4 @@
-import { state, icon, escapeHtml, plainTextWithBreaks, formatTimer, render } from './core.js?v=ab398a02b1f4';
+import { state, icon, escapeHtml, plainTextWithBreaks, formatTimer, render } from './core.js?v=ea697af2a1b3';
 
 export function formatDateTime(isoString) {
   if (!isoString) return '';
@@ -1502,7 +1502,7 @@ export function viewMaterials() {
                     <span style="display:block; font-size:12px; color:var(--text-muted);">${escapeHtml(metaText)}</span>
                   </div>
                 </div>
-                <button type="button" class="m2-btn m2-btn-secondary m2-btn-sm" data-action="download-material">
+                <button type="button" class="m2-btn m2-btn-secondary m2-btn-sm" data-action="download-material" data-id="${m.id}" data-url="${escapeHtml(m.download_url || m.url || m.external_url || '')}">
                   ${icon('download', 14)} Baixar Arquivo
                 </button>
               </div>
@@ -1610,195 +1610,367 @@ export function viewCourses() {
   `;
 }
 
+const TIPOS_REDACAO = [
+  { id: 'dissertacao', label: 'Dissertação Argumentativa', icon: 'file-text', desc: 'Padrão Cebraspe, FCC, Vunesp, FGV' },
+  { id: 'estudo_caso', label: 'Estudo de Caso / Discursiva Técnica', icon: 'clipboard-list', desc: 'Resolução técnica de situação-problema' },
+  { id: 'oficio', label: 'Ofício Oficial', icon: 'landmark', desc: 'Padrão Presidência da República' },
+  { id: 'relatorio', label: 'Relatório Circunstanciado', icon: 'file-spreadsheet', desc: 'Relatório pericial ou de ocorrência' },
+  { id: 'parecer', label: 'Parecer Jurídico', icon: 'scale', desc: 'Manifestação técnica conclusiva fundamentada' },
+  { id: 'peca_pratica', label: 'Peça Prática / Inquérito', icon: 'shield', desc: 'Portaria, representação, relatório policial' }
+];
+
 export function viewRedacao() {
-  const hasAiAccess = window.M2Data?.has_ai_access !== false;
-  if (!hasAiAccess) {
-    return `
-      <div class="m2-content">
-        <div class="m2-page-header">
-          <div class="m2-page-title-group">
-            <span class="m2-eyebrow">Prática Discursiva & Produção Textual</span>
-            <h1 class="m2-page-title">Oficina de Redação com IA</h1>
-            <p class="m2-page-subtitle">Pratique redações temáticas no padrão da banca examinadora e receba correção detalhada por competências em segundos.</p>
-          </div>
-        </div>
-        <div class="m2-card" style="text-align:center; padding:54px 20px; max-width:620px; margin:32px auto;">
-          <div style="width:64px; height:64px; border-radius:50%; background:var(--accent-amber-soft); display:grid; place-items:center; margin:0 auto 16px; color:var(--accent-amber);">
-            ${icon('sparkles', 32)}
-          </div>
-          <h2 style="font-size:20px; font-weight:800; color:var(--text-main); margin-bottom:8px;">Recurso de IA Bloqueado</h2>
-          <p style="font-size:14px; color:var(--text-muted); max-width:460px; margin:0 auto 20px; line-height:1.6;">
-            A Oficina de Redação com correção analítica instantânea utiliza Inteligência Artificial e não está habilitada para o seu produto ou plano atual.
-          </p>
-          <div style="background:var(--bg-app); border:1px solid var(--border-color); border-radius:var(--radius-md); padding:12px 18px; display:inline-flex; align-items:center; gap:8px; margin-bottom:24px; font-weight:600; font-size:13px; color:var(--text-main);">
-            <span style="color:var(--accent-teal);">${icon('alert-circle', 16)}</span>
-            <span>Peça para o administrador ativar a IA para sua conta.</span>
-          </div>
-          <div>
-            <button type="button" class="m2-btn m2-btn-secondary" data-nav="today">
-              ${icon('arrow-left', 14)} Voltar para o Início
-            </button>
-          </div>
-        </div>
-      </div>
-    `;
-  }
+  const isAiConfigured = (window.M2Data?.ai_configured !== false) && (state.redacaoAiConfigured !== false);
+  const hasAiAccess = (window.M2Data?.has_ai_access !== false) && (state.hasAiAccess !== false);
 
-  const essay = window.M2Data.essayData;
-  const theme = essay ? essay.currentTheme : null;
-  const result = state.essayCorrectionResult;
+  const result = state.redacaoResult || state.essayCorrectionResult;
   const draft = state.essayDraftText || '';
-  const wordsCount = draft.trim().split(/\s+/).filter(Boolean).length;
-  const linesCount = Math.max(1, draft.split('\n').filter(Boolean).length);
+  const currentDocType = state.redacaoDocType || 'dissertacao';
+  const currentTheme = state.redacaoTheme || (window.M2Data?.essayData?.currentTheme?.title || 'O papel da tecnologia e da inteligência artificial na segurança pública e na preservação de direitos fundamentais');
+  const inputMode = state.redacaoInputMode || 'texto';
+  const suggestedThemes = state.redacaoSuggestedThemes || [];
+  const generatingThemes = state.redacaoGeneratingThemes || false;
+  const analyzing = state.redacaoAnalyzing || false;
+  const showCorrigida = state.redacaoShowCorrigida || false;
+  const fotoPreview = state.redacaoFotoPreview || null;
 
-  if (!essay || !theme) {
-    return `
-        <div class="m2-content">
-          <div class="m2-page-header">
-            <div class="m2-page-title-group">
-              <span class="m2-eyebrow">Prática Discursiva & Produção Textual</span>
-              <h1 class="m2-page-title">Oficina de Redação com IA</h1>
-              <p class="m2-page-subtitle">Pratique redações temáticas no padrão da banca examinadora e receba correção detalhada por competências em segundos.</p>
-            </div>
-          </div>
-          <div class="m2-card" style="text-align:center; padding:48px 16px;">
-            <div style="width:56px; height:56px; border-radius:50%; background:var(--bg-card); display:grid; place-items:center; margin:0 auto 16px; color:var(--accent-teal);">
-              ${icon('file-text', 28)}
-            </div>
-            <h3 style="font-size:18px; font-weight:700; color:var(--text-main);">Nenhum tema de redação ativo no momento</h3>
-            <p style="font-size:13px; color:var(--text-muted); max-width:440px; margin:8px auto 20px;">
-              Assim que o mentor cadastrar propostas temáticas para o seu concurso, você poderá redigir seu texto e receber correções analíticas automáticas pela IA.
-            </p>
-          </div>
-        </div>
-      `;
-  }
+  const wordsCount = draft.trim() ? draft.trim().split(/\s+/).filter(Boolean).length : 0;
+  const linesCount = draft.trim() ? Math.max(1, draft.split('\n').filter(Boolean).length) : 0;
+  const charsCount = draft.length;
+
+  const selectedDoc = TIPOS_REDACAO.find(t => t.id === currentDocType) || TIPOS_REDACAO[0];
 
   return `
-      <div class="m2-content">
-        <div class="m2-page-header">
-          <div class="m2-page-title-group">
-            <span class="m2-eyebrow">Prática Discursiva & Produção Textual</span>
-            <h1 class="m2-page-title">Oficina de Redação com IA</h1>
-            <p class="m2-page-subtitle">Pratique redações temáticas no padrão da banca examinadora e receba correção detalhada por competências em segundos.</p>
-          </div>
-          <div style="display:flex; align-items:center; gap:8px;">
-            <span class="m2-pill m2-pill-amber">${theme.board || 'Banca'}</span>
-            <span class="m2-pill m2-pill-teal">Prazo: ${theme.deadline || 'Aberto'}</span>
-          </div>
+    <div class="m2-content">
+      <!-- Cabeçalho da Oficina de Redação -->
+      <div class="m2-page-header">
+        <div class="m2-page-title-group">
+          <span class="m2-eyebrow">A24 · Prática Discursiva & Produção Textual</span>
+          <h1 class="m2-page-title">${icon('pen-tool', 24, 'text-teal')} Oficina de Redação com IA</h1>
+          <p class="m2-page-subtitle">Escreva ou fotografe sua redação discursiva, gere temas inéditos e receba correção instantânea por competências com espelho oficial.</p>
         </div>
-
-        <!-- Banner da Proposta Temática -->
-        <div class="m2-card" style="border-left:4px solid var(--accent-teal); margin-bottom:16px;">
-          <div class="m2-card-header">
-            <div>
-              <span style="font-size:11px; font-weight:700; text-transform:uppercase; color:var(--accent-teal); letter-spacing:0.5px;">Tema Oficial da Rodada</span>
-              <h2 style="font-size:18px; font-weight:700; color:var(--text-main); margin-top:4px;">${theme.title}</h2>
-              <span style="font-size:12px; color:var(--text-muted);">Gênero: ${theme.genre || 'Dissertativo-Argumentativo'} · Extensão esperada: ${theme.expectedLines || '20 a 30 linhas'}</span>
-            </div>
-            <span class="m2-pill m2-pill-gray">Peso 2 no Concurso</span>
-          </div>
-
-          <div style="display:flex; flex-direction:column; gap:8px; margin-top:8px;">
-            <span style="font-size:12px; font-weight:600; color:var(--text-main);">Textos Motivadores:</span>
-            ${(theme.motivatingTexts || []).map((txt, idx) => `
-              <div style="background:var(--bg-card); padding:10px 14px; border-radius:var(--radius-md); border:1px solid var(--border-color); font-size:12px; color:var(--text-muted); line-height:1.6;">
-                ${txt}
-              </div>
-            `).join('')}
-          </div>
+        <div style="display:flex; align-items:center; gap:8px;">
+          ${!hasAiAccess
+            ? `<span class="m2-pill m2-pill-amber" style="background:rgba(239,68,68,0.12); color:#ef4444; border:1px solid rgba(239,68,68,0.3);">${icon('lock', 13)} IA Não Inclusa no Plano</span>`
+            : (isAiConfigured
+                ? `<span class="m2-pill m2-pill-teal">${icon('sparkles', 13)} Avaliador IA Ativo (Member IA)</span>`
+                : `<span class="m2-pill m2-pill-amber" style="background:rgba(245,158,11,0.12); color:#d97706; border:1px solid rgba(245,158,11,0.3);">${icon('alert-circle', 13)} IA Não Configurada</span>`
+              )
+          }
+          ${result ? `<button type="button" class="m2-btn m2-btn-secondary m2-btn-sm" data-action="reset-essay-view">${icon('plus', 14)} Nova Redação</button>` : ''}
         </div>
+      </div>
 
-        <!-- Área de Redação & Painel de Correção -->
-        <div class="m2-grid-split">
-          <!-- Editor de Texto da Aluna -->
+      ${!hasAiAccess ? `
+        <div class="m2-ai-unconfigured-banner m2-ai-noaccess-banner" style="background:linear-gradient(135deg, rgba(239, 68, 68, 0.08), rgba(245, 158, 11, 0.08)); border:1px solid rgba(239, 68, 68, 0.25); border-radius:var(--radius-lg); padding:16px 20px; margin-bottom:20px; display:flex; align-items:flex-start; gap:16px;">
+          <div style="width:40px; height:40px; border-radius:var(--radius-md); background:rgba(239, 68, 68, 0.15); color:#ef4444; display:grid; place-items:center; flex-shrink:0;">
+            ${icon('lock', 22)}
+          </div>
+          <div style="flex:1;">
+            <h3 style="font-size:15px; font-weight:700; color:var(--text-main); margin:0 0 4px;">Recurso de IA Bloqueado no Plano</h3>
+            <p style="font-size:13px; color:var(--text-muted); margin:0; line-height:1.5;">
+              Este recurso de Inteligência Artificial não está incluso no seu plano. Solicite ao administrador a liberação do módulo de IA ou faça upgrade do seu curso.
+            </p>
+          </div>
+          <span class="m2-badge m2-badge-danger" style="align-self:flex-start; background:rgba(239, 68, 68, 0.15); color:#ef4444; border:1px solid rgba(239, 68, 68, 0.3);">Upgrade Necessário</span>
+        </div>
+      ` : (!isAiConfigured ? `
+        <div class="m2-ai-unconfigured-banner">
+          <div class="m2-ai-unconfigured-icon">${icon('alert-circle', 24)}</div>
+          <div class="m2-ai-unconfigured-body">
+            <h3 class="m2-ai-unconfigured-title">Inteligência Artificial Não Configurada no Ambiente</h3>
+            <p class="m2-ai-unconfigured-text">
+              A geração de temas inéditos e a correção automática por IA exigem que o mentor ative o <strong>Member IA</strong> com uma chave de API válida nas configurações da plataforma. A funcionalidade de IA está temporariamente indisponível neste ambiente.
+            </p>
+          </div>
+          <span class="m2-badge m2-badge-warning" style="align-self:flex-start;">IA Indisponível</span>
+        </div>
+      ` : '')}
+
+      ${!result ? `
+        <!-- FORMULÁRIO DE PRODUÇÃO DISCURSIVA (ESTILO APROVAI-SAAS) -->
+        <div style="display:flex; flex-direction:column; gap:20px; max-width:1040px; margin:0 auto;">
+
+          <!-- ETAPA 1: Tipo de Documento -->
           <div class="m2-card">
             <div class="m2-card-header">
-              <span class="m2-card-title">${icon('pen-tool', 18, 'text-teal')} Folha de Resposta Digital</span>
-              <div style="display:flex; align-items:center; gap:8px; font-size:12px; color:var(--text-muted);">
-                <span id="m2-essay-word-count"><strong>${wordsCount}</strong> palavras</span>
-                <span>·</span>
-                <span id="m2-essay-line-count"><strong>${linesCount}</strong> linhas</span>
-              </div>
+              <span class="m2-card-title">${icon('layers', 18, 'text-teal')} 1. Tipo de Documento / Gênero Textual</span>
+              <span class="m2-pill m2-pill-gray">Selecione o formato da prova</span>
             </div>
-
-            <textarea id="m2-essay-editor" class="m2-essay-textarea" placeholder="Comece aqui a introdução da sua redação..." rows="12">${draft}</textarea>
-
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-top:14px; flex-wrap:wrap; gap:10px;">
-              <span style="font-size:11px; color:var(--text-muted);">Dica: Estruture em 4 parágrafos (Introdução, 2 Desenvolvimentos e Conclusão).</span>
-              <div style="display:flex; gap:8px;">
-                <button type="button" class="m2-btn m2-btn-secondary" data-action="save-essay-draft">
-                  ${icon('bookmark', 14)} Salvar Rascunho
-                </button>
-                <button type="button" class="m2-btn m2-btn-primary" data-action="submit-essay-correction" ${state.essayAnalyzing ? 'disabled' : ''}>
-                  ${icon(state.essayAnalyzing ? 'refresh-cw' : 'sparkles', 16, state.essayAnalyzing ? 'm2-spin' : '')} 
-                  ${state.essayAnalyzing ? 'Enviando redação...' : 'Enviar para correção'}
-                </button>
-              </div>
+            <div class="m2-redacao-types-grid">
+              ${TIPOS_REDACAO.map(t => {
+                const isSelected = currentDocType === t.id;
+                return `
+                  <button type="button" class="m2-redacao-type-card ${isSelected ? 'active' : ''}" data-action="set-essay-doc-type" data-doc-type="${t.id}">
+                    <div class="m2-redacao-type-icon">${icon(t.icon, 20)}</div>
+                    <div class="m2-redacao-type-info">
+                      <strong class="m2-redacao-type-title">${escapeHtml(t.label)}</strong>
+                      <span class="m2-redacao-type-desc">${escapeHtml(t.desc)}</span>
+                    </div>
+                    ${isSelected ? `<span class="m2-redacao-type-check">${icon('check-circle', 16)}</span>` : ''}
+                  </button>
+                `;
+              }).join('')}
             </div>
           </div>
 
-          <!-- Dossiê de Correção da IA -->
+          <!-- ETAPA 2: Tema da Redação & Gerador IA -->
           <div class="m2-card">
-            <div class="m2-card-header">
-              <span class="m2-card-title">${icon('sparkles', 18, 'text-teal')} Avaliação Analítica por Competências</span>
-              <span class="m2-pill ${result ? 'm2-pill-green' : 'm2-pill-teal'}">
-                ${result ? `Nota: ${result.score}/100` : 'Aguardando Envio'}
-              </span>
+            <div class="m2-card-header" style="flex-wrap:wrap; gap:10px;">
+              <span class="m2-card-title">${icon('sparkles', 18, 'text-teal')} 2. Tema da Proposta</span>
+              <button type="button" class="m2-btn m2-btn-secondary m2-btn-sm" data-action="generate-essay-themes" ${generatingThemes || !isAiConfigured || !hasAiAccess ? 'disabled' : ''}>
+                ${icon(generatingThemes ? 'refresh-cw' : 'sparkles', 14, generatingThemes ? 'm2-spin' : '')}
+                ${generatingThemes ? 'Gerando temas com IA...' : 'Gerar tema inédito via IA'}
+              </button>
             </div>
 
-            ${result ? `
-              <div style="display:flex; align-items:center; justify-content:space-between; background:linear-gradient(135deg, rgba(10, 181, 189, 0.15), rgba(16, 185, 129, 0.1)); padding:16px; border-radius:var(--radius-lg); border:1px solid rgba(10, 181, 189, 0.3);">
-                <div>
-                  <span style="font-size:11px; text-transform:uppercase; letter-spacing:0.5px; color:var(--accent-teal); font-weight:700;">Diagnóstico Final da IA</span>
-                  <h3 style="font-size:22px; font-weight:800; color:var(--accent-green); margin:2px 0;">${result.score} Pontos · ${result.status}</h3>
-                  <span style="font-size:12px; color:var(--text-muted);">${result.wordsCount} palavras · ${result.linesCount} linhas escritas</span>
-                </div>
-                <div style="width:48px; height:48px; border-radius:50%; background:var(--accent-green-soft); color:var(--accent-green); display:grid; place-items:center; font-size:20px;">
-                  ${icon('check-circle', 28)}
-                </div>
-              </div>
+            <div style="margin-top:10px;">
+              <label style="font-size:12px; font-weight:600; color:var(--text-muted); display:block; margin-bottom:6px;">
+                Tema selecionado ou digite seu tema personalizado:
+              </label>
+              <input type="text" id="m2-essay-theme-input" class="m2-input" value="${escapeHtml(currentTheme)}" placeholder="Ex: O papel da polícia comunitária na prevenção primária da violência" style="width:100%; font-size:14px; font-weight:600; padding:12px 14px;">
+            </div>
 
-              <!-- Competências de Avaliação -->
-              <div style="display:flex; flex-direction:column; gap:10px; margin-top:14px;">
-                ${(result.criteria || []).map(crit => `
-                  <div class="m2-essay-criteria-item">
-                    <div style="display:flex; justify-content:space-between; font-size:12px;">
-                      <strong>${crit.name}</strong>
-                      <span style="color:var(--accent-teal); font-weight:700;">${crit.score} / ${crit.max}</span>
-                    </div>
-                    <div class="m2-progress-track">
-                      <div class="m2-progress-fill" style="width:${(crit.score / crit.max) * 100}%;"></div>
-                    </div>
-                    <span style="font-size:11px; color:var(--text-muted);">${crit.feedback}</span>
-                  </div>
-                `).join('')}
-              </div>
-
-              <!-- Parecer do Tutor IA -->
-              <div style="background:var(--bg-card); padding:12px 14px; border-radius:var(--radius-md); border:1px solid var(--border-color); margin-top:14px;">
-                <span style="font-size:12px; font-weight:700; color:var(--accent-teal); display:flex; align-items:center; gap:6px;">
-                  ${icon('bot', 16)} Parecer Pedagógico do Tutor IA:
+            <!-- Sugestões geradas pela IA -->
+            ${suggestedThemes.length > 0 ? `
+              <div style="margin-top:14px; background:var(--bg-surface); padding:14px; border-radius:var(--radius-md); border:1px solid var(--border-color);">
+                <span style="font-size:11px; font-weight:700; text-transform:uppercase; color:var(--accent-teal); letter-spacing:0.5px; display:block; margin-bottom:8px;">
+                  ${icon('sparkles', 12)} Temas Sugeridos pela IA para ${escapeHtml(selectedDoc.label)}:
                 </span>
-                <p style="font-size:12px; color:var(--text-main); line-height:1.6; margin-top:4px;">
-                  ${result.aiFeedback}
-                </p>
+                <div style="display:flex; flex-direction:column; gap:8px;">
+                  ${suggestedThemes.map((st, idx) => `
+                    <button type="button" class="m2-essay-theme-choice-btn" data-action="select-essay-theme" data-theme-title="${escapeHtml(st.title || st)}">
+                      <span class="m2-essay-theme-num">${idx + 1}</span>
+                      <span class="m2-essay-theme-text">${escapeHtml(st.title || st)}</span>
+                      <span class="m2-essay-theme-apply">Usar este tema →</span>
+                    </button>
+                  `).join('')}
+                </div>
+              </div>
+            ` : ''}
+          </div>
+
+          <!-- ETAPA 3: Modo de Produção (Escrever vs Foto) -->
+          <div class="m2-card">
+            <div class="m2-card-header" style="flex-wrap:wrap; gap:10px;">
+              <div>
+                <span class="m2-card-title">${icon('file-text', 18, 'text-teal')} 3. Folha de Resposta Oficial</span>
+                <span style="font-size:12px; color:var(--text-muted); display:block; margin-top:2px;">
+                  Gênero: <strong>${escapeHtml(selectedDoc.label)}</strong> · Extensão esperada: 20 a 30 linhas
+                </span>
+              </div>
+
+              <!-- Toggle Modo de Envio -->
+              <div class="m2-redacao-mode-switch">
+                <button type="button" class="m2-redacao-mode-btn ${inputMode === 'texto' ? 'active' : ''}" data-action="set-essay-input-mode" data-mode="texto">
+                  ${icon('pen-tool', 14)} Escrever no Editor
+                </button>
+                <button type="button" class="m2-redacao-mode-btn ${inputMode === 'foto' ? 'active' : ''}" data-action="set-essay-input-mode" data-mode="foto">
+                  ${icon('camera', 14)} Foto da Folha
+                </button>
+              </div>
+            </div>
+
+            ${inputMode === 'texto' ? `
+              <!-- Editor Digital com Contadores Vivos -->
+              <div style="margin-top:14px;">
+                <div class="m2-redacao-editor-toolbar">
+                  <div style="display:flex; align-items:center; gap:14px; font-size:12px; color:var(--text-muted);">
+                    <span id="m2-essay-word-count"><strong>${wordsCount}</strong> palavras</span>
+                    <span>·</span>
+                    <span id="m2-essay-line-count"><strong>${linesCount}</strong> linhas</span>
+                    <span>·</span>
+                    <span id="m2-essay-char-count"><strong>${charsCount}</strong> caracteres</span>
+                  </div>
+                  <span class="m2-pill ${wordsCount >= 150 ? 'm2-pill-green' : 'm2-pill-amber'}" style="font-size:11px;">
+                    ${wordsCount >= 150 ? 'Extensão adequada' : 'Mínimo recomendado: 150 palavras'}
+                  </span>
+                </div>
+
+                <textarea id="m2-essay-editor" class="m2-essay-textarea" placeholder="Inicie aqui a sua introdução apresentando a tese e a contextualização do tema...
+
+Desenvolvimento 1: fundamente o primeiro argumento com dados objetivos ou preceitos legais...
+
+Desenvolvimento 2: aprofunde as causas e implicações sociológicas ou institucionais...
+
+Conclusão: apresente proposta de intervenção consistente com os direitos fundamentais." rows="14">${draft}</textarea>
+
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-top:16px; flex-wrap:wrap; gap:12px;">
+                  <span style="font-size:12px; color:var(--text-muted); display:flex; align-items:center; gap:6px;">
+                    ${icon('info', 14)} Dica de Banca: divida seu texto em 4 parágrafos bem articulados por conectivos interparágrafos.
+                  </span>
+                  <div style="display:flex; gap:10px;">
+                    <button type="button" class="m2-btn m2-btn-secondary" data-action="save-essay-draft">
+                      ${icon('bookmark', 14)} Salvar Rascunho
+                    </button>
+                    <button type="button" class="m2-btn m2-btn-primary" data-action="submit-essay-correction" ${analyzing || !isAiConfigured || !hasAiAccess ? 'disabled' : ''}>
+                      ${icon(analyzing ? 'refresh-cw' : 'sparkles', 16, analyzing ? 'm2-spin' : '')}
+                      ${analyzing ? 'Corrigindo com IA...' : 'Enviar para Correção com IA'}
+                    </button>
+                  </div>
+                </div>
               </div>
             ` : `
-              <div style="text-align:center; padding:48px 16px; color:var(--text-muted);">
-                <div style="width:54px; height:54px; border-radius:50%; background:var(--bg-card); display:grid; place-items:center; margin:0 auto 12px; color:var(--accent-teal);">
-                  ${icon('file-text', 26)}
+              <!-- Modo Foto de Redação Manuscrita -->
+              <div style="margin-top:14px;">
+                ${!fotoPreview ? `
+                  <div class="m2-redacao-dropzone" onclick="document.getElementById('m2-essay-photo-file').click();">
+                    <input type="file" id="m2-essay-photo-file" accept="image/*" capture="environment" style="display:none;" data-action="upload-essay-photo">
+                    <div style="width:56px; height:56px; border-radius:50%; background:var(--bg-surface); display:grid; place-items:center; margin:0 auto 12px; color:var(--accent-teal);">
+                      ${icon('camera', 28)}
+                    </div>
+                    <strong style="font-size:15px; color:var(--text-main); display:block; margin-bottom:4px;">
+                      Fotografar ou enviar folha de redação manuscrita
+                    </strong>
+                    <span style="font-size:12px; color:var(--text-muted); max-width:380px; display:block; margin:0 auto;">
+                      Tire uma foto bem iluminada da sua folha de resposta padrão. Nossa IA lerá os parágrafos manuscritos e avaliará sua letra e conteúdo.
+                    </span>
+                    <button type="button" class="m2-btn m2-btn-secondary m2-btn-sm" style="margin-top:14px;">
+                      ${icon('upload', 14)} Selecionar Imagem
+                    </button>
+                  </div>
+                ` : `
+                  <div class="m2-redacao-photo-preview-wrap">
+                    <img src="${fotoPreview}" alt="Foto da Redação" class="m2-redacao-photo-preview-img">
+                    <div class="m2-redacao-photo-overlay">
+                      <span class="m2-pill m2-pill-teal">${icon('check-circle', 12)} Imagem carregada</span>
+                      <button type="button" class="m2-btn m2-btn-secondary m2-btn-sm" data-action="remove-essay-photo">
+                        ${icon('x', 14)} Trocar foto
+                      </button>
+                    </div>
+                  </div>
+                `}
+
+                <div style="display:flex; justify-content:flex-end; margin-top:16px;">
+                  <button type="button" class="m2-btn m2-btn-primary" data-action="submit-essay-correction" ${analyzing || !isAiConfigured || !hasAiAccess ? 'disabled' : ''}>
+                    ${icon(analyzing ? 'refresh-cw' : 'sparkles', 16, analyzing ? 'm2-spin' : '')}
+                    ${analyzing ? 'Analisando imagem com IA...' : 'Corrigir Redação Manuscrita'}
+                  </button>
                 </div>
-                <h4 style="font-size:16px; font-weight:700; color:var(--text-main);">Nenhuma correção gerada ainda</h4>
-                <p style="font-size:12px; max-width:320px; margin:6px auto 0;">
-                  Escreva seu texto no editor ao lado e clique em <strong>"Corrigir Redação com IA"</strong> para receber a nota e o espelho por competências.
-                </p>
               </div>
             `}
           </div>
         </div>
-      </div>
-    `;
+      ` : `
+        <!-- ESPELHO OFICIAL DE CORREÇÃO COM IA (ESTILO APROVAI-SAAS) -->
+        <div style="display:flex; flex-direction:column; gap:20px; max-width:1040px; margin:0 auto;">
+
+          <!-- Card de Nota Final e Parecer Geral -->
+          <div class="m2-card m2-redacao-score-hero">
+            <div class="m2-redacao-score-circle">
+              <span class="m2-redacao-score-num ${result.nota_final >= 8 ? 'high' : result.nota_final >= 6 ? 'mid' : 'low'}">
+                ${Number(result.nota_final || result.score || 0).toFixed(1)}
+              </span>
+              <span class="m2-redacao-score-max">/ 10</span>
+            </div>
+            <div class="m2-redacao-score-details">
+              <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px; flex-wrap:wrap;">
+                <span class="m2-pill ${result.nota_final >= 8 ? 'm2-pill-green' : result.nota_final >= 6 ? 'm2-pill-amber' : 'm2-pill-rose'}">
+                  ${result.status || 'Resultado da Avaliação'}
+                </span>
+                <span class="m2-pill m2-pill-gray">
+                  ${result.wordsCount || wordsCount} palavras · ${result.linesCount || linesCount} linhas
+                </span>
+              </div>
+              <h3 style="font-size:18px; font-weight:700; color:var(--text-main); margin-bottom:6px;">
+                Parecer Pedagógico do Avaliador IA
+              </h3>
+              <p style="font-size:13px; color:var(--text-soft); line-height:1.6;">
+                ${escapeHtml(result.parecer || result.aiFeedback || 'Avaliação analítica concluída.')}
+              </p>
+            </div>
+          </div>
+
+          <!-- Espelho de Critérios e Competências da Banca -->
+          <div class="m2-card">
+            <div class="m2-card-header">
+              <span class="m2-card-title">${icon('check-square', 18, 'text-teal')} Avaliação Oficial por Critérios da Banca</span>
+              <span class="m2-pill m2-pill-teal">Espelho Analítico</span>
+            </div>
+
+            <div class="m2-redacao-criteria-list">
+              ${(result.criteria || []).map((crit, idx) => {
+                const score = Number(crit.score ?? 0);
+                const max = Number(crit.max ?? 10);
+                const pct = Math.min(100, Math.round((score / max) * 100));
+                const barClass = pct >= 80 ? 'high' : pct >= 60 ? 'mid' : 'low';
+                return `
+                  <div class="m2-redacao-criterion-row">
+                    <div class="m2-redacao-criterion-header">
+                      <strong class="m2-redacao-criterion-name">${escapeHtml(crit.name)}</strong>
+                      <span class="m2-redacao-criterion-score ${barClass}">${score.toFixed(1)} <small>/ ${max}</small></span>
+                    </div>
+                    <div class="m2-redacao-bar-track">
+                      <div class="m2-redacao-bar-fill ${barClass}" style="width:${pct}%;"></div>
+                    </div>
+                    <p class="m2-redacao-criterion-feedback">${escapeHtml(crit.feedback)}</p>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          </div>
+
+          <!-- Grade Comparativa: Pontos Fortes vs Pontos a Melhorar -->
+          <div class="m2-grid-two">
+            <div class="m2-card" style="border-top:3px solid var(--accent-green);">
+              <span class="m2-card-title" style="color:var(--accent-green); margin-bottom:12px; display:flex; align-items:center; gap:8px;">
+                ${icon('check-circle', 18)} Pontos Fortes Observados
+              </span>
+              <ul class="m2-redacao-feedback-list strengths">
+                ${(result.pontos_fortes || ['Tese claramente posicionada no parágrafo introdutório.', 'Registro formal adequado e vocabulário sóbrio.', 'Boa coerência ao longo do desenvolvimento.']).map(pf => `
+                  <li><span class="m2-feedback-bullet green">✓</span> <span>${escapeHtml(pf)}</span></li>
+                `).join('')}
+              </ul>
+            </div>
+
+            <div class="m2-card" style="border-top:3px solid var(--accent-amber);">
+              <span class="m2-card-title" style="color:var(--accent-amber); margin-bottom:12px; display:flex; align-items:center; gap:8px;">
+                ${icon('alert-triangle', 18)} Aspectos a Aprimorar
+              </span>
+              <ul class="m2-redacao-feedback-list improvements">
+                ${(result.pontos_melhoria || ['Diversificar operadores argumentativos entre os parágrafos.', 'Inserir repertório fático ou fundamentação legal específica.', 'Reforçar o agente e meio na proposta de conclusão.']).map(pm => `
+                  <li><span class="m2-feedback-bullet amber">!</span> <span>${escapeHtml(pm)}</span></li>
+                `).join('')}
+              </ul>
+            </div>
+          </div>
+
+          <!-- Card de Versão Corrigida e Aprimorada pela IA (Acordeão) -->
+          <div class="m2-card" style="border:1px solid rgba(10, 181, 189, 0.3);">
+            <div class="m2-card-header" style="cursor:pointer;" data-action="toggle-essay-corrigida">
+              <div style="display:flex; align-items:center; gap:10px;">
+                <span class="m2-brandmark" style="width:32px; height:32px; font-size:14px;">${icon('sparkles', 16)}</span>
+                <div>
+                  <strong style="font-size:15px; color:var(--text-main); display:block;">Versão Aprimorada pela IA (Padrão Nota 10)</strong>
+                  <span style="font-size:12px; color:var(--text-muted);">Veja como seu texto ficaria com vocabulário formal e conectivos da banca</span>
+                </div>
+              </div>
+              <button type="button" class="m2-btn m2-btn-quiet m2-btn-sm">
+                ${icon(showCorrigida ? 'chevron-up' : 'chevron-down', 16)}
+                ${showCorrigida ? 'Ocultar' : 'Visualizar versão nota 10'}
+              </button>
+            </div>
+
+            ${showCorrigida ? `
+              <div class="m2-redacao-corrigida-box">
+                <pre class="m2-redacao-corrigida-text">${escapeHtml(result.versao_corrigida || draft)}</pre>
+              </div>
+            ` : ''}
+          </div>
+
+          <!-- Ações Finais -->
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; padding:10px 0;">
+            <button type="button" class="m2-btn m2-btn-secondary" data-action="save-essay-notebook">
+              ${icon('notebook-pen', 14)} Salvar Análise no Caderno de Erros
+            </button>
+            <button type="button" class="m2-btn m2-btn-primary" data-action="reset-essay-view">
+              ${icon('plus', 16)} Escrever Nova Redação
+            </button>
+          </div>
+        </div>
+      `}
+    </div>
+  `;
 }
 
 // Item 8: Memória de Longo Prazo da IA (Dossiê Cognitivo)

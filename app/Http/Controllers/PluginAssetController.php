@@ -67,6 +67,7 @@ class PluginAssetController extends Controller
         return response()->file($realFile, [
             'Content-Type' => $mime,
             'Cache-Control' => 'public, max-age='.$maxAge,
+            'X-Content-Type-Options' => 'nosniff',
         ]);
     }
 }

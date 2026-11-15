@@ -301,7 +301,7 @@ function resolveScreenFromHash(mode) {
   if (parts.length >= 2) {
     const hashMode = parts[0].toLowerCase();
     const hashScreen = parts[1];
-    if (hashMode === mode.toLowerCase()) {
+    if (hashMode === mode.toLowerCase() || (mode.toLowerCase() === 'student' && hashMode === 'aluno')) {
       return hashScreen;
     }
   }

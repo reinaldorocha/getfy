@@ -26,10 +26,12 @@ final class QueridoDiarioSourceAdapter implements RadarSourceAdapterInterface
             throw new \RuntimeException('A fonte Querido Diário precisa de ao menos um território IBGE configurado.');
         }
 
-        $baseUrl = rtrim((string) ($source->api_base_url ?: 'https://api.queridodiario.ok.org.br'), '/');
+        $baseUrl = rtrim((string) ($source->api_base_url ?: 'https://api.queridodiario.org.br'), '/');
+        $baseUrl = str_replace('api.queridodiario.ok.org.br', 'api.queridodiario.org.br', $baseUrl);
         foreach ($territories as $territory) {
             for ($page = 0; $page < $maxPages; $page++) {
-                $response = Http::acceptJson()->timeout(20)->retry(2, 400)->get($baseUrl.'/gazettes', [
+                $response = Http::withHeaders(['User-Agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'])
+                    ->acceptJson()->timeout(20)->retry(2, 400)->get($baseUrl.'/gazettes', [
                     'territory_ids' => (string) $territory,
                     'querystring' => $query,
                     'size' => $pageSize,
@@ -48,12 +50,16 @@ final class QueridoDiarioSourceAdapter implements RadarSourceAdapterInterface
                     $url = (string) ($row['url'] ?? $row['source_url'] ?? $row['url_document'] ?? '');
                     if ($url === '') continue;
 
+                    $excerpt = is_array($row['excerpts'] ?? null)
+                        ? implode("\n\n", array_filter($row['excerpts'], 'is_string'))
+                        : (string) ($row['excerpt'] ?? $row['text'] ?? '');
+
                     yield [
                         'external_id' => isset($row['id']) ? (string) $row['id'] : (isset($row['edition_id']) ? (string) $row['edition_id'] : null),
                         'canonical_url' => $url,
                         'title' => isset($row['territory_name']) ? 'Diário Oficial — '.$row['territory_name'] : null,
                         'published_at' => $row['date'] ?? $row['published_at'] ?? null,
-                        'excerpt' => (string) ($row['excerpt'] ?? $row['text'] ?? ''),
+                        'excerpt' => $excerpt,
                         'payload' => $row,
                     ];
                 }

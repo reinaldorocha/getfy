@@ -5,12 +5,54 @@ inertiaConfig.set('prefetch.hoverDelay', 40);
 
 // Service worker do painel e push: registrados em usePanelPushSubscribe (com migração ordenada do scope legado).
 
-import { createInertiaApp, usePage } from '@inertiajs/vue3';
+import { createInertiaApp, usePage, router } from '@inertiajs/vue3';
 import { createApp as createVueApp, h } from 'vue';
 import { watchEffect } from 'vue';
 import { resolvePageComponent } from 'laravel-vite-plugin/inertia-helpers';
 import { createPinia } from 'pinia';
 import { installPluginUiBridge, resolvePluginPageComponent, getPluginUiPayloadFromDom } from './plugins/pluginUiLoader';
+
+let latestPluginUiPayload = getPluginUiPayloadFromDom() ?? null;
+
+function syncPluginUiPayload(payload) {
+    if (payload && Array.isArray(payload.plugins) && payload.plugins.length) {
+        latestPluginUiPayload = payload;
+        if (typeof window !== 'undefined') {
+            window.__GETFY_PLUGIN_UI_PAYLOAD__ = payload;
+            try {
+                sessionStorage.setItem('getfy_plugin_ui', JSON.stringify(payload));
+            } catch (_) {}
+        }
+    }
+}
+
+if (typeof window !== 'undefined') {
+    if (latestPluginUiPayload?.plugins?.length) {
+        syncPluginUiPayload(latestPluginUiPayload);
+    } else {
+        try {
+            const cached = sessionStorage.getItem('getfy_plugin_ui');
+            if (cached) {
+                const parsed = JSON.parse(cached);
+                if (parsed?.plugins?.length) {
+                    latestPluginUiPayload = parsed;
+                    window.__GETFY_PLUGIN_UI_PAYLOAD__ = parsed;
+                }
+            }
+        } catch (_) {}
+    }
+}
+
+// Sincroniza payload de plugins do Inertia antes e depois de atualizações de rota
+router.on('beforeUpdate', (event) => {
+    syncPluginUiPayload(event.detail?.page?.props?.plugin_ui);
+});
+router.on('navigate', (event) => {
+    syncPluginUiPayload(event.detail?.page?.props?.plugin_ui);
+});
+router.on('success', (event) => {
+    syncPluginUiPayload(event.detail?.page?.props?.plugin_ui);
+});
 
 // Sincroniza a meta csrf-token com o token da página atual (evita 419 em gateways e outras requisições axios)
 const CsrfSync = {
@@ -61,17 +103,52 @@ const createFirstAdminPage = import.meta.glob('./Pages/Auth/CreateFirstAdmin.vue
 
 function resolvePluginPage(name) {
     if (!name.startsWith('Plugin/')) return null;
-    const pluginUi =
-        getPluginUiPayloadFromDom()
+
+    let pluginUi =
+        latestPluginUiPayload
+        ?? (typeof window !== 'undefined' ? window.__GETFY_PLUGIN_UI_PAYLOAD__ : null)
+        ?? router.page?.props?.plugin_ui
+        ?? getPluginUiPayloadFromDom()
         ?? initialPage?.props?.plugin_ui
         ?? null;
+
+    if (!pluginUi || !pluginUi.plugins || !pluginUi.plugins.length) {
+        if (typeof window !== 'undefined') {
+            try {
+                const cached = sessionStorage.getItem('getfy_plugin_ui');
+                if (cached) {
+                    const parsed = JSON.parse(cached);
+                    if (parsed?.plugins?.length) {
+                        pluginUi = parsed;
+                        latestPluginUiPayload = parsed;
+                    }
+                }
+            } catch (_) {}
+        }
+    }
+
     const runtime = resolvePluginPageComponent(name, pluginUi);
     if (runtime) {
         return Promise.resolve({ default: runtime });
     }
+
     const path = `./PluginPages/${name.slice(7)}.vue`;
     const loader = pluginPagesGlob[path];
-    return loader ? loader() : null;
+    if (loader) {
+        return loader();
+    }
+
+    // Fallback gracioso: redireciona diretamente para a rota do plugin sem estourar 404
+    if (typeof window !== 'undefined') {
+        const rel = name.slice(7);
+        const slash = rel.indexOf('/');
+        const slug = slash > 0 ? rel.slice(0, slash) : rel;
+        console.warn(`[Getfy] Plugin "${slug}" ainda não carregado no payload client-side. Redirecionando para /${slug}...`);
+        window.location.assign('/' + slug);
+        return new Promise(() => {});
+    }
+
+    return null;
 }
 
 createInertiaApp({

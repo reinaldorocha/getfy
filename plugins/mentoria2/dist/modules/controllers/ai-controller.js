@@ -1,4 +1,4 @@
-import { sendTutorChat } from '../tutor-client.js?v=ab398a02b1f4';
+import { sendTutorChat } from '../tutor-client.js?v=ea697af2a1b3';
 
 function scrollTutorMessages(elementId) {
   const box = document.getElementById(elementId);

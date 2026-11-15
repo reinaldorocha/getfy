@@ -52,7 +52,7 @@ import {
   hydrateDataFromPayload,
   icon,
   escapeHtml
-} from './modules/core.js?v=ab398a02b1f4';
+} from './modules/core.js?v=ea697af2a1b3';
 
 import {
   renderSidebar,
@@ -62,20 +62,20 @@ import {
   renderFloatingMiniTimer,
   renderFloatingAiChat,
   renderModals
-} from './modules/shell.js?v=ab398a02b1f4';
+} from './modules/shell.js?v=ea697af2a1b3';
 
 import {
   viewEntry,
   viewOnboarding,
   viewToday,
   viewPlanning
-} from './modules/routine.js?v=ab398a02b1f4';
+} from './modules/routine.js?v=ea697af2a1b3';
 
 import {
   viewSyllabus,
   viewCalculadora,
   viewRadarEditais
-} from './modules/curriculum.js?v=ab398a02b1f4';
+} from './modules/curriculum.js?v=ea697af2a1b3';
 
 import {
   viewQuestions,
@@ -92,13 +92,13 @@ import {
   viewMaterials,
   viewCourses,
   viewRedacao
-} from './modules/study.js?v=ab398a02b1f4';
+} from './modules/study.js?v=ea697af2a1b3';
 
 import {
   viewProgress,
   viewGoals,
   viewRanking
-} from './modules/metrics.js?v=ab398a02b1f4';
+} from './modules/metrics.js?v=ea697af2a1b3';
 
 import {
   viewMentorOverview,
@@ -125,22 +125,22 @@ import {
   viewMentorPrompts,
   viewMentorAiCosts,
   viewMentorRadarEditais
-} from './modules/mentor.js?v=ab398a02b1f4';
+} from './modules/mentor.js?v=ea697af2a1b3';
 
 import {
   viewTutor,
   viewAiMemory,
   viewSettings,
   viewHelp
-} from './modules/ai.js?v=ab398a02b1f4';
+} from './modules/ai.js?v=ea697af2a1b3';
 
 import {
   setupEvents,
   destroyEvents
-} from './modules/events.js?v=ab398a02b1f4';
-import { loadMentorResource } from './modules/mentor-resources.js?v=ab398a02b1f4';
-import { api } from './modules/api/client.js?v=ab398a02b1f4';
-import { sanitizeRenderedHtml } from './utils/escape-html.js?v=ab398a02b1f4';
+} from './modules/events.js?v=ea697af2a1b3';
+import { loadMentorResource } from './modules/mentor-resources.js?v=ea697af2a1b3';
+import { api } from './modules/api/client.js?v=ea697af2a1b3';
+import { sanitizeRenderedHtml } from './utils/escape-html.js?v=ea697af2a1b3';
 
 /**
  * Router Principal que seleciona a tela conforme state.mode e state.screen
@@ -301,7 +301,7 @@ function resolveScreenFromHash(mode) {
   if (parts.length >= 2) {
     const hashMode = parts[0].toLowerCase();
     const hashScreen = parts[1];
-    if (hashMode === mode.toLowerCase()) {
+    if (hashMode === mode.toLowerCase() || (mode.toLowerCase() === 'student' && hashMode === 'aluno')) {
       return hashScreen;
     }
   }

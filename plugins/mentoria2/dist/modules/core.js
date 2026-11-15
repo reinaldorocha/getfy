@@ -1,8 +1,8 @@
-import { icon as renderIconSvg } from '../m2-icons.js?v=ab398a02b1f4';
-import { M2Data } from '../m2-data.js?v=ab398a02b1f4';
-import { requestJson as api, http, buildQuery, sanitizeErrorMessage, unwrap } from './api/client.js?v=ab398a02b1f4';
-import { createMentoriaContext } from '../app/context.js?v=ab398a02b1f4';
-import { escapeHtml, escapeRegExp, plainTextWithBreaks } from '../utils/escape-html.js?v=ab398a02b1f4';
+import { icon as renderIconSvg } from '../m2-icons.js?v=ea697af2a1b3';
+import { M2Data } from '../m2-data.js?v=ea697af2a1b3';
+import { requestJson as api, http, buildQuery, sanitizeErrorMessage, unwrap } from './api/client.js?v=ea697af2a1b3';
+import { createMentoriaContext } from '../app/context.js?v=ea697af2a1b3';
+import { escapeHtml, escapeRegExp, plainTextWithBreaks } from '../utils/escape-html.js?v=ea697af2a1b3';
 
 if (typeof window === 'undefined') {
   globalThis.window = globalThis;

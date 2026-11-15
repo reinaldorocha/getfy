@@ -1,5 +1,5 @@
-import { state, icon, escapeHtml, plainTextWithBreaks, getAnnouncements } from './core.js?v=ab398a02b1f4';
-import { renderAudienceBadge } from './shell.js?v=ab398a02b1f4';
+import { state, icon, escapeHtml, plainTextWithBreaks, getAnnouncements } from './core.js?v=ea697af2a1b3';
+import { renderAudienceBadge } from './shell.js?v=ea697af2a1b3';
 
 function mentorPagination(screen) {
   const meta = window.M2Data.mentorListState?.[screen]?.meta;
@@ -33,16 +33,111 @@ export function viewMentorRadarEditais() {
   const sources = Array.isArray(window.M2Data.radarSources) ? window.M2Data.radarSources : [];
   const queue = Array.isArray(window.M2Data.radarReviewQueue) ? window.M2Data.radarReviewQueue : [];
   const sourceModal = state.modal === 'radar-source-form' ? `
-    <div class="m2-modal-overlay" data-action="close-radar-source-modal" style="display:flex; align-items:center; justify-content:center; z-index:99999;">
-      <div class="m2-modal-card" style="max-width:640px; width:92%;" onclick="event.stopPropagation()">
-        <div style="padding:18px 20px; border-bottom:1px solid var(--border-color); display:flex; justify-content:space-between; align-items:center;"><div><h3 style="margin:0;">Nova fonte do Radar</h3><p style="margin:4px 0 0; color:var(--text-muted); font-size:12px;">A fonte só será consultada após você ativá-la.</p></div><button type="button" class="m2-btn-icon" data-action="close-radar-source-modal">×</button></div>
-        <form data-form="radar-source" style="padding:20px; display:grid; gap:14px;">
-          <label class="m2-field"><span>Nome da fonte</span><input class="m2-input" name="label" required placeholder="Ex.: Querido Diário — Piauí"></label>
-          <label class="m2-field"><span>Tipo</span><select class="m2-input" name="kind"><option value="querido_diario">Querido Diário</option><option value="official_gazette">Diário oficial</option><option value="board">Órgão ou banca</option><option value="manual">Cadastro manual</option></select></label>
-          <label class="m2-field"><span>URL de origem</span><input class="m2-input" name="origin_url" type="url" placeholder="https://…"></label>
-          <label class="m2-field"><span>Territórios IBGE</span><input class="m2-input" name="territories" placeholder="Ex.: 2211001, 2208007"><small>Códigos separados por vírgula; obrigatório para Querido Diário.</small></label>
-          <label style="display:flex; align-items:center; gap:8px; font-size:13px;"><input type="checkbox" name="is_active" value="1"> Ativar a fonte após salvar</label>
-          <div style="display:flex; justify-content:flex-end; gap:8px;"><button type="button" class="m2-btn m2-btn-secondary" data-action="close-radar-source-modal">Cancelar</button><button class="m2-btn m2-btn-primary" type="button" data-action="save-radar-source">Salvar fonte</button></div>
+    <div class="m2-modal-overlay" data-action="close-radar-source-modal" style="display:flex; align-items:center; justify-content:center; z-index:99999; backdrop-filter:blur(5px); background:rgba(15, 23, 42, 0.75);">
+      <div class="m2-modal-card" style="max-width:680px; width:94%; max-height:92vh; overflow-y:auto; border-radius:16px; border:1px solid var(--border-color); background:var(--bg-card); box-shadow:0 25px 50px -12px rgba(0,0,0,0.4);" onclick="event.stopPropagation()">
+        
+        <!-- Cabeçalho do Modal -->
+        <div style="padding:20px 24px; border-bottom:1px solid var(--border-color); display:flex; justify-content:space-between; align-items:center;">
+          <div style="display:flex; align-items:center; gap:12px;">
+            <div style="width:40px; height:40px; border-radius:10px; background:var(--accent-teal-soft, rgba(13, 148, 136, 0.12)); color:var(--accent-teal, #0d9488); display:grid; place-items:center; flex-shrink:0;">
+              ${icon('radar', 22)}
+            </div>
+            <div>
+              <h3 style="margin:0; font-size:17px; font-weight:800; color:var(--text-main);">Nova Fonte de Editais Policiais</h3>
+              <p style="margin:3px 0 0; color:var(--text-muted); font-size:12px;">Cadastre uma fonte oficial para varredura e ingestão de editais e diários oficiais.</p>
+            </div>
+          </div>
+          <button type="button" class="m2-btn-icon" data-action="close-radar-source-modal" aria-label="Fechar janela" style="cursor:pointer;">
+            ${icon('x', 18)}
+          </button>
+        </div>
+
+        <!-- Guia Explicativo Rápido -->
+        <div style="margin:16px 24px 0; padding:12px 16px; border-radius:10px; background:rgba(13, 148, 136, 0.07); border:1px solid rgba(13, 148, 136, 0.25); display:flex; gap:10px; align-items:flex-start;">
+          <span style="color:var(--accent-teal, #0d9488); flex-shrink:0; margin-top:2px;">${icon('info', 16)}</span>
+          <div style="font-size:12px; color:var(--text-main); line-height:1.45;">
+            <strong>Como o Radar funciona:</strong> O robô consulta as fontes ativas procurando publicações de concursos policiais (PM, PC, PF, PRF, Penal, Perícia). As publicações encontradas são enviadas para a <strong>Fila de Revisão</strong> para você publicar aos alunos com 1 clique.
+          </div>
+        </div>
+
+        <!-- Formulário com Inputs Visíveis e de Alto Contraste -->
+        <form data-form="radar-source" style="padding:20px 24px 24px; display:flex; flex-direction:column; gap:18px;">
+          
+          <div>
+            <label class="m2-field-label">
+              <span>Nome Identificador da Fonte *</span>
+              <input class="m2-input" name="label" required placeholder="Ex.: Diário Oficial da União (DOU) - PF / PRF ou Querido Diário SP">
+              <small>Dê um nome claro para identificar a origem das publicações na fila de revisão.</small>
+            </label>
+          </div>
+
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+            <label class="m2-field-label">
+              <span>Tipo de Fonte / Coleta *</span>
+              <select class="m2-input" name="kind">
+                <option value="querido_diario" selected>Querido Diário (API Oficial - Varredura Automática)</option>
+                <option value="official_gazette">Diário Oficial Estadual / Federal (DOE / DOU)</option>
+                <option value="board">Banca Examinadora / Órgão Oficial</option>
+                <option value="manual">Cadastro Manual de Edital</option>
+              </select>
+            </label>
+
+            <label class="m2-field-label">
+              <span>Palavra-chave de Busca na Fonte</span>
+              <input class="m2-input" name="query" placeholder="Ex.: guarda municipal, concurso" value="concurso">
+              <small>Termo de pesquisa (padrão: "concurso" ou "guarda municipal").</small>
+            </label>
+          </div>
+
+          <div>
+            <label class="m2-field-label">
+              <span>URL Oficial de Origem (Opcional)</span>
+              <input class="m2-input" name="origin_url" type="url" placeholder="https://in.gov.br ou https://queridodiario.org.br">
+            </label>
+          </div>
+
+          <div>
+            <label class="m2-field-label">
+              <span>Territórios / Municípios (Códigos IBGE)</span>
+              <input class="m2-input" name="territories" id="m2-radar-territories-input" placeholder="Ex.: 3550308, 3304557, 5300108">
+              <small>Códigos IBGE separados por vírgula (usado pela API do Querido Diário para filtrar cidades/estados).</small>
+            </label>
+
+            <!-- Atalhos Rápidos de Códigos IBGE mais comuns -->
+            <div style="margin-top:8px;">
+              <span style="font-size:11px; font-weight:700; color:var(--text-muted); display:block; margin-bottom:6px;">Preenchimento Rápido com 1 Clique:</span>
+              <div style="display:flex; flex-wrap:wrap; gap:6px;">
+                <button type="button" class="m2-preset-pill" data-action="preset-radar-territory" data-code="5300108">+ DF / Brasília</button>
+                <button type="button" class="m2-preset-pill" data-action="preset-radar-territory" data-code="3550308">+ SP / São Paulo</button>
+                <button type="button" class="m2-preset-pill" data-action="preset-radar-territory" data-code="3304557">+ RJ / Rio de Janeiro</button>
+                <button type="button" class="m2-preset-pill" data-action="preset-radar-territory" data-code="3106200">+ MG / Belo Horizonte</button>
+                <button type="button" class="m2-preset-pill" data-action="preset-radar-territory" data-code="4106902">+ PR / Curitiba</button>
+                <button type="button" class="m2-preset-pill" data-action="preset-radar-territory" data-code="4314902">+ RS / Porto Alegre</button>
+                <button type="button" class="m2-preset-pill" data-action="preset-radar-territory" data-code="2927408">+ BA / Salvador</button>
+                <button type="button" class="m2-preset-pill" data-action="preset-radar-territory" data-code="2304400">+ CE / Fortaleza</button>
+                <button type="button" class="m2-preset-pill" data-action="preset-radar-territory" data-code="5208707">+ GO / Goiânia</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Card de Ativação -->
+          <div style="padding:14px 16px; border-radius:10px; background:var(--bg-surface); border:1.5px solid var(--border-color); display:flex; align-items:center; gap:12px;">
+            <input type="checkbox" id="m2-source-active" name="is_active" value="1" checked style="width:18px; height:18px; cursor:pointer; accent-color:var(--accent-teal, #0d9488);">
+            <label for="m2-source-active" style="cursor:pointer; font-size:13px; color:var(--text-main); font-weight:600; margin:0;">
+              Ativar fonte imediatamente após salvar
+              <small style="display:block; font-weight:400; color:var(--text-muted); font-size:11px;">O robô incluirá esta fonte nas próximas sincronizações automáticas.</small>
+            </label>
+          </div>
+
+          <!-- Ações do Rodapé -->
+          <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:8px; padding-top:14px; border-top:1px solid var(--border-color);">
+            <button type="button" class="m2-btn m2-btn-secondary" data-action="close-radar-source-modal">
+              Cancelar
+            </button>
+            <button class="m2-btn m2-btn-primary" type="button" data-action="save-radar-source" style="display:inline-flex; align-items:center; gap:6px; font-weight:700;">
+              ${icon('check', 15)} Salvar e Iniciar Fonte
+            </button>
+          </div>
         </form>
       </div>
     </div>` : '';
@@ -1692,31 +1787,33 @@ export function viewMentorProducts() {
                 </div>
               </div>
 
-              <!-- Campos de Personalização de Textos -->
-              <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:14px; margin-top:16px;">
+              <!-- Campos de Personalização de Textos com Alto Contraste -->
+              <div style="display:flex; flex-direction:column; gap:16px; margin-top:20px;">
                 <label class="m2-field-label">
-                  Texto Principal (Título da Marca)
-                  <input id="m2-branding-brand-name" class="m2-field-input" type="text" value="${escapeHtml(branding.brand_name || 'Mentoria 2.0')}" placeholder="Ex.: Mentoria 2.0" maxlength="60" style="margin-top:6px;">
-                  <small style="color:var(--text-muted); font-size:11px; display:block; margin-top:4px;">Substitui 'Mentoria 2.0' no topo da barra lateral.</small>
+                  <span style="font-size:13px; font-weight:700; color:var(--text-main);">Nome Principal da Plataforma / Marca *</span>
+                  <input id="m2-branding-brand-name" class="m2-input" type="text" value="${escapeHtml(branding.brand_name || 'Mentoria 2.0')}" placeholder="Ex.: Minha Mentoria Concursos" maxlength="60">
+                  <small>Substitui o nome exibido no topo da barra lateral e no título do sistema.</small>
                 </label>
 
-                <label class="m2-field-label">
-                  Texto da Área do Aluno
-                  <input id="m2-branding-student-label" class="m2-field-input" type="text" value="${escapeHtml(branding.student_area_label || 'Área do Aluno')}" placeholder="Ex.: Área do Aluno" maxlength="60" style="margin-top:6px;">
-                  <small style="color:var(--text-muted); font-size:11px; display:block; margin-top:4px;">Substitui o rótulo 'Área do Aluno' na visão do estudante.</small>
-                </label>
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+                  <label class="m2-field-label">
+                    <span style="font-size:13px; font-weight:700; color:var(--text-main);">Rótulo da Área do Aluno</span>
+                    <input id="m2-branding-student-label" class="m2-input" type="text" value="${escapeHtml(branding.student_area_label || 'Área do Aluno')}" placeholder="Ex.: Área do Aluno" maxlength="60">
+                    <small>Exibido no cabeçalho e menu na visão do estudante.</small>
+                  </label>
 
-                <label class="m2-field-label">
-                  Texto do Painel do Mentor
-                  <input id="m2-branding-mentor-label" class="m2-field-input" type="text" value="${escapeHtml(branding.mentor_panel_label || 'Painel do Mentor')}" placeholder="Ex.: Painel do Mentor" maxlength="60" style="margin-top:6px;">
-                  <small style="color:var(--text-muted); font-size:11px; display:block; margin-top:4px;">Substitui o rótulo 'Painel do Mentor' na visão do mentor.</small>
-                </label>
-              </div>
+                  <label class="m2-field-label">
+                    <span style="font-size:13px; font-weight:700; color:var(--text-main);">Rótulo do Painel do Mentor</span>
+                    <input id="m2-branding-mentor-label" class="m2-input" type="text" value="${escapeHtml(branding.mentor_panel_label || 'Painel do Mentor')}" placeholder="Ex.: Painel do Mentor" maxlength="60">
+                    <small>Exibido no cabeçalho e menu na visão do mentor/gestor.</small>
+                  </label>
+                </div>
 
-              <div style="margin-top:18px;">
-                <button type="button" class="m2-btn m2-btn-primary" data-action="save-platform-branding">
-                  ${icon('save', 16)} Salvar textos da marca
-                </button>
+                <div style="display:flex; justify-content:flex-end; margin-top:6px;">
+                  <button type="button" class="m2-btn m2-btn-primary" data-action="save-platform-branding" style="display:inline-flex; align-items:center; gap:8px; font-weight:700;">
+                    ${icon('check', 15)} Salvar Textos da Marca
+                  </button>
+                </div>
               </div>
             </section>
 
