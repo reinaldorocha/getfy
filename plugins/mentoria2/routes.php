@@ -41,6 +41,9 @@ Route::delete('/products/{product}', [PanelController::class, 'disableProduct'])
 Route::get('/settings/student-home-banner', [MentoriaSettingsController::class, 'studentHomeBanner'])->name('mentoria2.settings.student-home-banner.show');
 Route::post('/settings/student-home-banner', [MentoriaSettingsController::class, 'storeStudentHomeBanner'])->name('mentoria2.settings.student-home-banner.store');
 Route::delete('/settings/student-home-banner', [MentoriaSettingsController::class, 'destroyStudentHomeBanner'])->name('mentoria2.settings.student-home-banner.destroy');
+Route::get('/settings/student-banner', [MentoriaSettingsController::class, 'studentHomeBanner'])->name('mentoria2.settings.student-banner.show');
+Route::post('/settings/student-banner', [MentoriaSettingsController::class, 'storeStudentHomeBanner'])->name('mentoria2.settings.student-banner.store');
+Route::delete('/settings/student-banner', [MentoriaSettingsController::class, 'destroyStudentHomeBanner'])->name('mentoria2.settings.student-banner.destroy');
 Route::get('/settings/logo', [MentoriaSettingsController::class, 'platformLogo'])->name('mentoria2.settings.platform-logo.show');
 Route::post('/settings/logo', [MentoriaSettingsController::class, 'storePlatformLogo'])->name('mentoria2.settings.platform-logo.store');
 Route::delete('/settings/logo', [MentoriaSettingsController::class, 'destroyPlatformLogo'])->name('mentoria2.settings.platform-logo.destroy');

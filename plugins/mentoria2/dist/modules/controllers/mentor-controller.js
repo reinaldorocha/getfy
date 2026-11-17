@@ -457,7 +457,7 @@ export function handleMentorAction({
   }
 
   if (action === 'choose-student-home-banner') {
-    const input = document.getElementById('m2-student-banner-input');
+    const input = document.getElementById('m2-student-home-banner-input') || document.getElementById('m2-student-banner-input');
     if (!input) return true;
     input.value = '';
     input.onchange = () => {
@@ -469,27 +469,27 @@ export function handleMentorAction({
       }
       const formData = new FormData();
       formData.append('banner', file);
-      showToast('Enviando banner...', 'info');
-      api('/mentoria2/settings/student-banner', { method: 'POST', body: formData })
+      showToast('Enviando capa...', 'info');
+      api('/mentoria2/settings/student-home-banner', { method: 'POST', body: formData })
         .then(result => {
           window.M2Data.mentorship = { ...(window.M2Data.mentorship || {}), student_home_banner: result.student_home_banner || null };
           render();
-          showToast('Banner da tela inicial do aluno atualizado com sucesso.', 'success');
+          showToast('Capa da área do aluno atualizada com sucesso.', 'success');
         })
-        .catch(() => showToast('Não foi possível enviar o banner.', 'error'));
+        .catch(() => showToast('Não foi possível enviar a capa.', 'error'));
     };
     input.click();
     return true;
   }
 
   if (action === 'remove-student-home-banner') {
-    api('/mentoria2/settings/student-banner', { method: 'DELETE' })
+    api('/mentoria2/settings/student-home-banner', { method: 'DELETE' })
       .then(() => {
         window.M2Data.mentorship = { ...(window.M2Data.mentorship || {}), student_home_banner: null };
         render();
-        showToast('Banner da tela inicial removido com sucesso.', 'success');
+        showToast('Capa da área do aluno removida com sucesso.', 'success');
       })
-      .catch(() => showToast('Não foi possível remover o banner.', 'error'));
+      .catch(() => showToast('Não foi possível remover a capa.', 'error'));
     return true;
   }
 

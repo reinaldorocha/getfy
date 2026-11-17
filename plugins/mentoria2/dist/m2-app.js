@@ -52,7 +52,7 @@ import {
   hydrateDataFromPayload,
   icon,
   escapeHtml
-} from './modules/core.js?v=ea697af2a1b3';
+} from './modules/core.js?v=62f85f7866e0';
 
 import {
   renderSidebar,
@@ -62,20 +62,20 @@ import {
   renderFloatingMiniTimer,
   renderFloatingAiChat,
   renderModals
-} from './modules/shell.js?v=ea697af2a1b3';
+} from './modules/shell.js?v=62f85f7866e0';
 
 import {
   viewEntry,
   viewOnboarding,
   viewToday,
   viewPlanning
-} from './modules/routine.js?v=ea697af2a1b3';
+} from './modules/routine.js?v=62f85f7866e0';
 
 import {
   viewSyllabus,
   viewCalculadora,
   viewRadarEditais
-} from './modules/curriculum.js?v=ea697af2a1b3';
+} from './modules/curriculum.js?v=62f85f7866e0';
 
 import {
   viewQuestions,
@@ -92,13 +92,13 @@ import {
   viewMaterials,
   viewCourses,
   viewRedacao
-} from './modules/study.js?v=ea697af2a1b3';
+} from './modules/study.js?v=62f85f7866e0';
 
 import {
   viewProgress,
   viewGoals,
   viewRanking
-} from './modules/metrics.js?v=ea697af2a1b3';
+} from './modules/metrics.js?v=62f85f7866e0';
 
 import {
   viewMentorOverview,
@@ -125,22 +125,22 @@ import {
   viewMentorPrompts,
   viewMentorAiCosts,
   viewMentorRadarEditais
-} from './modules/mentor.js?v=ea697af2a1b3';
+} from './modules/mentor.js?v=62f85f7866e0';
 
 import {
   viewTutor,
   viewAiMemory,
   viewSettings,
   viewHelp
-} from './modules/ai.js?v=ea697af2a1b3';
+} from './modules/ai.js?v=62f85f7866e0';
 
 import {
   setupEvents,
   destroyEvents
-} from './modules/events.js?v=ea697af2a1b3';
-import { loadMentorResource } from './modules/mentor-resources.js?v=ea697af2a1b3';
-import { api } from './modules/api/client.js?v=ea697af2a1b3';
-import { sanitizeRenderedHtml } from './utils/escape-html.js?v=ea697af2a1b3';
+} from './modules/events.js?v=62f85f7866e0';
+import { loadMentorResource } from './modules/mentor-resources.js?v=62f85f7866e0';
+import { api } from './modules/api/client.js?v=62f85f7866e0';
+import { sanitizeRenderedHtml } from './utils/escape-html.js?v=62f85f7866e0';
 
 /**
  * Router Principal que seleciona a tela conforme state.mode e state.screen
