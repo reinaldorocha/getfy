@@ -711,11 +711,11 @@ class MetricsService
                     : (is_array($latestOrder->metadata) ? $latestOrder->metadata : []);
                 $utm = trim((string) ($meta['utm_source'] ?? $meta['origin'] ?? $meta['source'] ?? ''));
                 $prodName = $productsById->get($latestOrder->product_id) ?? 'Produto Getfy';
-                $origin = $utm !== '' ? $utm : ('Checkout Getfy · ' . $prodName);
+                $origin = $utm !== '' ? $utm : $this->normalizeProductOrigin((string) $prodName);
             } else {
                 $firstProd = $studentProducts->get($sid, collect())->first();
                 if ($firstProd && $productsById->has($firstProd->product_id)) {
-                    $origin = 'Matrícula Direta · ' . $productsById->get($firstProd->product_id);
+                    $origin = $this->normalizeProductOrigin((string) $productsById->get($firstProd->product_id));
                 }
             }
 
@@ -776,6 +776,7 @@ class MetricsService
         usort($students, fn ($a, $b) => $b['activity_score'] <=> $a['activity_score']);
 
         $totalStudents = count($students);
+        $originCounts = $this->mergeRedundantOrigins($originCounts, $students);
         arsort($originCounts);
         $byOrigin = [];
         foreach ($originCounts as $label => $count) {
@@ -796,5 +797,59 @@ class MetricsService
             'by_origin' => $byOrigin,
             'students' => $students,
         ];
+    }
+
+    private function normalizeProductOrigin(string $name): string
+    {
+        $clean = trim(preg_replace('/^(Checkout Getfy|Matr[ií]cula Direta)\s*[·\-]\s*/iu', '', trim($name)) ?? $name);
+        $clean = preg_replace('/\s*[-–|]\s*(c[oó]pia|copy|mensal|anual|semestral|trimestral|vital[ií]cio|recorrente|\d+\s*(encontros?|mes(?:es)?|anos?|dias?)|turma\s*\d+|lote\s*\d+|v\d+)\s*$/iu', '', $clean) ?? $clean;
+        $clean = preg_replace('/\s*\((c[oó]pia|copy|mensal|anual|semestral|trimestral|vital[ií]cio|turma\s*\d+|v\d+)\)\s*$/iu', '', $clean) ?? $clean;
+        $clean = preg_replace('/\s+c[oó]pia(\s+\d+)?$/iu', '', $clean) ?? $clean;
+
+        return trim($clean) !== '' ? trim($clean) : trim($name);
+    }
+
+    private function mergeRedundantOrigins(array $originCounts, array &$students): array
+    {
+        $keys = array_keys($originCounts);
+        usort($keys, fn ($a, $b) => mb_strlen($a) <=> mb_strlen($b));
+
+        $canonicalMap = [];
+        foreach ($keys as $key) {
+            $lowerKey = mb_strtolower($key);
+            $matched = $key;
+            foreach ($keys as $shorter) {
+                if ($shorter === $key) {
+                    continue;
+                }
+                $lowerShorter = mb_strtolower($shorter);
+                if (mb_strlen($lowerShorter) >= 4 && (
+                    str_starts_with($lowerKey, $lowerShorter . ' - ')
+                    || str_starts_with($lowerKey, $lowerShorter . ' | ')
+                    || str_starts_with($lowerKey, $lowerShorter . ' (')
+                    || str_starts_with($lowerKey, $lowerShorter . ' · ')
+                )) {
+                    $matched = $canonicalMap[$shorter] ?? $shorter;
+                    break;
+                }
+            }
+            $canonicalMap[$key] = $matched;
+        }
+
+        $merged = [];
+        foreach ($originCounts as $label => $count) {
+            $target = $canonicalMap[$label] ?? $label;
+            $merged[$target] = ($merged[$target] ?? 0) + $count;
+        }
+
+        foreach ($students as &$st) {
+            $orig = $st['origin'] ?? '';
+            if (isset($canonicalMap[$orig])) {
+                $st['origin'] = $canonicalMap[$orig];
+            }
+        }
+        unset($st);
+
+        return $merged;
     }
 }

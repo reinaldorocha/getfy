@@ -355,9 +355,23 @@ class MockCatalogController extends Controller
             }
         }
 
+        $productName = 'Simulado: ' . Str::limit($title, 120, '');
+        $existingByName = Product::query()
+            ->where('tenant_id', $tenantId)
+            ->where('is_active', true)
+            ->whereIn('name', [$productName, $title])
+            ->first();
+
+        if ($existingByName) {
+            if ($price !== null && (float) $existingByName->price !== $price) {
+                $existingByName->update(['price' => $price]);
+            }
+            return [(string) $existingByName->id, (string) $existingByName->checkout_slug];
+        }
+
         $product = Product::create([
             'tenant_id' => $tenantId,
-            'name' => 'Simulado: ' . Str::limit($title, 120, ''),
+            'name' => $productName,
             'slug' => Str::slug(Str::limit($title, 40, '')) . '-' . Str::lower(Str::random(5)),
             'type' => Product::TYPE_LINK_PAGAMENTO,
             'billing_type' => Product::BILLING_ONE_TIME,
