@@ -132,13 +132,23 @@ class AiUsageService
             ->limit(50)
             ->get();
 
+        $limitsMap = DB::table('mentoria2_preferences')
+            ->where('tenant_id', $tenantId)
+            ->whereNotNull('ai_credit_limit')
+            ->pluck('ai_credit_limit', 'student_id');
+
         $studentsRanking = [];
         foreach ($studentRows as $s) {
+            $sid = $s->student_id ? (int) $s->student_id : null;
+            $limit = ($sid !== null && $limitsMap->has($sid)) ? (int) $limitsMap->get($sid) : null;
+            $used = (int) $s->requests_count;
             $studentsRanking[] = [
-                'student_id' => $s->student_id ? (int) $s->student_id : null,
+                'student_id' => $sid,
                 'name' => $s->student_name,
                 'email' => $s->student_email,
-                'requests_count' => (int) $s->requests_count,
+                'requests_count' => $used,
+                'ai_credit_limit' => $limit,
+                'remaining_credits' => $limit !== null ? max(0, $limit - $used) : null,
                 'total_tokens' => (int) $s->total_tokens,
                 'cost_usd' => (float) $s->cost_usd,
                 'cost_brl' => (float) $s->cost_brl,
@@ -191,6 +201,74 @@ class AiUsageService
             'students_ranking' => $studentsRanking,
             'recent_logs' => $recentLogs,
         ];
+    }
+
+    public function getStudentUsageCount(int $tenantId, int $studentId): int
+    {
+        return (int) DB::table('mentoria2_ai_usage_logs')
+            ->where('tenant_id', $tenantId)
+            ->where('student_id', $studentId)
+            ->count();
+    }
+
+    public function getStudentLimit(int $tenantId, int $studentId): ?int
+    {
+        $limit = DB::table('mentoria2_preferences')
+            ->where('tenant_id', $tenantId)
+            ->where('student_id', $studentId)
+            ->value('ai_credit_limit');
+
+        return $limit !== null ? (int) $limit : null;
+    }
+
+    public function setStudentLimit(int $tenantId, int $studentId, ?int $limit): array
+    {
+        $existing = DB::table('mentoria2_preferences')
+            ->where('tenant_id', $tenantId)
+            ->where('student_id', $studentId)
+            ->first();
+
+        if ($existing) {
+            DB::table('mentoria2_preferences')
+                ->where('id', $existing->id)
+                ->update([
+                    'ai_credit_limit' => $limit,
+                    'updated_at' => now(),
+                ]);
+        } else {
+            DB::table('mentoria2_preferences')->insert([
+                'id' => (string) Str::uuid(),
+                'tenant_id' => $tenantId,
+                'student_id' => $studentId,
+                'tour_completed' => false,
+                'settings' => json_encode([]),
+                'ai_credit_limit' => $limit,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
+
+        $used = $this->getStudentUsageCount($tenantId, $studentId);
+
+        return [
+            'student_id' => $studentId,
+            'ai_credit_limit' => $limit,
+            'ai_credits_used' => $used,
+            'remaining_credits' => $limit !== null ? max(0, $limit - $used) : null,
+        ];
+    }
+
+    public function assertWithinStudentLimit(int $tenantId, int $studentId): void
+    {
+        $limit = $this->getStudentLimit($tenantId, $studentId);
+        if ($limit === null) {
+            return;
+        }
+
+        $used = $this->getStudentUsageCount($tenantId, $studentId);
+        if ($used >= $limit) {
+            abort(429, "Limite de créditos de IA ({$limit}) atingido para este aluno. Solicite ao mentor a ampliação do limite.");
+        }
     }
 }
 

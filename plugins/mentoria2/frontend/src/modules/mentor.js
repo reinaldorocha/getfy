@@ -15,14 +15,23 @@ export function viewMentorAiCosts() {
   const logs = Array.isArray(stats.recent_logs) ? stats.recent_logs : [];
   const money = value => Number(value || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
   const integer = value => Number(value || 0).toLocaleString('pt-BR');
+  const studentsRanking = Array.isArray(stats.students_ranking) ? stats.students_ranking : [];
+  const allStudents = window.M2Data.mentorStudents || window.M2Data.students || [];
 
   return `<div class="m2-content">
-    <div class="m2-page-header"><div class="m2-page-title-group"><span class="m2-eyebrow">IA e automações</span><h1 class="m2-page-title">Consumo e custos de IA</h1><p class="m2-page-subtitle">Dados auditáveis de uso da IA pela mentoria.</p></div><button class="m2-btn m2-btn-secondary" data-action="refresh-ai-costs">${icon('refresh-cw', 15)} Atualizar</button></div>
+    <div class="m2-page-header"><div class="m2-page-title-group"><span class="m2-eyebrow">IA e automações</span><h1 class="m2-page-title">Consumo e Limites de IA</h1><p class="m2-page-subtitle">Dados auditáveis de uso da IA e controle de créditos por aluno.</p></div><button class="m2-btn m2-btn-secondary" data-action="refresh-ai-costs">${icon('refresh-cw', 15)} Atualizar</button></div>
     <section class="m2-grid-4" style="margin-bottom:18px;">
       <article class="m2-card"><span class="m2-kpi-label">Custo estimado</span><strong class="m2-kpi-value">${money(totals.total_cost_brl)}</strong></article>
       <article class="m2-card"><span class="m2-kpi-label">Solicitações</span><strong class="m2-kpi-value">${integer(totals.total_requests)}</strong></article>
       <article class="m2-card"><span class="m2-kpi-label">Tokens processados</span><strong class="m2-kpi-value">${integer(totals.total_tokens)}</strong></article>
       <article class="m2-card"><span class="m2-kpi-label">Alunos que usaram IA</span><strong class="m2-kpi-value">${integer(totals.total_students)}</strong></article>
+    </section>
+    <section class="m2-card" style="margin-bottom:18px;">
+      <div class="m2-card-header"><div><h2 class="m2-card-title">Créditos e Limites de IA por Aluno</h2><p class="m2-card-subtitle">Defina cotas individuais de solicitações de IA para cada aluno.</p></div></div>
+      ${allStudents.length ? `<div class="m2-table-wrap"><table class="m2-table"><thead><tr><th>Aluno</th><th>Solicitações usadas</th><th>Limite configurado</th><th>Ação</th></tr></thead><tbody>${allStudents.map(st => {
+        const limitLabel = st.ai_credit_limit !== null && st.ai_credit_limit !== undefined ? `${st.ai_credit_limit} créditos` : 'Ilimitado';
+        return `<tr><td><strong>${escapeHtml(st.name)}</strong><span style="display:block;font-size:11px;color:var(--text-muted);">${escapeHtml(st.email)}</span></td><td>${integer(st.ai_credits_used || 0)}</td><td><span class="m2-pill ${st.ai_credit_limit === 0 ? 'm2-pill-rose' : st.ai_credit_limit !== null && st.ai_credit_limit !== undefined ? 'm2-pill-amber' : 'm2-pill-teal'}">${escapeHtml(limitLabel)}</span></td><td><button type="button" class="m2-btn m2-btn-secondary m2-btn-sm" data-action="open-student-ai-limit" data-student-id="${st.id}" data-student-name="${escapeHtml(st.name)}" data-used="${Number(st.ai_credits_used || 0)}" data-limit="${st.ai_credit_limit !== null && st.ai_credit_limit !== undefined ? st.ai_credit_limit : ''}">${icon('settings', 13)} Limitar IA</button></td></tr>`;
+      }).join('')}</tbody></table></div>` : (studentsRanking.length ? `<div class="m2-table-wrap"><table class="m2-table"><thead><tr><th>Aluno</th><th>Solicitações</th><th>Limite</th><th>Custo</th></tr></thead><tbody>${studentsRanking.map(s => `<tr><td>${escapeHtml(s.name)}</td><td>${integer(s.requests_count)}</td><td>${s.ai_credit_limit !== null && s.ai_credit_limit !== undefined ? `${s.ai_credit_limit}` : 'Ilimitado'}</td><td>${money(s.cost_brl)}</td></tr>`).join('')}</tbody></table></div>` : `<div class="m2-empty-state"><div class="m2-empty-icon">${icon('users', 24)}</div><h3>Nenhum aluno matriculado</h3><p>Os controles individuais aparecerão aqui quando houver alunos na mentoria.</p></div>`)}
     </section>
     <section class="m2-card" style="margin-bottom:18px;"><div class="m2-card-header"><div><h2 class="m2-card-title">Uso por recurso</h2><p class="m2-card-subtitle">Custo e volume registrados por recurso.</p></div></div>${byFeature.length ? `<div class="m2-table-wrap"><table class="m2-table"><thead><tr><th>Recurso</th><th>Solicitações</th><th>Tokens</th><th>Custo</th></tr></thead><tbody>${byFeature.map(row => `<tr><td>${escapeHtml(row.label || row.feature || 'IA')}</td><td>${integer(row.count)}</td><td>${integer(row.total_tokens)}</td><td>${money(row.cost_brl)}</td></tr>`).join('')}</tbody></table></div>` : `<div class="m2-empty-state"><div class="m2-empty-icon">${icon('sparkles', 24)}</div><h3>Sem consumo registrado</h3><p>Os custos aparecerão aqui quando os recursos de IA forem utilizados.</p></div>`}</section>
     <section class="m2-card"><div class="m2-card-header"><div><h2 class="m2-card-title">Atividade recente</h2><p class="m2-card-subtitle">Últimos registros processados pelo serviço de IA.</p></div></div>${logs.length ? `<div class="m2-table-wrap"><table class="m2-table"><thead><tr><th>Recurso</th><th>Usuário</th><th>Modelo</th><th>Tokens</th><th>Custo</th><th>Data</th></tr></thead><tbody>${logs.map(log => `<tr><td>${escapeHtml(log.feature_label || log.feature || 'IA')}</td><td>${escapeHtml(log.student_name || 'Mentor / Sistema')}</td><td>${escapeHtml(log.model || '—')}</td><td>${integer(log.total_tokens)}</td><td>${money(log.cost_brl)}</td><td>${escapeHtml(log.created_at || '—')}</td></tr>`).join('')}</tbody></table></div>` : `<div class="m2-empty-state"><div class="m2-empty-icon">${icon('activity', 24)}</div><h3>Nenhum registro recente</h3><p>Esta tela exibirá somente eventos persistidos pelo serviço de IA.</p></div>`}</section>
@@ -311,7 +320,7 @@ export function viewMentorStudents() {
                   <th>Turma / Concurso</th>
                   <th>Última Atividade</th>
                   <th>Progresso Edital</th>
-                  <th>Carga Semanal</th>
+                  <th>Créditos IA</th>
                   <th>Risco</th>
                   <th>Ações</th>
                 </tr>
@@ -342,12 +351,13 @@ export function viewMentorStudents() {
                         <span>${Number(st.progressPct) || 0}%</span>
                       </div>
                     </td>
-                    <td>${Number(st.hoursWeek) || 0}h</td>
+                    <td>${Number(st.ai_credits_used || 0)} / ${st.ai_credit_limit !== null && st.ai_credit_limit !== undefined ? st.ai_credit_limit : '∞'}</td>
                     <td>
                       <span class="m2-pill ${st.riskLevel === 'Alto' ? 'm2-pill-rose' : st.riskLevel === 'Médio' ? 'm2-pill-amber' : 'm2-pill-green'}">${escapeHtml(st.riskLevel)}</span>
                     </td>
                     <td>
-                      <div style="display:flex; gap:6px;">
+                      <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                        <button type="button" class="m2-btn m2-btn-sm m2-btn-secondary" data-action="open-student-ai-limit" data-student-id="${st.id}" data-student-name="${escapeHtml(st.name)}" data-used="${Number(st.ai_credits_used || 0)}" data-limit="${st.ai_credit_limit !== null && st.ai_credit_limit !== undefined ? st.ai_credit_limit : ''}" title="Limitar Créditos de IA">${icon('sparkles', 13)} Limite IA</button>
                         <button type="button" class="m2-btn m2-btn-sm m2-btn-secondary" data-action="open-assign-contest-modal" data-student-id="${st.id}" data-student-name="${escapeHtml(st.name)}" title="Atribuir Concurso">${icon('shield', 13)} Concurso</button>
                         <button type="button" class="m2-btn m2-btn-sm m2-btn-secondary" data-action="open-student-profile" data-id="${st.id}">Perfil</button>
                         <button type="button" class="m2-btn m2-btn-sm m2-btn-primary" data-action="open-student-workspace" data-id="${st.id}">Workspace</button>
@@ -1407,20 +1417,61 @@ export function viewMentorMaterials() {
 export function viewMentorMockExams() {
     const mocks = window.M2Data.mockExams || [];
     const officialMocks = state.officialMocks || [];
+    const mockCatalog = window.M2Data.mockCatalog || [];
 
     return `
       <div class="m2-content">
         <div class="m2-page-header">
           <div class="m2-page-title-group">
             <span class="m2-eyebrow">Provas e Agendamentos</span>
-            <h1 class="m2-page-title">Configura??o de Simulados</h1>
-            <p class="m2-page-subtitle">Publique provas oficiais por turma, acompanhe ades?o e confira o ranking real.</p>
+            <h1 class="m2-page-title">Configuração de Simulados</h1>
+            <p class="m2-page-subtitle">Cadastre simulados com PDF simples, defina gratuidade ou venda via Checkout Getfy e gerencie provas oficiais.</p>
           </div>
           <div style="display:flex; gap:8px; flex-wrap:wrap;">
+            <button type="button" class="m2-btn m2-btn-primary" data-action="open-mock-catalog-modal">${icon('plus', 16)} Novo Simulado PDF / Checkout</button>
             <button type="button" class="m2-btn m2-btn-secondary" data-action="load-official-mocks">${icon('refresh-cw', 16)} Atualizar oficiais</button>
             <button type="button" class="m2-btn m2-btn-secondary" data-action="open-official-mock-modal">${icon('award', 16)} Publicar oficial</button>
-            <button type="button" class="m2-btn m2-btn-primary" data-action="create-mock">${icon('plus', 16)} Criar Simulado</button>
           </div>
+        </div>
+
+        <div class="m2-card" style="margin-bottom:16px;">
+          <div class="m2-card-header">
+            <div>
+              <h2 style="font-size:18px;font-weight:700;">Simulados em PDF & Checkout Getfy</h2>
+              <p style="font-size:13px;color:var(--text-muted);margin-top:4px;">Disponibilize o PDF para download gratuito ou configure valor para compra via Checkout Getfy.</p>
+            </div>
+            <button type="button" class="m2-btn m2-btn-primary m2-btn-sm" data-action="open-mock-catalog-modal">${icon('plus', 14)} Cadastrar Simulado</button>
+          </div>
+          ${mockCatalog.length === 0 ? `
+            <p class="m2-empty-inline">Nenhum simulado em PDF cadastrado ainda. Clique em "Cadastrar Simulado" para enviar um PDF e definir se é gratuito ou pago.</p>
+          ` : `
+            <div style="display:flex;flex-direction:column;gap:10px;">
+              ${mockCatalog.map(mc => `
+                <div style="display:flex;justify-content:space-between;align-items:center;gap:14px;padding:14px;border:1px solid var(--border-color);border-radius:10px;flex-wrap:wrap;">
+                  <div>
+                    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                      <strong style="font-size:15px;">${escapeHtml(mc.title)}</strong>
+                      ${mc.is_paid
+                        ? `<span class="m2-pill m2-pill-amber">Pago · R$ ${Number(mc.price || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>`
+                        : `<span class="m2-pill m2-pill-green">Gratuito</span>`}
+                      ${mc.has_pdf
+                        ? `<span class="m2-pill m2-pill-teal">PDF anexado</span>`
+                        : `<span class="m2-pill">Sem PDF</span>`}
+                    </div>
+                    <div style="font-size:12px;color:var(--text-muted);margin-top:4px;">
+                      ${[mc.board_style, mc.questions_count ? `${mc.questions_count} questões` : null, mc.time_minutes ? `${mc.time_minutes} min` : null].filter(Boolean).join(' · ') || 'Simulado'}
+                      ${mc.checkout_url ? ` · Checkout: <a href="${escapeHtml(mc.checkout_url)}" target="_blank" style="color:var(--accent-teal);text-decoration:underline;">${escapeHtml(mc.checkout_url)}</a>` : ''}
+                    </div>
+                  </div>
+                  <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                    ${mc.download_url ? `<a href="${escapeHtml(mc.download_url)}" class="m2-btn m2-btn-secondary m2-btn-sm" target="_blank">${icon('download', 14)} PDF</a>` : ''}
+                    <button type="button" class="m2-btn m2-btn-secondary m2-btn-sm" data-action="edit-mock-catalog" data-id="${escapeHtml(mc.id)}">${icon('edit', 14)} Editar</button>
+                    <button type="button" class="m2-btn m2-btn-secondary m2-btn-sm" style="color:var(--accent-rose);" data-action="delete-mock-catalog" data-id="${escapeHtml(mc.id)}">${icon('trash', 14)}</button>
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+          `}
         </div>
 
         <div class="m2-card" style="margin-bottom:16px;">
@@ -1598,34 +1649,132 @@ export function viewMentorFeedback() {
     `;
   }
 
-  // M17: Relatórios
+  // M17: Estatísticas Exclusivas do Mentor & Exportação
 export function viewMentorReports() {
-    const cohorts = window.M2Data.cohorts || [];
-    const cohortName = cohorts[0] ? cohorts[0].name : 'Geral';
+    const analytics = window.M2Data.mentorAnalytics || {};
+    const summary = analytics.summary || { total_students: 0, most_active_count: 0, less_active_count: 0, never_opened_count: 0 };
+    const byOrigin = Array.isArray(analytics.by_origin) ? analytics.by_origin : [];
+    const allStudents = Array.isArray(analytics.students) ? analytics.students : [];
+    const activeSegment = state.analyticsSegment || 'all';
+    const filtered = activeSegment === 'all'
+      ? allStudents
+      : allStudents.filter(st => st.segment === activeSegment);
+
+    const segmentLabels = {
+      all: 'Todos os alunos',
+      most_active: 'Mais ativos',
+      less_active: 'Menos ativos',
+      never_opened: 'Nunca abertos'
+    };
+
+    const segmentPill = seg => {
+      if (seg === 'most_active') return '<span class="m2-pill m2-pill-green">Mais ativo</span>';
+      if (seg === 'never_opened') return '<span class="m2-pill m2-pill-rose">Nunca aberto</span>';
+      return '<span class="m2-pill m2-pill-amber">Menos ativo</span>';
+    };
 
     return `
       <div class="m2-content">
         <div class="m2-page-header">
           <div class="m2-page-title-group">
-            <span class="m2-eyebrow">Business Intelligence</span>
-            <h1 class="m2-page-title">Relatórios & Métricas da Mentoria</h1>
-            <p class="m2-page-subtitle">Aproveitamento médio, curvas de retenção e exportação de relatórios em CSV e PDF.</p>
+            <span class="m2-eyebrow">Exclusivo do Mentor</span>
+            <h1 class="m2-page-title">Estatísticas, Origem & Exportação</h1>
+            <p class="m2-page-subtitle">Acompanhe a origem dos alunos, nível de engajamento e exporte listas com nome, e-mail e telefone.</p>
           </div>
-          <button type="button" class="m2-btn m2-btn-secondary" data-action="export-report">
-            ${icon('download', 16)} Exportar CSV
-          </button>
+          <div style="display:flex; gap:8px; flex-wrap:wrap;">
+            <button type="button" class="m2-btn m2-btn-primary" data-action="export-analytics-csv" data-segment="${escapeHtml(activeSegment)}">
+              ${icon('download', 16)} Exportar ${escapeHtml(segmentLabels[activeSegment] || 'Lista')} (CSV)
+            </button>
+          </div>
         </div>
 
-        <div class="m2-card">
-          <p style="font-size:13px; color:var(--text-muted);">
-            Relatório consolidado de constância e desempenho da <strong>${cohortName}</strong>.
-          </p>
-          ${cohorts.length === 0 ? `
-            <div style="text-align:center; padding:24px; color:var(--text-muted);">
-              <p>Cadastre turmas e matricule alunos para gerar relatórios consolidados de desempenho.</p>
+        <section class="m2-grid-4" style="margin-bottom:18px;">
+          <article class="m2-card"><span class="m2-kpi-label">Total de Alunos</span><strong class="m2-kpi-value">${summary.total_students}</strong></article>
+          <article class="m2-card"><span class="m2-kpi-label">Mais Ativos</span><strong class="m2-kpi-value" style="color:var(--accent-green);">${summary.most_active_count}</strong></article>
+          <article class="m2-card"><span class="m2-kpi-label">Menos Ativos</span><strong class="m2-kpi-value" style="color:var(--accent-amber);">${summary.less_active_count}</strong></article>
+          <article class="m2-card"><span class="m2-kpi-label">Nunca Abertos</span><strong class="m2-kpi-value" style="color:var(--accent-rose);">${summary.never_opened_count}</strong></article>
+        </section>
+
+        <section class="m2-card" style="margin-bottom:18px;">
+          <div class="m2-card-header">
+            <div>
+              <h2 class="m2-card-title">Origem dos Alunos</h2>
+              <p class="m2-card-subtitle">Distribuição por canal de aquisição, UTM de checkout ou produto de entrada.</p>
             </div>
-          ` : ''}
-        </div>
+          </div>
+          ${byOrigin.length === 0 ? `<p class="m2-empty-inline">Nenhuma origem registrada ainda.</p>` : `
+            <div style="display:grid; gap:10px;">
+              ${byOrigin.map(item => `
+                <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; padding:10px 12px; border:1px solid var(--border-color); border-radius:10px;">
+                  <div style="flex:1;">
+                    <strong style="font-size:13px;">${escapeHtml(item.origin)}</strong>
+                    <div class="m2-progress-track" style="margin-top:6px; height:6px;">
+                      <div class="m2-progress-fill" style="width:${Number(item.percentage || 0)}%;"></div>
+                    </div>
+                  </div>
+                  <div style="text-align:right; min-width:90px;">
+                    <strong>${item.count} aluno(s)</strong>
+                    <span style="display:block; font-size:11px; color:var(--text-muted);">${item.percentage}%</span>
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+          `}
+        </section>
+
+        <section class="m2-card">
+          <div class="m2-card-header" style="flex-wrap:wrap; gap:12px;">
+            <div>
+              <h2 class="m2-card-title">Segmentação de Alunos & Exportação</h2>
+              <p class="m2-card-subtitle">Filtre e exporte nome, e-mail e telefone por engajamento.</p>
+            </div>
+            <div style="display:flex; gap:6px; flex-wrap:wrap;">
+              <button type="button" class="m2-btn m2-btn-sm ${activeSegment === 'all' ? 'm2-btn-primary' : 'm2-btn-secondary'}" data-action="filter-analytics-segment" data-segment="all">Todos (${summary.total_students})</button>
+              <button type="button" class="m2-btn m2-btn-sm ${activeSegment === 'most_active' ? 'm2-btn-primary' : 'm2-btn-secondary'}" data-action="filter-analytics-segment" data-segment="most_active">Mais ativos (${summary.most_active_count})</button>
+              <button type="button" class="m2-btn m2-btn-sm ${activeSegment === 'less_active' ? 'm2-btn-primary' : 'm2-btn-secondary'}" data-action="filter-analytics-segment" data-segment="less_active">Menos ativos (${summary.less_active_count})</button>
+              <button type="button" class="m2-btn m2-btn-sm ${activeSegment === 'never_opened' ? 'm2-btn-primary' : 'm2-btn-secondary'}" data-action="filter-analytics-segment" data-segment="never_opened">Nunca abertos (${summary.never_opened_count})</button>
+            </div>
+          </div>
+
+          <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px;">
+            <button type="button" class="m2-btn m2-btn-secondary m2-btn-sm" data-action="export-analytics-csv" data-segment="most_active">${icon('download', 13)} Exportar Mais Ativos</button>
+            <button type="button" class="m2-btn m2-btn-secondary m2-btn-sm" data-action="export-analytics-csv" data-segment="less_active">${icon('download', 13)} Exportar Menos Ativos</button>
+            <button type="button" class="m2-btn m2-btn-secondary m2-btn-sm" data-action="export-analytics-csv" data-segment="never_opened">${icon('download', 13)} Exportar Nunca Abertos</button>
+          </div>
+
+          <div class="m2-table-wrapper">
+            <table class="m2-table">
+              <thead>
+                <tr>
+                  <th>Nome</th>
+                  <th>E-mail</th>
+                  <th>Telefone</th>
+                  <th>Origem</th>
+                  <th>Segmento</th>
+                  <th>Horas (7d)</th>
+                  <th>Questões</th>
+                  <th>Última Atividade</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${filtered.length === 0 ? `
+                  <tr><td colspan="8" style="text-align:center; padding:24px; color:var(--text-muted);">Nenhum aluno encontrado neste segmento.</td></tr>
+                ` : filtered.map(st => `
+                  <tr>
+                    <td><strong>${escapeHtml(st.name)}</strong></td>
+                    <td>${escapeHtml(st.email)}</td>
+                    <td>${escapeHtml(st.phone || 'Não informado')}</td>
+                    <td>${escapeHtml(st.origin)}</td>
+                    <td>${segmentPill(st.segment)}</td>
+                    <td>${st.hours_7d}h</td>
+                    <td>${st.questions_solved}</td>
+                    <td>${escapeHtml(st.last_activity_at || 'Nunca acessou')}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        </section>
       </div>
     `;
   }

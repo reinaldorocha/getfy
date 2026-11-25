@@ -1,5 +1,5 @@
-import { state, icon, escapeHtml, getAnnouncements } from './core.js?v=62f85f7866e0';
-import { isSafeHtmlUrl } from '../utils/escape-html.js?v=62f85f7866e0';
+import { state, icon, escapeHtml, getAnnouncements } from './core.js?v=5f31c44948bd';
+import { isSafeHtmlUrl } from '../utils/escape-html.js?v=5f31c44948bd';
 
 const WEEKDAYS = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo'];
 const FULL_WEEKDAYS = ['Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado', 'Domingo'];

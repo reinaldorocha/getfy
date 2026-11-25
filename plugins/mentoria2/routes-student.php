@@ -10,6 +10,7 @@ use Plugins\Mentoria2\Http\Controllers\GoalController;
 use Plugins\Mentoria2\Http\Controllers\GamificationController;
 use Plugins\Mentoria2\Http\Controllers\MaterialController;
 use Plugins\Mentoria2\Http\Controllers\MetricsController;
+use Plugins\Mentoria2\Http\Controllers\MockCatalogController;
 use Plugins\Mentoria2\Http\Controllers\NotificationController;
 use Plugins\Mentoria2\Http\Controllers\QuestionController;
 use Plugins\Mentoria2\Http\Controllers\QuestionReportController;
@@ -31,6 +32,7 @@ Route::patch('/{tenant}/notifications/{notification}/read', [NotificationControl
 /* Edital e materiais */
 Route::patch('/{tenant}/edict-progress/{item}', [StudentController::class, 'updateEdictProgress'])->whereNumber('tenant')->name('edict-progress.update');
 Route::get('/{tenant}/materials/{material}/download', [MaterialController::class, 'downloadStudent'])->whereNumber('tenant')->name('materials.download');
+Route::get('/{tenant}/mock-catalog/{mock}/download', [MockCatalogController::class, 'downloadStudent'])->whereNumber('tenant')->name('mock-catalog.download');
 Route::patch('/{tenant}/materials/{material}/progress', [MaterialController::class, 'updateStudentProgress'])->whereNumber('tenant')->name('materials.progress');
 
 /* Cronograma */

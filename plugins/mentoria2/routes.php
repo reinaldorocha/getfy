@@ -19,6 +19,7 @@ use Plugins\Mentoria2\Http\Controllers\GoalController;
 use Plugins\Mentoria2\Http\Controllers\MaterialController;
 use Plugins\Mentoria2\Http\Controllers\MentoriaSettingsController;
 use Plugins\Mentoria2\Http\Controllers\MetricsController;
+use Plugins\Mentoria2\Http\Controllers\MockCatalogController;
 use Plugins\Mentoria2\Http\Controllers\PanelController;
 use Plugins\Mentoria2\Http\Controllers\QuestionController;
 use Plugins\Mentoria2\Http\Controllers\StudyController;
@@ -161,6 +162,11 @@ Route::delete('/students/{student}/mock-exams/{mock}', [StudyController::class, 
 Route::post('/official-mock-exams', [StudyController::class, 'publishOfficialMock'])->name('mentoria2.official-mock-exams.publish');
 Route::get('/official-mock-exams', [StudyController::class, 'officialMocks'])->name('mentoria2.official-mock-exams.index');
 Route::get('/official-mock-exams/{official}/ranking', [StudyController::class, 'officialMockRanking'])->name('mentoria2.official-mock-exams.ranking');
+Route::get('/mock-catalog', [MockCatalogController::class, 'index'])->name('mentoria2.mock-catalog.index');
+Route::post('/mock-catalog', [MockCatalogController::class, 'store'])->name('mentoria2.mock-catalog.store');
+Route::post('/mock-catalog/{mock}', [MockCatalogController::class, 'update'])->name('mentoria2.mock-catalog.update');
+Route::delete('/mock-catalog/{mock}', [MockCatalogController::class, 'destroy'])->name('mentoria2.mock-catalog.destroy');
+Route::get('/mock-catalog/{mock}/download', [MockCatalogController::class, 'download'])->name('mentoria2.mock-catalog.download');
 Route::get('/students/{student}/exam-config/{contest}', [StudyController::class, 'examConfiguration'])->whereNumber('student')->name('mentoria2.exam-config.show');
 Route::put('/students/{student}/exam-config/{contest}', [StudyController::class, 'saveExamConfiguration'])->whereNumber('student')->name('mentoria2.exam-config.update');
 
@@ -182,6 +188,8 @@ Route::put('/gamification/rules', [GamificationController::class, 'saveRules'])-
 Route::get('/students/{student}/metrics/summary', [MetricsController::class, 'studentSummary'])->whereNumber('student')->name('mentoria2.metrics.summary');
 Route::get('/students/{student}/metrics/timeline', [MetricsController::class, 'studentTimeline'])->whereNumber('student')->name('mentoria2.metrics.timeline');
 Route::get('/students/{student}/metrics/subjects', [MetricsController::class, 'studentSubjects'])->whereNumber('student')->name('mentoria2.metrics.subjects');
+Route::get('/analytics', [MetricsController::class, 'mentorAnalytics'])->name('mentoria2.analytics.index');
+Route::get('/analytics/export', [MetricsController::class, 'exportMentorAnalytics'])->name('mentoria2.analytics.export');
 
 /* Integração simples: questões Mentoria2 dentro das aulas do Member Builder */
 Route::get('/course-products/{product}/questions', [CourseQuestionController::class, 'builderData'])->name('mentoria2.course-questions.data');
@@ -218,6 +226,7 @@ Route::post('/external-import/extract-pdf-text', [ExternalImportController::clas
 /* Consumo e Custos de IA (Mentor) */
 Route::get('/ai-usage/stats', [\Plugins\Mentoria2\Http\Controllers\AiUsageController::class, 'stats'])->name('mentoria2.ai-usage.stats');
 Route::get('/ai-usage/logs', [\Plugins\Mentoria2\Http\Controllers\AiUsageController::class, 'logs'])->name('mentoria2.ai-usage.logs');
+Route::patch('/students/{student}/ai-limit', [\Plugins\Mentoria2\Http\Controllers\AiUsageController::class, 'updateStudentLimit'])->whereNumber('student')->name('mentoria2.students.ai-limit');
 
 
 

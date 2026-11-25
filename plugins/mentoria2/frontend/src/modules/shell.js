@@ -103,40 +103,25 @@ export function renderDesktopNotification() {
     if (isMentor) {
       const mentorAlerts = window.M2Data.mentor?.alertStudentsCount || 0;
       const mentorFeedbacksCount = (window.M2Data.mentorFeedbacks || []).length;
-      // Menu do Mentor (M01 a M20)
-      const mentorNav = [
-        { id: 'mentor-visao-geral', section: 'Visão geral', color: '#f59e0b', defaultOpen: true, items: [
-          { id: 'mentor-overview', label: 'Radar da Mentoria', icon: 'layout-dashboard', badge: mentorAlerts > 0 ? String(mentorAlerts) : '' },
-        ]},
-        { id: 'mentor-alunos', section: 'Alunos e turmas', color: '#10b981', defaultOpen: true, items: [
-          { id: 'mentor-students', label: 'Alunos', icon: 'users' },
-          { id: 'mentor-cohorts', label: 'Turmas', icon: 'folder' },
-          { id: 'mentor-feedback', label: 'Feedbacks pedagógicos', icon: 'message-square', badge: mentorFeedbacksCount > 0 ? String(mentorFeedbacksCount) : '' },
-        ]},
-        { id: 'mentor-planejamento', section: 'Planejamento', color: '#ec4899', defaultOpen: true, items: [
-          { id: 'mentor-contests', label: 'Concursos & Editais', icon: 'shield' },
-          { id: 'mentor-radar-editais', label: 'Radar de Editais', icon: 'radar' },
-          { id: 'mentor-import-review', label: 'Importar Edital', icon: 'sparkles' }
-        ]},
-        { id: 'mentor-conteudos', section: 'Conteúdos e avaliações', color: '#6366f1', defaultOpen: true, items: [
-          { id: 'mentor-contents', label: 'Biblioteca de Conteúdos', icon: 'layers' },
-          { id: 'mentor-materials', label: 'Materiais & PDFs', icon: 'file-text' },
-          { id: 'mentor-questions', label: 'Banco de Questões', icon: 'circle-help' },
-          { id: 'mentor-flashcards', label: 'Baralhos Oficiais', icon: 'rotate-3d' },
-          { id: 'mentor-mock-exams', label: 'Simulados', icon: 'clipboard-list' },
-        ]},
-        { id: 'mentor-resultados', section: 'Resultados', color: '#10b981', defaultOpen: true, items: [
-          { id: 'mentor-reports', label: 'Relatórios & Métricas', icon: 'chart-no-axes-combined' },
-        ]},
-        { id: 'mentor-ia', section: 'IA e automações', color: '#06b6d4', defaultOpen: true, items: [
-          { id: 'mentor-prompts', label: 'Prompts IA & Importação JSON', icon: 'sparkles', badge: 'Novo' },
-          { id: 'mentor-ai-costs', label: 'Consumo & Custos de IA', icon: 'sparkles', badge: 'IA' },
-        ]},
-        { id: 'mentor-admin', section: 'Administração', color: '#8b5cf6', defaultOpen: true, items: [
-          { id: 'mentor-products', label: 'Produtos Getfy', icon: 'award' },
-          { id: 'mentor-settings', label: 'Configurações', icon: 'settings' },
-          { id: 'mentor-audit', label: 'Trilha de Auditoria', icon: 'activity' }
-        ]}
+      // Menu do Mentor em lista única (sem categorias e sem Radar de Editais)
+      const mentorNavItems = [
+        { id: 'mentor-overview', label: 'Radar da Mentoria', icon: 'layout-dashboard', badge: mentorAlerts > 0 ? String(mentorAlerts) : '' },
+        { id: 'mentor-students', label: 'Alunos', icon: 'users' },
+        { id: 'mentor-cohorts', label: 'Turmas', icon: 'folder' },
+        { id: 'mentor-feedback', label: 'Feedbacks pedagógicos', icon: 'message-square', badge: mentorFeedbacksCount > 0 ? String(mentorFeedbacksCount) : '' },
+        { id: 'mentor-contests', label: 'Concursos & Editais', icon: 'shield' },
+        { id: 'mentor-import-review', label: 'Importar Edital', icon: 'sparkles' },
+        { id: 'mentor-contents', label: 'Biblioteca de Conteúdos', icon: 'layers' },
+        { id: 'mentor-materials', label: 'Materiais & PDFs', icon: 'file-text' },
+        { id: 'mentor-questions', label: 'Banco de Questões', icon: 'circle-help' },
+        { id: 'mentor-flashcards', label: 'Baralhos Oficiais', icon: 'rotate-3d' },
+        { id: 'mentor-mock-exams', label: 'Simulados', icon: 'clipboard-list' },
+        { id: 'mentor-reports', label: 'Estatísticas & Exportação', icon: 'chart-no-axes-combined' },
+        { id: 'mentor-prompts', label: 'Prompts IA & Importação JSON', icon: 'sparkles', badge: 'Novo' },
+        { id: 'mentor-ai-costs', label: 'Consumo & Limites de IA', icon: 'sparkles', badge: 'IA' },
+        { id: 'mentor-products', label: 'Produtos Getfy', icon: 'award' },
+        { id: 'mentor-settings', label: 'Configurações', icon: 'settings' },
+        { id: 'mentor-audit', label: 'Trilha de Auditoria', icon: 'activity' }
       ];
 
       return `
@@ -152,38 +137,17 @@ export function renderDesktopNotification() {
             </button>
           </div>
 
-          <div style="display:flex; flex-direction:column; gap:8px;" class="m2-nav-sections-accordion">
-            ${mentorNav.map(sec => {
-              const containsActive = sec.items.some(it => it.id === state.screen);
-              const isSectionOpen = (state.sidebarSectionsOpen && state.sidebarSectionsOpen[sec.id] !== undefined)
-                ? state.sidebarSectionsOpen[sec.id]
-                : (containsActive || (sec.defaultOpen !== false));
-              return `
-                <div class="m2-nav-section ${isSectionOpen ? 'is-open' : 'is-collapsed'}">
-                  <button type="button" class="m2-nav-section-header" data-action="toggle-nav-section" data-section-id="${sec.id}" title="${isSectionOpen ? 'Recolher ' + sec.section : 'Expandir ' + sec.section}">
-                    <span class="m2-nav-section-title-wrap">
-                      <span class="m2-nav-section-dot" style="background:${sec.color || '#0ab5bd'};"></span>
-                      <span class="m2-nav-label">${sec.section}</span>
-                    </span>
-                    <span class="m2-nav-section-chevron ${isSectionOpen ? 'open' : ''}">
-                      ${icon('chevron-down', 13)}
-                    </span>
-                  </button>
-                  <div class="m2-nav-section-items" style="${isSectionOpen ? '' : 'display:none;'}">
-                    ${sec.items.map(it => `
-                      <button type="button" class="m2-nav-item ${state.screen === it.id ? 'active' : ''}" data-nav="${it.id}">
-                        <span class="m2-nav-item-left">
-                          ${icon(it.icon, 16)}
-                          <span>${it.label}</span>
-                        </span>
-                        ${it.badge ? `<span class="m2-nav-badge">${it.badge}</span>` : ''}
-                      </button>
-                    `).join('')}
-                  </div>
-                </div>
-              `;
-            }).join('')}
-          </div>
+          <nav style="display:flex; flex-direction:column; gap:4px;" class="m2-nav-flat" aria-label="Menu do Mentor">
+            ${mentorNavItems.map(it => `
+              <button type="button" class="m2-nav-item ${state.screen === it.id ? 'active' : ''}" data-nav="${it.id}">
+                <span class="m2-nav-item-left">
+                  ${icon(it.icon, 16)}
+                  <span>${it.label}</span>
+                </span>
+                ${it.badge ? `<span class="m2-nav-badge">${it.badge}</span>` : ''}
+              </button>
+            `).join('')}
+          </nav>
 
           <div class="m2-sidebar-footer">
             <div class="m2-sidebar-footer-actions">
@@ -213,47 +177,32 @@ export function renderDesktopNotification() {
     const isSingleQuestionsProduct = !isMentor && !isWorkspace && caps.includes('questoes') && !caps.includes('edital') && !caps.includes('cronograma') && !hasBonus;
     const isSingleMockProduct = !isMentor && !isWorkspace && caps.includes('simulados') && !caps.includes('edital') && !caps.includes('cronograma') && !caps.includes('questoes') && !hasBonus;
 
-    // Menu do Aluno (A01 a A23 + Inovações ou Modos Focados Low-Ticket)
-    const studentNav = isSingleQuestionsProduct ? [
-      { id: 'student-caderno', section: 'Meu Caderno de Questões', color: '#6366f1', defaultOpen: true, items: [
-        { id: 'questions', label: 'Caderno de Questões', icon: 'circle-help' },
-        { id: 'error-notebook', label: 'Caderno de Erros', icon: 'alert-triangle', badge: errorsCount > 0 ? String(errorsCount) : '' },
-        { id: 'progress', label: 'Métricas de Resolução', icon: 'chart-no-axes-combined' },
-        { id: 'notebooks', label: 'Minhas Anotações', icon: 'notebook-pen' },
-      ]}
+    // Menu do Aluno em lista única (sem categorias e sem Radar de Editais)
+    const studentNavItems = isSingleQuestionsProduct ? [
+      { id: 'questions', label: 'Caderno de Questões', icon: 'circle-help' },
+      { id: 'error-notebook', label: 'Caderno de Erros', icon: 'alert-triangle', badge: errorsCount > 0 ? String(errorsCount) : '' },
+      { id: 'progress', label: 'Métricas de Resolução', icon: 'chart-no-axes-combined' },
+      { id: 'notebooks', label: 'Minhas Anotações', icon: 'notebook-pen' },
     ] : isSingleMockProduct ? [
-      { id: 'student-simulados', section: 'Meus Simulados', color: '#f59e0b', defaultOpen: true, items: [
-        { id: 'mock-exams', label: 'Simulados', icon: 'clipboard-list' },
-        { id: 'calculadora', label: 'Calculadora Cebraspe', icon: 'calculator' },
-        { id: 'progress', label: 'Métricas de Desempenho', icon: 'chart-no-axes-combined' },
-      ]}
+      { id: 'mock-exams', label: 'Simulados', icon: 'clipboard-list' },
+      { id: 'calculadora', label: 'Calculadora Cebraspe', icon: 'calculator' },
+      { id: 'progress', label: 'Métricas de Desempenho', icon: 'chart-no-axes-combined' },
     ] : [
-      { id: 'student-inicio', section: 'Principal', color: '#ec4899', defaultOpen: true, items: [
-        { id: 'today', label: 'Início', icon: 'house' },
-      ]},
-      { id: 'student-concurso', section: 'Concurso', color: '#f59e0b', defaultOpen: true, items: [
-        { id: 'planning', label: 'Planejamento', icon: 'calendar-days' },
-        { id: 'syllabus', label: 'Edital Verticalizado', icon: 'list-tree' },
-        { id: 'radar-editais', label: 'Radar de Editais & DO', icon: 'radar' }
-      ]},
-      { id: 'student-estudar', section: 'Estudar', color: '#6366f1', defaultOpen: true, items: [
-        { id: 'questions', label: 'Banco de Questões', icon: 'circle-help' },
-        { id: 'redacao', label: 'Oficina de Redação (IA)', icon: 'pen-tool' },
-        { id: 'flashcards', label: 'Flashcards', icon: 'layers', badge: dueFlashcardsCount > 0 ? String(dueFlashcardsCount) : '' },
-        { id: 'reviews', label: 'Revisões Periódicas', icon: 'calendar-sync', badge: pendingReviewsCount > 0 ? String(pendingReviewsCount) : '' },
-        { id: 'mock-exams', label: 'Simulados', icon: 'clipboard-list' },
-        { id: 'error-notebook', label: 'Caderno de Erros', icon: 'alert-triangle', badge: errorsCount > 0 ? String(errorsCount) : '' }
-      ]},
-      { id: 'student-acompanhar', section: 'Acompanhar', color: '#10b981', defaultOpen: false, items: [
-        { id: 'progress', label: 'Desempenho', icon: 'chart-no-axes-combined' },
-        { id: 'notebooks', label: 'Anotações', icon: 'notebook-pen' },
-      ]},
-      { id: 'student-recursos', section: 'Recursos', color: '#06b6d4', defaultOpen: false, items: [
-        { id: 'courses', label: 'Meus Cursos', icon: 'book-open' },
-        { id: 'materials', label: 'Materiais & PDFs', icon: 'file-text' },
-        { id: 'tutor', label: 'Tutor IA Contextual', icon: 'bot' },
-        { id: 'calculadora', label: 'Calculadora Cebraspe', icon: 'calculator' }
-      ]}
+      { id: 'today', label: 'Início', icon: 'house' },
+      { id: 'planning', label: 'Planejamento', icon: 'calendar-days' },
+      { id: 'syllabus', label: 'Edital Verticalizado', icon: 'list-tree' },
+      { id: 'questions', label: 'Banco de Questões', icon: 'circle-help' },
+      { id: 'redacao', label: 'Oficina de Redação (IA)', icon: 'pen-tool' },
+      { id: 'flashcards', label: 'Flashcards', icon: 'layers', badge: dueFlashcardsCount > 0 ? String(dueFlashcardsCount) : '' },
+      { id: 'reviews', label: 'Revisões Periódicas', icon: 'calendar-sync', badge: pendingReviewsCount > 0 ? String(pendingReviewsCount) : '' },
+      { id: 'mock-exams', label: 'Simulados', icon: 'clipboard-list' },
+      { id: 'error-notebook', label: 'Caderno de Erros', icon: 'alert-triangle', badge: errorsCount > 0 ? String(errorsCount) : '' },
+      { id: 'progress', label: 'Desempenho', icon: 'chart-no-axes-combined' },
+      { id: 'notebooks', label: 'Anotações', icon: 'notebook-pen' },
+      { id: 'courses', label: 'Meus Cursos', icon: 'book-open' },
+      { id: 'materials', label: 'Materiais & PDFs', icon: 'file-text' },
+      { id: 'tutor', label: 'Tutor IA Contextual', icon: 'bot' },
+      { id: 'calculadora', label: 'Calculadora Cebraspe', icon: 'calculator' }
     ];
 
     return `
@@ -269,38 +218,17 @@ export function renderDesktopNotification() {
           </button>
         </div>
 
-        <div style="display:flex; flex-direction:column; gap:8px;" class="m2-nav-sections-accordion">
-          ${studentNav.map(sec => {
-            const containsActive = sec.items.some(it => it.id === state.screen);
-            const isSectionOpen = (state.sidebarSectionsOpen && state.sidebarSectionsOpen[sec.id] !== undefined)
-              ? state.sidebarSectionsOpen[sec.id]
-              : (containsActive || (sec.defaultOpen !== false));
-            return `
-              <div class="m2-nav-section ${isSectionOpen ? 'is-open' : 'is-collapsed'}">
-                <button type="button" class="m2-nav-section-header" data-action="toggle-nav-section" data-section-id="${sec.id}" title="${isSectionOpen ? 'Recolher ' + sec.section : 'Expandir ' + sec.section}">
-                  <span class="m2-nav-section-title-wrap">
-                    <span class="m2-nav-section-dot" style="background:${sec.color || '#0ab5bd'};"></span>
-                    <span class="m2-nav-label">${sec.section}</span>
-                  </span>
-                  <span class="m2-nav-section-chevron ${isSectionOpen ? 'open' : ''}">
-                    ${icon('chevron-down', 13)}
-                  </span>
-                </button>
-                <div class="m2-nav-section-items" style="${isSectionOpen ? '' : 'display:none;'}">
-                  ${sec.items.map(it => `
-                    <button type="button" class="m2-nav-item ${state.screen === it.id ? 'active' : ''}" data-nav="${it.id}">
-                      <span class="m2-nav-item-left">
-                        ${icon(it.icon, 16)}
-                        <span>${it.label}</span>
-                      </span>
-                      ${it.badge ? `<span class="m2-nav-badge">${it.badge}</span>` : ''}
-                    </button>
-                  `).join('')}
-                </div>
-              </div>
-            `;
-          }).join('')}
-        </div>
+        <nav style="display:flex; flex-direction:column; gap:4px;" class="m2-nav-flat" aria-label="Menu do Aluno">
+          ${studentNavItems.map(it => `
+            <button type="button" class="m2-nav-item ${state.screen === it.id ? 'active' : ''}" data-nav="${it.id}">
+              <span class="m2-nav-item-left">
+                ${icon(it.icon, 16)}
+                <span>${it.label}</span>
+              </span>
+              ${it.badge ? `<span class="m2-nav-badge">${it.badge}</span>` : ''}
+            </button>
+          `).join('')}
+        </nav>
 
         <div class="m2-sidebar-footer">
           <div class="m2-sidebar-footer-actions">
@@ -776,6 +704,101 @@ export   function renderFloatingMiniTimer() {
       const cohorts = window.M2Data.cohorts || [];
       const questions = state.officialMockQuestions || [];
       return `<div class="m2-modal-overlay" data-action="close-modal-backdrop"><div class="m2-modal-content" style="max-width:720px;"><div class="m2-modal-header"><div><h3>Publicar simulado oficial</h3><p>As mesmas questoes serao disponibilizadas para toda a turma.</p></div><button type="button" class="m2-btn-icon" data-action="close-modal">${icon('x', 16)}</button></div><div style="display:grid;gap:12px;"><label class="m2-modal-field">Titulo<input id="m2-official-mock-name" maxlength="255" required></label><label class="m2-modal-field">Turma<select id="m2-official-mock-cohort">${cohorts.map(cohort => `<option value="${escapeHtml(cohort.id)}">${escapeHtml(cohort.name)}</option>`).join('')}</select></label><div class="m2-completion-grid"><label class="m2-modal-field">Inicio<input id="m2-official-mock-from" type="datetime-local"></label><label class="m2-modal-field">Encerramento<input id="m2-official-mock-until" type="datetime-local"></label><label class="m2-modal-field">Tempo (min)<input id="m2-official-mock-time" type="number" min="1" max="720" value="120"></label><label class="m2-modal-field">Tentativas<input id="m2-official-mock-attempts" type="number" min="1" max="5" value="1"></label></div><div><strong>Questoes publicadas</strong><div style="max-height:220px;overflow:auto;margin-top:8px;display:grid;gap:6px;">${questions.map(question => `<label style="display:flex;gap:8px;padding:8px;border:1px solid var(--border-color);border-radius:8px;"><input type="checkbox" name="m2-official-question" value="${escapeHtml(question.id)}"><span>${escapeHtml(question.subject || 'Geral')} - ${escapeHtml(question.prompt || '')}</span></label>`).join('') || '<p class="m2-empty-inline">Carregando questoes publicadas...</p>'}</div></div></div><div class="m2-modal-actions"><button type="button" class="m2-btn m2-btn-secondary" data-action="close-modal">Cancelar</button><button type="button" class="m2-btn m2-btn-primary" data-action="publish-official-mock">Publicar para a turma</button></div></div></div>`;
+    }
+
+    if (state.modal === 'student-ai-limit') {
+      const target = state.aiLimitTarget || {};
+      const currentLimit = target.limit !== null && target.limit !== undefined ? String(target.limit) : '';
+      return `<div class="m2-modal-overlay" data-action="close-modal-backdrop"><div class="m2-modal-content" style="max-width:480px;" onclick="event.stopPropagation()">
+        <div class="m2-modal-header">
+          <div>
+            <h3>Limitar Créditos de IA</h3>
+            <p>Aluno: <strong>${escapeHtml(target.name || 'Aluno')}</strong> · Usados: ${Number(target.used || 0)}</p>
+          </div>
+          <button type="button" class="m2-btn-icon" data-action="close-modal">${icon('x', 16)}</button>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:14px;">
+          <label class="m2-field-label">
+            <span>Limite máximo de solicitações de IA</span>
+            <input id="m2-ai-limit-input" class="m2-input" type="number" min="0" max="100000" value="${escapeHtml(currentLimit)}" placeholder="Deixe vazio para ilimitado">
+            <small>Deixe em branco para acesso ilimitado, <strong>0</strong> para bloquear IA ou informe a cota máxima (ex.: 10, 30, 50).</small>
+          </label>
+        </div>
+        <div class="m2-modal-actions">
+          <button type="button" class="m2-btn m2-btn-secondary" data-action="close-modal">Cancelar</button>
+          <button type="button" class="m2-btn m2-btn-primary" data-action="save-student-ai-limit">${icon('check', 15)} Salvar Limite</button>
+        </div>
+      </div></div>`;
+    }
+
+    if (state.modal === 'mock-catalog-form') {
+      const mc = state.editingMockCatalog || {};
+      const products = window.M2Data.mentorProducts || [];
+      const isPaid = Boolean(mc.is_paid);
+      return `<div class="m2-modal-overlay" data-action="close-modal-backdrop"><div class="m2-modal-content" style="max-width:620px; max-height:92vh; overflow-y:auto;" onclick="event.stopPropagation()">
+        <div class="m2-modal-header">
+          <div>
+            <h3>${mc.id ? 'Editar Simulado (PDF & Checkout)' : 'Novo Simulado (PDF & Checkout)'}</h3>
+            <p>Cadastre um simulado com PDF simples para download e defina se é gratuito ou pago via Checkout Getfy.</p>
+          </div>
+          <button type="button" class="m2-btn-icon" data-action="close-modal">${icon('x', 16)}</button>
+        </div>
+        <form id="m2-mock-catalog-form" style="display:flex; flex-direction:column; gap:14px;">
+          <label class="m2-field-label">
+            <span>Título do Simulado *</span>
+            <input id="m2-mc-title" class="m2-input" type="text" required value="${escapeHtml(mc.title || '')}" placeholder="Ex.: Simulado Nacional PF - Rodada 01">
+          </label>
+          <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px;">
+            <label class="m2-field-label">
+              <span>Banca / Estilo</span>
+              <input id="m2-mc-board" class="m2-input" type="text" value="${escapeHtml(mc.board_style || '')}" placeholder="Ex.: Cebraspe">
+            </label>
+            <label class="m2-field-label">
+              <span>Questões</span>
+              <input id="m2-mc-questions" class="m2-input" type="number" min="1" max="500" value="${mc.questions_count || ''}" placeholder="120">
+            </label>
+            <label class="m2-field-label">
+              <span>Tempo (min)</span>
+              <input id="m2-mc-time" class="m2-input" type="number" min="1" max="720" value="${mc.time_minutes || ''}" placeholder="240">
+            </label>
+          </div>
+          <label class="m2-field-label">
+            <span>Descrição / Instruções (opcional)</span>
+            <textarea id="m2-mc-description" class="m2-input" rows="2" placeholder="Instruções de aplicação ou gabarito...">${escapeHtml(mc.description || '')}</textarea>
+          </label>
+          <label class="m2-field-label">
+            <span>Arquivo PDF do Simulado ${mc.has_pdf ? `(Atual: ${escapeHtml(mc.pdf_name || 'simulado.pdf')})` : ''}</span>
+            <input id="m2-mc-pdf" class="m2-input" type="file" accept="application/pdf">
+            <small>Envie um arquivo PDF simples (até 25 MB) para o botão "Baixar Simulado".</small>
+          </label>
+          <div style="padding:14px; border-radius:10px; border:1px solid var(--border-color); background:var(--bg-surface); display:flex; flex-direction:column; gap:12px;">
+            <label class="m2-field-label">
+              <span>Modelo de Acesso *</span>
+              <select id="m2-mc-is-paid" class="m2-input" data-action="toggle-mc-paid">
+                <option value="0" ${!isPaid ? 'selected' : ''}>Simulado Grátis (Liberado para todos os alunos)</option>
+                <option value="1" ${isPaid ? 'selected' : ''}>Simulado Pago (Botão Comprar via Checkout Getfy)</option>
+              </select>
+            </label>
+            <div id="m2-mc-paid-fields" style="display:${isPaid ? 'grid' : 'none'}; grid-template-columns:1fr 1fr; gap:12px;">
+              <label class="m2-field-label">
+                <span>Valor do Simulado (R$) *</span>
+                <input id="m2-mc-price" class="m2-input" type="number" step="0.01" min="0.01" value="${mc.price || ''}" placeholder="Ex.: 29.90">
+              </label>
+              <label class="m2-field-label">
+                <span>Produto Getfy (opcional)</span>
+                <select id="m2-mc-product-id" class="m2-input">
+                  <option value="">Criar produto Getfy automaticamente</option>
+                  ${products.map(p => `<option value="${escapeHtml(p.id)}" ${String(mc.product_id || '') === String(p.id) ? 'selected' : ''}>${escapeHtml(p.name)} (R$ ${Number(p.price || 0).toFixed(2)})</option>`).join('')}
+                </select>
+              </label>
+            </div>
+          </div>
+        </form>
+        <div class="m2-modal-actions">
+          <button type="button" class="m2-btn m2-btn-secondary" data-action="close-modal">Cancelar</button>
+          <button type="button" class="m2-btn m2-btn-primary" data-action="save-mock-catalog">${icon('check', 15)} Salvar Simulado</button>
+        </div>
+      </div></div>`;
     }
 
     if (state.modal === 'mentor-new-announcement') {

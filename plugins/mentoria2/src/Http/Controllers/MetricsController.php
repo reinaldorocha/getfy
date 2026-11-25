@@ -118,6 +118,57 @@ class MetricsController extends Controller
         ]);
     }
 
+    public function mentorAnalytics(Request $request): JsonResponse
+    {
+        $tenant = $this->access->tenantId($request->user());
+
+        return response()->json([
+            'ok' => true,
+            'analytics' => $this->metrics->mentorAnalytics($tenant),
+        ]);
+    }
+
+    public function exportMentorAnalytics(Request $request)
+    {
+        $tenant = $this->access->tenantId($request->user());
+        $segment = (string) $request->query('segment', 'all');
+        $analytics = $this->metrics->mentorAnalytics($tenant);
+        $rows = collect($analytics['students'] ?? []);
+
+        if (in_array($segment, ['most_active', 'less_active', 'never_opened'], true)) {
+            $rows = $rows->where('segment', $segment)->values();
+        }
+
+        $segmentLabels = [
+            'most_active' => 'Mais ativos',
+            'less_active' => 'Menos ativos',
+            'never_opened' => 'Nunca abertos',
+        ];
+
+        $csv = "\xEF\xBB\xBFNome;Email;Telefone;Origem;Segmento;Horas 7d;Questoes;Ultima Atividade\r\n";
+        foreach ($rows as $row) {
+            $segLabel = $segmentLabels[$row['segment']] ?? $row['segment'];
+            $csv .= sprintf(
+                "\"%s\";\"%s\";\"%s\";\"%s\";\"%s\";%s;%d;\"%s\"\r\n",
+                str_replace('"', '""', $row['name']),
+                str_replace('"', '""', $row['email']),
+                str_replace('"', '""', $row['phone'] ?: 'Não informado'),
+                str_replace('"', '""', $row['origin']),
+                str_replace('"', '""', $segLabel),
+                $row['hours_7d'],
+                $row['questions_solved'],
+                $row['last_activity_at'] ?: 'Nunca acessou'
+            );
+        }
+
+        $filename = 'estatisticas-alunos-' . $segment . '-' . date('Y-m-d') . '.csv';
+
+        return response($csv, 200, [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+            'Content-Disposition' => 'attachment; filename="' . $filename . '"',
+        ]);
+    }
+
     private function adminContext(Request $request, int $student): array
     {
         $actor = $request->user();

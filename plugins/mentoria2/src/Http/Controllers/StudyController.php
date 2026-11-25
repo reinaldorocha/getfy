@@ -1975,6 +1975,12 @@ class StudyController extends Controller
         }
 
         try {
+            app(\Plugins\Mentoria2\Services\AiUsageService::class)->assertWithinStudentLimit($tenant, $studentId);
+        } catch (\Throwable $e) {
+            return $items;
+        }
+
+        try {
             $sampleItems = array_slice($items, 0, 10);
             $titles = array_map(fn ($it) => ($it['subject'] ?? 'Matéria') . ' - ' . ($it['topic'] ?? 'Tópico'), $sampleItems);
 

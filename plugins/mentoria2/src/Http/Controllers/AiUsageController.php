@@ -40,5 +40,24 @@ class AiUsageController extends Controller
             'totals' => $stats['totals'],
         ]);
     }
+
+    public function updateStudentLimit(Request $request, int $student): JsonResponse
+    {
+        $tenantId = $this->access->tenantId($request->user());
+        $data = $request->validate([
+            'ai_credit_limit' => ['nullable', 'integer', 'min:0', 'max:100000'],
+        ]);
+
+        $limit = array_key_exists('ai_credit_limit', $data) && $data['ai_credit_limit'] !== null
+            ? (int) $data['ai_credit_limit']
+            : null;
+
+        $result = $this->aiUsage->setStudentLimit($tenantId, $student, $limit);
+
+        return response()->json([
+            'ok' => true,
+            ...$result,
+        ]);
+    }
 }
 

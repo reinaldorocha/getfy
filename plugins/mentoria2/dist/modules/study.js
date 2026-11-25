@@ -1,4 +1,4 @@
-import { state, icon, escapeHtml, plainTextWithBreaks, formatTimer, render } from './core.js?v=62f85f7866e0';
+import { state, icon, escapeHtml, plainTextWithBreaks, formatTimer, render } from './core.js?v=5f31c44948bd';
 
 export function formatDateTime(isoString) {
   if (!isoString) return '';
@@ -875,20 +875,57 @@ export function viewReviews() {
 // A11: Simulados
 export function viewMockExams() {
   const mocks = window.M2Data.mockExams || [];
+  const mockCatalog = window.M2Data.mockCatalog || [];
   return `
       <div class="m2-content">
         <div class="m2-page-header">
           <div class="m2-page-title-group">
             <span class="m2-eyebrow">Testes de Desempenho Real</span>
             <h1 class="m2-page-title">Simulados Oficiais</h1>
-            <p class="m2-page-subtitle">Provas cronometradas no mesmo estilo e peso da banca oficial.</p>
+            <p class="m2-page-subtitle">Provas cronometradas, cadernos em PDF para download e simulados disponíveis.</p>
           </div>
           <button type="button" class="m2-btn m2-btn-secondary" data-action="open-manual-mock-modal">
             ${icon('plus', 16)} Lançar Simulado Feito Fora
           </button>
         </div>
 
-        ${mocks.length === 0 ? `
+        ${mockCatalog.length > 0 ? `
+          <div style="display:flex; flex-direction:column; gap:14px; margin-bottom:20px;">
+            ${mockCatalog.map(mc => {
+              const metaParts = [
+                mc.board_style,
+                mc.questions_count ? `${mc.questions_count} Questões` : null,
+                mc.time_minutes ? `${mc.time_minutes} minutos` : null
+              ].filter(Boolean);
+              const priceText = Number(mc.price || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+              return `
+                <div class="m2-card">
+                  <div class="m2-card-header">
+                    <div>
+                      <h2 style="font-size:18px; font-weight:700;">${escapeHtml(mc.title)}</h2>
+                      <span style="font-size:12px; color:var(--text-muted);">${escapeHtml(metaParts.join(' · ') || 'Simulado em PDF')}</span>
+                      ${mc.description ? `<p style="font-size:13px; color:var(--text-muted); margin-top:6px;">${escapeHtml(mc.description)}</p>` : ''}
+                    </div>
+                    ${mc.has_access
+                      ? `<span class="m2-pill m2-pill-green">${mc.is_paid ? 'Adquirido' : 'Gratuito'}</span>`
+                      : `<span class="m2-pill m2-pill-amber">${escapeHtml(priceText)}</span>`}
+                  </div>
+                  <div style="display:flex; justify-content:flex-end; gap:8px; flex-wrap:wrap;">
+                    ${mc.has_access
+                      ? (mc.download_url
+                        ? `<a href="${escapeHtml(mc.download_url)}" class="m2-btn m2-btn-primary m2-btn-sm" target="_blank" rel="noopener">${icon('download', 14)} Baixar Simulado (PDF)</a>`
+                        : `<span style="font-size:12px; color:var(--text-muted);">PDF em breve</span>`)
+                      : (mc.checkout_url
+                        ? `<a href="${escapeHtml(mc.checkout_url)}" class="m2-btn m2-btn-primary m2-btn-sm" target="_blank" rel="noopener">${icon('shopping-bag', 14)} Comprar Simulado (${escapeHtml(priceText)})</a>`
+                        : `<span class="m2-pill m2-pill-amber">Checkout em configuração</span>`)}
+                  </div>
+                </div>
+              `;
+            }).join('')}
+          </div>
+        ` : ''}
+
+        ${mocks.length === 0 && mockCatalog.length === 0 ? `
           <div class="m2-card" style="text-align:center; padding:48px 24px;">
             <div style="width:48px; height:48px; border-radius:50%; background:var(--bg-surface); display:grid; place-items:center; margin:0 auto 12px; color:var(--accent-teal);">
               ${icon('award', 24)}

@@ -2788,7 +2788,171 @@ export function handleMentorAction({
     return true;
   }
 
-  // Mentor Performance Report Export
+  // Mentor Performance Report Export & Analytics
+  if (action === 'filter-analytics-segment') {
+    state.analyticsSegment = actionBtn.dataset.segment || 'all';
+    render();
+    return true;
+  }
+
+  if (action === 'export-analytics-csv') {
+    const segment = actionBtn.dataset.segment || state.analyticsSegment || 'all';
+    const analytics = window.M2Data.mentorAnalytics || {};
+    const all = Array.isArray(analytics.students) ? analytics.students : [];
+    const rows = segment === 'all' ? all : all.filter(s => s.segment === segment);
+    const segmentLabels = {
+      most_active: 'Mais ativos',
+      less_active: 'Menos ativos',
+      never_opened: 'Nunca abertos'
+    };
+    let csv = 'Nome;Email;Telefone;Origem;Segmento;Horas 7d;Questoes;Ultima Atividade\r\n';
+    rows.forEach(s => {
+      const seg = segmentLabels[s.segment] || s.segment || '';
+      csv += `"${(s.name || '').replace(/"/g, '""')}";"${(s.email || '').replace(/"/g, '""')}";"${(s.phone || 'Não informado').replace(/"/g, '""')}";"${(s.origin || '').replace(/"/g, '""')}";"${seg}";${s.hours_7d || 0};${s.questions_solved || 0};"${s.last_activity_at || 'Nunca acessou'}"\r\n`;
+    });
+    const blob = new Blob(["\uFEFF" + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `estatisticas-alunos-${segment}-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast(`Exportação (${segmentLabels[segment] || 'Todos'}) concluída com ${rows.length} aluno(s)!`, 'success');
+    return true;
+  }
+
+  // AI Credit Limit per Student
+  if (action === 'open-student-ai-limit') {
+    const rawLimit = actionBtn.dataset.limit;
+    state.aiLimitTarget = {
+      id: actionBtn.dataset.studentId,
+      name: actionBtn.dataset.studentName || 'Aluno',
+      used: Number(actionBtn.dataset.used || 0),
+      limit: rawLimit !== undefined && rawLimit !== '' ? Number(rawLimit) : null
+    };
+    state.modal = 'student-ai-limit';
+    render();
+    return true;
+  }
+
+  if (action === 'save-student-ai-limit') {
+    const target = state.aiLimitTarget;
+    if (!target?.id) return true;
+    const rawVal = document.getElementById('m2-ai-limit-input')?.value?.trim();
+    const ai_credit_limit = (rawVal === '' || rawVal === undefined) ? null : Number(rawVal);
+    if (ai_credit_limit !== null && (!Number.isInteger(ai_credit_limit) || ai_credit_limit < 0)) {
+      showToast('Informe um número inteiro maior ou igual a zero, ou deixe vazio para ilimitado.', 'error');
+      return true;
+    }
+    api(`/mentoria2/students/${encodeURIComponent(target.id)}/ai-limit`, {
+      method: 'PATCH',
+      body: JSON.stringify({ ai_credit_limit })
+    }).then(res => {
+      const updateList = list => Array.isArray(list) && list.forEach(st => {
+        if (String(st.id) === String(target.id)) {
+          st.ai_credit_limit = res.ai_credit_limit;
+          st.ai_credits_used = res.ai_credits_used;
+        }
+      });
+      updateList(window.M2Data.students);
+      updateList(window.M2Data.mentorStudents);
+      if (Array.isArray(window.M2Data.ai_stats?.students_ranking)) {
+        window.M2Data.ai_stats.students_ranking.forEach(st => {
+          if (String(st.student_id) === String(target.id)) {
+            st.ai_credit_limit = res.ai_credit_limit;
+            st.remaining_credits = res.remaining_credits;
+          }
+        });
+      }
+      state.modal = null;
+      state.aiLimitTarget = null;
+      render();
+      showToast('Limite de créditos de IA atualizado!', 'success');
+    }).catch(err => showToast(err.message || 'Não foi possível salvar o limite de IA.', 'error'));
+    return true;
+  }
+
+  // Mock Catalog (PDF & Getfy Checkout)
+  if (action === 'open-mock-catalog-modal') {
+    state.editingMockCatalog = { title: '', description: '', board_style: '', questions_count: '', time_minutes: '', is_paid: false, price: '', product_id: '' };
+    state.modal = 'mock-catalog-form';
+    render();
+    return true;
+  }
+
+  if (action === 'edit-mock-catalog') {
+    const id = actionBtn.dataset.id;
+    const mc = (window.M2Data.mockCatalog || []).find(item => String(item.id) === String(id));
+    if (!mc) return true;
+    state.editingMockCatalog = { ...mc };
+    state.modal = 'mock-catalog-form';
+    render();
+    return true;
+  }
+
+  if (action === 'save-mock-catalog') {
+    const editing = state.editingMockCatalog || {};
+    const title = document.getElementById('m2-mc-title')?.value?.trim();
+    const boardStyle = document.getElementById('m2-mc-board')?.value?.trim() || '';
+    const questionsCount = document.getElementById('m2-mc-questions')?.value?.trim() || '';
+    const timeMinutes = document.getElementById('m2-mc-time')?.value?.trim() || '';
+    const description = document.getElementById('m2-mc-description')?.value?.trim() || '';
+    const isPaid = document.getElementById('m2-mc-is-paid')?.value === '1';
+    const price = document.getElementById('m2-mc-price')?.value?.trim() || '';
+    const productId = document.getElementById('m2-mc-product-id')?.value || '';
+    const pdfInput = document.getElementById('m2-mc-pdf');
+    const pdfFile = pdfInput?.files?.[0] || null;
+
+    if (!title) {
+      showToast('Informe o título do simulado.', 'error');
+      return true;
+    }
+    if (isPaid && (!price || Number(price) <= 0)) {
+      showToast('Informe um valor válido maior que zero para o simulado pago.', 'error');
+      return true;
+    }
+
+    const fd = new FormData();
+    fd.append('title', title);
+    fd.append('board_style', boardStyle);
+    if (questionsCount) fd.append('questions_count', questionsCount);
+    if (timeMinutes) fd.append('time_minutes', timeMinutes);
+    fd.append('description', description);
+    fd.append('is_paid', isPaid ? '1' : '0');
+    if (isPaid) fd.append('price', price);
+    if (isPaid && productId) fd.append('product_id', productId);
+    if (pdfFile) fd.append('pdf', pdfFile);
+
+    const url = editing.id ? `/mentoria2/mock-catalog/${encodeURIComponent(editing.id)}` : '/mentoria2/mock-catalog';
+    api(url, { method: 'POST', body: fd }).then(res => {
+      const saved = res.item;
+      if (saved) {
+        const list = Array.isArray(window.M2Data.mockCatalog) ? [...window.M2Data.mockCatalog] : [];
+        const idx = list.findIndex(x => String(x.id) === String(saved.id));
+        if (idx >= 0) list[idx] = saved;
+        else list.unshift(saved);
+        window.M2Data.mockCatalog = list;
+      }
+      state.modal = null;
+      state.editingMockCatalog = null;
+      render();
+      showToast('Simulado salvo com sucesso!', 'success');
+    }).catch(err => showToast(err.message || 'Erro ao salvar simulado.', 'error'));
+    return true;
+  }
+
+  if (action === 'delete-mock-catalog') {
+    const id = actionBtn.dataset.id;
+    api(`/mentoria2/mock-catalog/${encodeURIComponent(id)}`, { method: 'DELETE' }).then(() => {
+      window.M2Data.mockCatalog = (window.M2Data.mockCatalog || []).filter(item => String(item.id) !== String(id));
+      render();
+      showToast('Simulado removido.', 'success');
+    }).catch(err => showToast(err.message || 'Erro ao remover simulado.', 'error'));
+    return true;
+  }
+
   if (action === 'export-report') {
     const students = window.M2Data.students || [];
     let csv = 'Aluno;Email;Turma;Concurso;Horas Estudadas;Questoes Resolvidas;Acuracia (%)\r\n';
@@ -2812,6 +2976,12 @@ export function handleMentorAction({
 }
 
 export function handleMentorChange(e, { state, api, render, showToast, loadMentorResource, renderAudienceSelector }) {
+  if (e.target.dataset.action === 'toggle-mc-paid' || e.target.id === 'm2-mc-is-paid') {
+    const wrap = document.getElementById('m2-mc-paid-fields');
+    if (wrap) wrap.style.display = (e.target.value === '1') ? 'grid' : 'none';
+    return true;
+  }
+
   if (e.target.dataset.action === 'change-student-plan-mode' || e.target.id === 'm2-student-schedule-mode') {
     const val = e.target.value;
     const wrap = document.getElementById('m2-student-fixed-duration-wrap');

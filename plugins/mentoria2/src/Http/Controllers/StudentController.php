@@ -810,6 +810,8 @@ class StudentController extends Controller
                 'name' => $student->name,
                 'email' => $student->email,
                 'cohort_name' => $cohortName,
+                'ai_credit_limit' => app(\Plugins\Mentoria2\Services\AiUsageService::class)->getStudentLimit($tenantId, $studentId),
+                'ai_credits_used' => app(\Plugins\Mentoria2\Services\AiUsageService::class)->getStudentUsageCount($tenantId, $studentId),
             ],
             'mentorship' => [
                 'student_home_banner' => $this->banners->forTenant($tenantId),
@@ -857,6 +859,7 @@ class StudentController extends Controller
             'goals' => $this->goals->forStudent($tenantId, $studentId),
             'notebooks' => $notebooks,
             'mock_exams' => $this->decodeJsonColumns($mockExams, ['result', 'configuration_used']),
+            'mock_catalog' => MockCatalogController::forStudent($tenantId, $studentId),
             'mock_subject_results' => $mockSubjectResults,
             'exam_configurations' => $examConfigurations,
             'recent_sessions' => $this->decodeJsonColumns($sessions, ['metrics']),

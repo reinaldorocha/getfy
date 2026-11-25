@@ -446,7 +446,30 @@ class PanelController extends Controller
             ->whereNotNull('bonus_full_access_until')
             ->pluck('bonus_full_access_until', 'student_id');
 
-        $students = $studentsList->map(function ($student) use ($tenantId, $sessionsStats, $questionStats, $pendingReviews, $cohortMap, $contestMap, $productMap, $bonusMap) {
+        $aiLimitsMap = DB::table('mentoria2_preferences')
+            ->where('tenant_id', $tenantId)
+            ->whereIn('student_id', $studentIds)
+            ->whereNotNull('ai_credit_limit')
+            ->pluck('ai_credit_limit', 'student_id');
+
+        $aiUsedMap = DB::table('mentoria2_ai_usage_logs')
+            ->where('tenant_id', $tenantId)
+            ->whereIn('student_id', $studentIds)
+            ->select('student_id', DB::raw('COUNT(*) as cnt'))
+            ->groupBy('student_id')
+            ->pluck('cnt', 'student_id');
+
+        $phonesMap = DB::table('orders')
+            ->where('tenant_id', $tenantId)
+            ->whereIn('user_id', $studentIds)
+            ->whereNotNull('phone')
+            ->where('phone', '<>', '')
+            ->orderByDesc('created_at')
+            ->get(['user_id', 'phone'])
+            ->unique('user_id')
+            ->pluck('phone', 'user_id');
+
+        $students = $studentsList->map(function ($student) use ($tenantId, $sessionsStats, $questionStats, $pendingReviews, $cohortMap, $contestMap, $productMap, $bonusMap, $aiLimitsMap, $aiUsedMap, $phonesMap) {
             $sess = $sessionsStats->get($student->id);
             $qStat = $questionStats->get($student->id);
             $rev = $pendingReviews->get($student->id);
@@ -480,6 +503,9 @@ class PanelController extends Controller
                 'id' => (int) $student->id,
                 'name' => $student->name,
                 'email' => $student->email,
+                'phone' => $phonesMap->get($student->id),
+                'ai_credit_limit' => $aiLimitsMap->has($student->id) ? (int) $aiLimitsMap->get($student->id) : null,
+                'ai_credits_used' => (int) ($aiUsedMap->get($student->id) ?? 0),
                 'metrics' => [
                     'study_hours_7d' => $studyHours7d,
                     'answers' => $solved,
@@ -645,6 +671,8 @@ class PanelController extends Controller
                     ->latest('f.created_at')->limit(100)->get()
                 : collect(),
             'ai_stats' => app(\Plugins\Mentoria2\Services\AiUsageService::class)->getStats($tenantId),
+            'mentor_analytics' => $this->metrics->mentorAnalytics($tenantId),
+            'mock_catalog' => MockCatalogController::forMentor($tenantId),
             'student_app_base' => url('/mentoria2-estudos/'.$tenantId),
         ];
     }

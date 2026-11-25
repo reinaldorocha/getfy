@@ -323,6 +323,8 @@ Retorne ESTRITAMENTE um objeto JSON no formato:
             throw new \DomainException('A correção analítica por IA está indisponível porque o Member IA não foi configurado pelo mentor.');
         }
 
+        app(\Plugins\Mentoria2\Services\AiUsageService::class)->assertWithinStudentLimit($tenantId, $studentId);
+
         $cleanText = trim($texto);
         $words = preg_split('/\s+/', $cleanText, -1, PREG_SPLIT_NO_EMPTY);
         $wordCount = count($words);
@@ -594,6 +596,10 @@ Retorne ESTRITAMENTE um objeto JSON no formato:
     {
         if (! $this->isAiConfigured($tenantId)) {
             throw new \RuntimeException('Member IA não configurado para processamento de imagem.');
+        }
+
+        if ($studentId !== null) {
+            app(\Plugins\Mentoria2\Services\AiUsageService::class)->assertWithinStudentLimit($tenantId, $studentId);
         }
 
         try {

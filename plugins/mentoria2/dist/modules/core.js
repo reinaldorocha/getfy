@@ -1,8 +1,8 @@
-import { icon as renderIconSvg } from '../m2-icons.js?v=62f85f7866e0';
-import { M2Data } from '../m2-data.js?v=62f85f7866e0';
-import { requestJson as api, http, buildQuery, sanitizeErrorMessage, unwrap } from './api/client.js?v=62f85f7866e0';
-import { createMentoriaContext } from '../app/context.js?v=62f85f7866e0';
-import { escapeHtml, escapeRegExp, plainTextWithBreaks } from '../utils/escape-html.js?v=62f85f7866e0';
+import { icon as renderIconSvg } from '../m2-icons.js?v=5f31c44948bd';
+import { M2Data } from '../m2-data.js?v=5f31c44948bd';
+import { requestJson as api, http, buildQuery, sanitizeErrorMessage, unwrap } from './api/client.js?v=5f31c44948bd';
+import { createMentoriaContext } from '../app/context.js?v=5f31c44948bd';
+import { escapeHtml, escapeRegExp, plainTextWithBreaks } from '../utils/escape-html.js?v=5f31c44948bd';
 
 if (typeof window === 'undefined') {
   globalThis.window = globalThis;
@@ -527,6 +527,10 @@ function hydrateDataFromPayload(payload) {
   }
 
   // 3.5 Simulados reais e resultados por disciplina
+  window.M2Data.mockCatalog = Array.isArray(payload.mock_catalog) ? payload.mock_catalog : [];
+  if (payload.mentor_analytics) {
+    window.M2Data.mentorAnalytics = payload.mentor_analytics;
+  }
   const subjectResults = Array.isArray(payload.mock_subject_results) ? payload.mock_subject_results : [];
   window.M2Data.mockExams = Array.isArray(payload.mock_exams) ? payload.mock_exams.map(mock => {
     let result = mock.result || {};
@@ -652,6 +656,9 @@ function hydrateDataFromPayload(payload) {
         id: s.id,
         name: s.name,
         email: s.email,
+        phone: s.phone || '',
+        ai_credit_limit: s.ai_credit_limit !== undefined ? s.ai_credit_limit : null,
+        ai_credits_used: Number(s.ai_credits_used || 0),
         cohort: cohortName,
         contest: contestName,
         status: riskLvl === 'Alto' ? 'Alerta' : riskLvl === 'Médio' ? 'Atenção' : 'Ativo',
@@ -697,6 +704,8 @@ function hydrateDataFromPayload(payload) {
     window.M2Data.student.contest = payload.student.contest_name || '';
     window.M2Data.student.allowed_schedule_mode = payload.student.allowed_schedule_mode || payload.student_contest?.allowed_schedule_mode || (payload.contests?.[0]?.allowed_schedule_mode) || 'calendar';
     window.M2Data.student.fixed_days_duration = payload.student.fixed_days_duration || payload.student_contest?.fixed_days_duration || (payload.contests?.[0]?.fixed_days_duration) || null;
+    window.M2Data.student.ai_credit_limit = payload.student.ai_credit_limit !== undefined ? payload.student.ai_credit_limit : null;
+    window.M2Data.student.ai_credits_used = Number(payload.student.ai_credits_used || 0);
   } else if (Array.isArray(window.M2Data.mentorStudents) && window.M2Data.mentorStudents.length > 0) {
     const firstRealStudent = window.M2Data.mentorStudents[0];
     window.M2Data.student.id = firstRealStudent.id;

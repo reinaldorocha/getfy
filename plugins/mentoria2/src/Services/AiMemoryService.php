@@ -200,6 +200,8 @@ CTX;
             throw new \RuntimeException('Member IA não configurado para geração de prescrição cognitiva.');
         }
 
+        app(\Plugins\Mentoria2\Services\AiUsageService::class)->assertWithinStudentLimit($tenantId, $studentId);
+
         $memoryRow = \Illuminate\Support\Facades\DB::table('mentoria2_ai_memory')
             ->where('tenant_id', $tenantId)
             ->where('student_id', $studentId)

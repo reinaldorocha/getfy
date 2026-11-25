@@ -577,4 +577,224 @@ class MetricsService
             $query->where('contest_id', $contestId);
         }
     }
+
+    /**
+     * Estatísticas exclusivas do mentor: origem, mais ativos, menos ativos, nunca abertos e dados de contato.
+     */
+    public function mentorAnalytics(int $tenantId): array
+    {
+        $productIds = $this->access->eligibleProductIds($tenantId);
+        $studentIds = DB::table('product_user')
+            ->join('products', 'products.id', '=', 'product_user.product_id')
+            ->join('mentoria2_products', 'mentoria2_products.product_id', '=', 'product_user.product_id')
+            ->where('mentoria2_products.tenant_id', $tenantId)
+            ->where('mentoria2_products.is_active', true)
+            ->where('products.tenant_id', $tenantId)
+            ->where('products.is_active', true)
+            ->whereIn('product_user.product_id', $productIds)
+            ->distinct()
+            ->pluck('product_user.user_id');
+
+        if ($studentIds->isEmpty()) {
+            return [
+                'summary' => [
+                    'total_students' => 0,
+                    'most_active_count' => 0,
+                    'less_active_count' => 0,
+                    'never_opened_count' => 0,
+                ],
+                'by_origin' => [],
+                'students' => [],
+            ];
+        }
+
+        $users = DB::table('users')
+            ->whereIn('id', $studentIds)
+            ->select('id', 'name', 'email', 'created_at')
+            ->get()
+            ->keyBy('id');
+
+        $productsById = DB::table('products')
+            ->where('tenant_id', $tenantId)
+            ->pluck('name', 'id');
+
+        $studentProducts = DB::table('product_user')
+            ->whereIn('user_id', $studentIds)
+            ->whereIn('product_id', $productIds)
+            ->orderByDesc('created_at')
+            ->get()
+            ->groupBy('user_id');
+
+        $ordersByUser = DB::table('orders')
+            ->where('tenant_id', $tenantId)
+            ->whereIn('user_id', $studentIds)
+            ->orderByDesc('created_at')
+            ->get(['user_id', 'product_id', 'phone', 'gateway', 'metadata', 'created_at'])
+            ->groupBy('user_id');
+
+        $sessionsStats = DB::table('mentoria2_study_sessions')
+            ->where('tenant_id', $tenantId)
+            ->whereIn('student_id', $studentIds)
+            ->where('is_active', true)
+            ->select(
+                'student_id',
+                DB::raw('COUNT(*) as sessions_count'),
+                DB::raw('COALESCE(SUM(seconds), 0) as seconds_total'),
+                DB::raw('COALESCE(SUM(CASE WHEN studied_at >= DATE_SUB(NOW(), INTERVAL 7 DAY) THEN seconds ELSE 0 END), 0) as seconds_7d'),
+                DB::raw('MAX(studied_at) as last_study_at')
+            )
+            ->groupBy('student_id')
+            ->get()
+            ->keyBy('student_id');
+
+        $questionStats = DB::table('mentoria2_question_logs')
+            ->where('tenant_id', $tenantId)
+            ->whereIn('student_id', $studentIds)
+            ->where('is_active', true)
+            ->select(
+                'student_id',
+                DB::raw('COALESCE(SUM(solved), 0) as solved_total'),
+                DB::raw('MAX(recorded_at) as last_question_at')
+            )
+            ->groupBy('student_id')
+            ->get()
+            ->keyBy('student_id');
+
+        $mockCounts = DB::table('mentoria2_mock_exams')
+            ->where('tenant_id', $tenantId)
+            ->whereIn('student_id', $studentIds)
+            ->where('is_active', true)
+            ->select('student_id', DB::raw('COUNT(*) as cnt'))
+            ->groupBy('student_id')
+            ->pluck('cnt', 'student_id');
+
+        $aiCounts = DB::table('mentoria2_ai_usage_logs')
+            ->where('tenant_id', $tenantId)
+            ->whereIn('student_id', $studentIds)
+            ->select('student_id', DB::raw('COUNT(*) as cnt'), DB::raw('MAX(created_at) as last_ai_at'))
+            ->groupBy('student_id')
+            ->get()
+            ->keyBy('student_id');
+
+        $prefsSet = DB::table('mentoria2_preferences')
+            ->where('tenant_id', $tenantId)
+            ->whereIn('student_id', $studentIds)
+            ->pluck('student_id')
+            ->flip();
+
+        $students = [];
+        $originCounts = [];
+        $mostActive = 0;
+        $lessActive = 0;
+        $neverOpened = 0;
+
+        foreach ($studentIds as $sid) {
+            $user = $users->get($sid);
+            if (! $user) {
+                continue;
+            }
+
+            $userOrders = $ordersByUser->get($sid, collect());
+            $latestOrder = $userOrders->first();
+            $phone = '';
+            foreach ($userOrders as $ord) {
+                if (! empty(trim((string) ($ord->phone ?? '')))) {
+                    $phone = trim((string) $ord->phone);
+                    break;
+                }
+            }
+
+            $origin = 'Matrícula Direta';
+            if ($latestOrder) {
+                $meta = is_string($latestOrder->metadata)
+                    ? (json_decode($latestOrder->metadata, true) ?: [])
+                    : (is_array($latestOrder->metadata) ? $latestOrder->metadata : []);
+                $utm = trim((string) ($meta['utm_source'] ?? $meta['origin'] ?? $meta['source'] ?? ''));
+                $prodName = $productsById->get($latestOrder->product_id) ?? 'Produto Getfy';
+                $origin = $utm !== '' ? $utm : ('Checkout Getfy · ' . $prodName);
+            } else {
+                $firstProd = $studentProducts->get($sid, collect())->first();
+                if ($firstProd && $productsById->has($firstProd->product_id)) {
+                    $origin = 'Matrícula Direta · ' . $productsById->get($firstProd->product_id);
+                }
+            }
+
+            $sess = $sessionsStats->get($sid);
+            $qStat = $questionStats->get($sid);
+            $aiStat = $aiCounts->get($sid);
+
+            $sessionsCount = (int) ($sess?->sessions_count ?? 0);
+            $hours7d = round(((int) ($sess?->seconds_7d ?? 0)) / 3600, 1);
+            $hoursTotal = round(((int) ($sess?->seconds_total ?? 0)) / 3600, 1);
+            $solvedTotal = (int) ($qStat?->solved_total ?? 0);
+            $mocksCount = (int) ($mockCounts->get($sid) ?? 0);
+            $aiCount = (int) ($aiStat?->cnt ?? 0);
+            $hasPrefs = $prefsSet->has($sid);
+
+            $dates = array_filter([
+                $sess?->last_study_at,
+                $qStat?->last_question_at,
+                $aiStat?->last_ai_at,
+            ]);
+            $lastActivityAt = ! empty($dates) ? max($dates) : null;
+
+            $hasOpened = $sessionsCount > 0 || $solvedTotal > 0 || $mocksCount > 0 || $aiCount > 0 || $hasPrefs;
+
+            if (! $hasOpened) {
+                $segment = 'never_opened';
+                $neverOpened++;
+            } elseif ($hours7d >= 2 || $solvedTotal >= 15 || $sessionsCount >= 3) {
+                $segment = 'most_active';
+                $mostActive++;
+            } else {
+                $segment = 'less_active';
+                $lessActive++;
+            }
+
+            $activityScore = round(($hours7d * 10) + $solvedTotal + ($sessionsCount * 5) + ($mocksCount * 5), 1);
+
+            $originCounts[$origin] = ($originCounts[$origin] ?? 0) + 1;
+
+            $students[] = [
+                'id' => (int) $sid,
+                'name' => (string) $user->name,
+                'email' => (string) $user->email,
+                'phone' => $phone,
+                'origin' => $origin,
+                'segment' => $segment,
+                'has_opened' => $hasOpened,
+                'activity_score' => $activityScore,
+                'hours_7d' => $hours7d,
+                'hours_total' => $hoursTotal,
+                'sessions_count' => $sessionsCount,
+                'questions_solved' => $solvedTotal,
+                'ai_requests' => $aiCount,
+                'last_activity_at' => $lastActivityAt ? Carbon::parse($lastActivityAt)->format('d/m/Y H:i') : null,
+            ];
+        }
+
+        usort($students, fn ($a, $b) => $b['activity_score'] <=> $a['activity_score']);
+
+        $totalStudents = count($students);
+        arsort($originCounts);
+        $byOrigin = [];
+        foreach ($originCounts as $label => $count) {
+            $byOrigin[] = [
+                'origin' => $label,
+                'count' => $count,
+                'percentage' => $totalStudents > 0 ? round(($count / $totalStudents) * 100, 1) : 0,
+            ];
+        }
+
+        return [
+            'summary' => [
+                'total_students' => $totalStudents,
+                'most_active_count' => $mostActive,
+                'less_active_count' => $lessActive,
+                'never_opened_count' => $neverOpened,
+            ],
+            'by_origin' => $byOrigin,
+            'students' => $students,
+        ];
+    }
 }
